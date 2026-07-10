@@ -38,13 +38,13 @@ describe('ReviewLumeTreeProvider', () => {
     expect(statusItems[0].label).toBe('Restricted Mode');
   });
 
-  it('shows an honest trusted-workspace state and all P1 actions', () => {
+  it('shows the trusted-workspace state and all P1 actions', () => {
     testing.setWorkspaceState([{}], true);
     const provider = new ReviewLumeTreeProvider();
 
     const statusItems = provider.getChildren(section(provider, 'Status'));
     expect(statusItems[0].label).toBe('Ready');
-    expect(statusItems[0].description).toBe('Workspace is open and trusted');
+    expect(statusItems[0].description).toBe('ReviewLume is active');
 
     const actions = provider.getChildren(section(provider, 'Actions'));
     expect(actions.map((item) => item.command?.command)).toEqual([
