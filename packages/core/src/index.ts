@@ -10,7 +10,7 @@
 // ---------------------------------------------------------------------------
 
 /** Review mode for building a review pack. */
-export type ReviewMode = 'quick' | 'standard' | 'high-risk';
+export type ReviewMode = 'quick' | 'standard' | 'high-risk' | 'custom';
 
 /** Sensitivity level for secret scan results. */
 export type SecretLevel = 'HARD_BLOCK' | 'BLOCK' | 'WARN' | 'INFO';
@@ -66,7 +66,7 @@ export const DEFAULT_CONFIG: ReviewTaskConfig = {
   language: 'en',
   includeUntracked: false,
   respectGitIgnore: true,
-  maxPackSizeKb: 1024,
+  maxPackSizeKb: 2048,
 };
 
 /** Namespace for all VS Code configuration keys. */
