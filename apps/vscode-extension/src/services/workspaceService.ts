@@ -8,9 +8,9 @@ export enum WorkspaceState {
   NoWorkspace = 'no-workspace',
   /** Workspace is open but not fully trusted (Restricted Mode). */
   Untrusted = 'untrusted',
-  /** Workspace is open and trusted, but no Git repository was detected. */
+  /** Workspace is trusted, but Git detection explicitly found no repository. */
   NoGit = 'no-git',
-  /** Workspace is open, trusted, and has at least one Git repository. */
+  /** Workspace is open and trusted; Git may be detected in a later phase. */
   Ready = 'ready',
 }
 
@@ -20,35 +20,50 @@ export enum WorkspaceState {
 export type WorkspaceStateValue = `${WorkspaceState}`;
 
 /**
- * Determine the current workspace state.
+ * Pure input used to evaluate workspace state.
  *
- * Order of checks:
- *  1. No workspace folders → NoWorkspace
- *  2. Workspace not trusted → Untrusted
- *  3. Workspace trusted with folders → Ready (Git detection in P2)
+ * `hasGitRepository` is optional because P1 does not inspect Git yet. P2 can
+ * pass an explicit boolean once repository discovery is implemented.
  */
-export function getWorkspaceState(): WorkspaceState {
-  const folders = vscode.workspace.workspaceFolders;
-  if (!folders || folders.length === 0) {
+export interface WorkspaceSnapshot {
+  hasWorkspace: boolean;
+  isTrusted: boolean;
+  hasGitRepository?: boolean;
+}
+
+/** Evaluate a workspace snapshot without reading VS Code global state. */
+export function evaluateWorkspaceState(snapshot: WorkspaceSnapshot): WorkspaceState {
+  if (!snapshot.hasWorkspace) {
     return WorkspaceState.NoWorkspace;
   }
 
-  if (!vscode.workspace.isTrusted) {
+  if (!snapshot.isTrusted) {
     return WorkspaceState.Untrusted;
   }
 
-  // Git repository detection will be added in P2.
-  // For P1 we assume Ready when trusted folders exist.
+  if (snapshot.hasGitRepository === false) {
+    return WorkspaceState.NoGit;
+  }
+
   return WorkspaceState.Ready;
 }
 
 /**
- * Get a human-readable description of the current workspace state.
- * Returns `null` when ReviewLume operations can proceed (Ready state).
+ * Determine the current workspace state.
+ *
+ * P1 intentionally checks only folder presence and Workspace Trust. Git
+ * repository discovery belongs to P2, so no Git result is assumed here.
  */
-export function getWorkspaceWarning(): string | null {
-  const state = getWorkspaceState();
+export function getWorkspaceState(): WorkspaceState {
+  const folders = vscode.workspace.workspaceFolders;
+  return evaluateWorkspaceState({
+    hasWorkspace: Boolean(folders && folders.length > 0),
+    isTrusted: vscode.workspace.isTrusted,
+  });
+}
 
+/** Return the user-facing warning for a specific workspace state. */
+export function getWorkspaceWarningForState(state: WorkspaceState): string | null {
   switch (state) {
     case WorkspaceState.NoWorkspace:
       return 'No workspace folder is open. Open a folder or workspace to use ReviewLume features.';
@@ -59,4 +74,12 @@ export function getWorkspaceWarning(): string | null {
     case WorkspaceState.Ready:
       return null;
   }
+}
+
+/**
+ * Get a human-readable description of the current workspace state.
+ * Returns `null` when ReviewLume operations can proceed.
+ */
+export function getWorkspaceWarning(): string | null {
+  return getWorkspaceWarningForState(getWorkspaceState());
 }

@@ -1,11 +1,59 @@
-import { describe, it, expect } from 'vitest';
+import * as vscode from 'vscode';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { registerCreateReviewPack } from '../../commands/createReviewPack';
+import { COMMANDS } from '../../constants';
+import { initLogService } from '../../services/logService';
 
-// Command implementations depend on vscode.window.* APIs which are not
-// available in plain vitest.  These tests verify the module structure.
+interface VscodeTesting {
+  setWorkspaceState(folders: unknown[], trusted: boolean): void;
+  getRegisteredCommand(command: string): (() => unknown) | undefined;
+  reset(): void;
+}
 
-describe('createReviewPack command module', () => {
-  it('should export registerCreateReviewPack as a function', async () => {
-    const mod = await import('../../commands/createReviewPack');
-    expect(typeof mod.registerCreateReviewPack).toBe('function');
+const testing = (vscode as unknown as { __testing: VscodeTesting }).__testing;
+
+function registerCommand(): () => unknown {
+  const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
+  registerCreateReviewPack(context);
+  const handler = testing.getRegisteredCommand(COMMANDS.CREATE_REVIEW_PACK);
+  expect(handler).toBeDefined();
+  return handler!;
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  testing.reset();
+  initLogService();
+});
+
+describe('createReviewPack command', () => {
+  it('blocks when no workspace is open', () => {
+    testing.setWorkspaceState([], true);
+    registerCommand()();
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('No workspace folder'),
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  it('blocks repository inspection in Restricted Mode', () => {
+    testing.setWorkspaceState([{}], false);
+    registerCommand()();
+
+    expect(vscode.window.showWarningMessage).toHaveBeenCalledWith(
+      expect.stringContaining('Restricted Mode'),
+    );
+    expect(vscode.window.showInformationMessage).not.toHaveBeenCalled();
+  });
+
+  it('shows an honest placeholder in a trusted workspace', () => {
+    testing.setWorkspaceState([{}], true);
+    registerCommand()();
+
+    expect(vscode.window.showWarningMessage).not.toHaveBeenCalled();
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('not yet implemented'),
+    );
   });
 });

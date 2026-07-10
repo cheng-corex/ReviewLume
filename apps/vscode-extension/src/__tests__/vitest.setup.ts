@@ -1,17 +1,41 @@
 /**
- * Vitest setup: mock the `vscode` module so that modules importing
- * from `vscode` can be loaded in unit tests.
+ * Vitest setup: mock the `vscode` module so unit tests can exercise command,
+ * workspace-state, logging, and tree-view behavior without Extension Host.
  */
 import { vi } from 'vitest';
 
 vi.mock('vscode', () => {
-  // Mutable workspace state — tests can override via `vi.mocked()`.
+  type CommandHandler = (...args: unknown[]) => unknown;
+
   const workspaceState: { folders: unknown[]; trusted: boolean } = {
     folders: [],
     trusted: false,
   };
+  const registeredCommands = new Map<string, CommandHandler>();
+
+  const testing = {
+    setWorkspaceState(folders: unknown[], trusted: boolean): void {
+      workspaceState.folders = folders;
+      workspaceState.trusted = trusted;
+    },
+    getRegisteredCommand(command: string): CommandHandler | undefined {
+      return registeredCommands.get(command);
+    },
+    reset(): void {
+      workspaceState.folders = [];
+      workspaceState.trusted = false;
+      registeredCommands.clear();
+    },
+  };
+
+  class MockEventEmitter<T = unknown> {
+    readonly event = vi.fn();
+    readonly fire = vi.fn((_value?: T) => undefined);
+    readonly dispose = vi.fn();
+  }
 
   return {
+    __testing: testing,
     window: {
       createOutputChannel: vi.fn(() => ({
         appendLine: vi.fn(),
@@ -33,24 +57,36 @@ vi.mock('vscode', () => {
       onDidGrantWorkspaceTrust: vi.fn(() => ({ dispose: vi.fn() })),
     },
     commands: {
-      registerCommand: vi.fn(() => ({ dispose: vi.fn() })),
+      registerCommand: vi.fn((command: string, handler: CommandHandler) => {
+        registeredCommands.set(command, handler);
+        return { dispose: vi.fn() };
+      }),
     },
     TreeItem: class MockTreeItem {
       label: string;
-      constructor(label: string) { this.label = label; }
+      collapsibleState: number;
+      description?: string;
+      tooltip?: string;
+      iconPath?: unknown;
+      command?: unknown;
+
+      constructor(label: string, collapsibleState = 0) {
+        this.label = label;
+        this.collapsibleState = collapsibleState;
+      }
     },
     TreeItemCollapsibleState: {
       None: 0,
       Expanded: 1,
       Collapsed: 2,
     },
-    EventEmitter: vi.fn(() => ({
-      event: vi.fn(),
-      fire: vi.fn(),
-    })),
+    EventEmitter: MockEventEmitter,
     ThemeIcon: class MockThemeIcon {
       id: string;
-      constructor(id: string) { this.id = id; }
+
+      constructor(id: string) {
+        this.id = id;
+      }
     },
   };
 });

@@ -10,6 +10,12 @@
   "engines": {
     "vscode": "^1.100.0"
   },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "ReviewLume can show workspace status in Restricted Mode, but commands that inspect repository content require Workspace Trust."
+    }
+  },
   "categories": [
     "Other",
     "Visualization"

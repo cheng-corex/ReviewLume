@@ -1,23 +1,56 @@
-import { describe, it, expect } from 'vitest';
+import * as vscode from 'vscode';
+import { beforeEach, describe, expect, it } from 'vitest';
+import { COMMANDS } from '../../constants';
+import { ReviewLumeTreeProvider } from '../../views/reviewLumeTreeProvider';
 
-// ReviewLumeTreeProvider extends vscode.TreeItem and vscode.TreeDataProvider
-// which aren't available in plain vitest.  These tests verify module exports.
+interface VscodeTesting {
+  setWorkspaceState(folders: unknown[], trusted: boolean): void;
+  reset(): void;
+}
 
-describe('reviewLumeTreeProvider module', () => {
-  it('should export ReviewLumeTreeItem class', async () => {
-    const mod = await import('../../views/reviewLumeTreeProvider');
-    expect(mod.ReviewLumeTreeItem).toBeDefined();
-    expect(typeof mod.ReviewLumeTreeItem).toBe('function');
+const testing = (vscode as unknown as { __testing: VscodeTesting }).__testing;
+
+function section(provider: ReviewLumeTreeProvider, label: string) {
+  const item = provider.getChildren().find((candidate) => candidate.label === label);
+  expect(item).toBeDefined();
+  return item!;
+}
+
+beforeEach(() => {
+  testing.reset();
+});
+
+describe('ReviewLumeTreeProvider', () => {
+  it('shows the no-workspace empty state', () => {
+    testing.setWorkspaceState([], true);
+    const provider = new ReviewLumeTreeProvider();
+
+    const statusItems = provider.getChildren(section(provider, 'Status'));
+    expect(statusItems).toHaveLength(1);
+    expect(statusItems[0].label).toBe('No Workspace Folder');
   });
 
-  it('should export ReviewLumeTreeProvider class', async () => {
-    const mod = await import('../../views/reviewLumeTreeProvider');
-    expect(mod.ReviewLumeTreeProvider).toBeDefined();
-    expect(typeof mod.ReviewLumeTreeProvider).toBe('function');
+  it('shows Restricted Mode without inspecting repository content', () => {
+    testing.setWorkspaceState([{}], false);
+    const provider = new ReviewLumeTreeProvider();
+
+    const statusItems = provider.getChildren(section(provider, 'Status'));
+    expect(statusItems[0].label).toBe('Restricted Mode');
   });
 
-  it('should export registerReviewLumeTreeView as a function', async () => {
-    const mod = await import('../../views/reviewLumeTreeProvider');
-    expect(typeof mod.registerReviewLumeTreeView).toBe('function');
+  it('shows the trusted-workspace state and all P1 actions', () => {
+    testing.setWorkspaceState([{}], true);
+    const provider = new ReviewLumeTreeProvider();
+
+    const statusItems = provider.getChildren(section(provider, 'Status'));
+    expect(statusItems[0].label).toBe('Ready');
+    expect(statusItems[0].description).toBe('ReviewLume is active');
+
+    const actions = provider.getChildren(section(provider, 'Actions'));
+    expect(actions.map((item) => item.command?.command)).toEqual([
+      COMMANDS.CREATE_REVIEW_PACK,
+      COMMANDS.OPEN_REVIEW_HISTORY,
+      COMMANDS.IMPORT_REVIEW_RESPONSE,
+    ]);
   });
 });
