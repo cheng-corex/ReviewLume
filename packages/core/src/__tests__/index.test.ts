@@ -7,10 +7,10 @@ import {
 } from '../index.js';
 
 describe('@reviewlume/core', () => {
-  it('should have a default config', () => {
+  it('should have a default config aligned with the documented performance boundary', () => {
     expect(DEFAULT_CONFIG.mode).toBe('standard');
     expect(DEFAULT_CONFIG.language).toBe('en');
-    expect(DEFAULT_CONFIG.maxPackSizeKb).toBe(1024);
+    expect(DEFAULT_CONFIG.maxPackSizeKb).toBe(2048);
   });
 
   it('should have a current schema version', () => {
