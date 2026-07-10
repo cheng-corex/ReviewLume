@@ -2,13 +2,13 @@
 
 ## P0：工程基础
 
-- [ ] 初始化 pnpm workspace。
-- [ ] 创建 `apps/vscode-extension`。
-- [ ] 创建核心 packages。
-- [ ] 配置 TypeScript project references。
-- [ ] 配置 ESLint、Prettier、Vitest。
-- [ ] 配置 GitHub Actions 或其他 CI。
-- [ ] 添加 MIT License、SECURITY.md、CHANGELOG.md。
+- [x] 初始化 pnpm workspace。
+- [x] 创建 `apps/vscode-extension`。
+- [x] 创建核心 packages。
+- [x] 配置 TypeScript project references。
+- [x] 配置 ESLint、Prettier、Vitest。
+- [x] 配置 GitHub Actions 或其他 CI。
+- [x] 添加 MIT License、SECURITY.md、CHANGELOG.md。
 
 ## P1：扩展入口
 

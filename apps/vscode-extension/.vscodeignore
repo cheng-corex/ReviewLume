@@ -1,0 +1,15 @@
+.vscodeignore
+node_modules
+src
+tsconfig.json
+tsconfig.tsbuildinfo
+**/tsconfig.tsbuildinfo
+**/__tests__/**
+**/*.test.ts
+vitest.config*
+coverage
+.eslintrc.json
+.gitignore
+.prettierrc.json
+.prettierignore
+CHANGELOG.md

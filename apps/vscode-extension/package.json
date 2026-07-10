@@ -1,0 +1,62 @@
+{
+  "name": "reviewlume-vscode",
+  "displayName": "ReviewLume – AI Code Review Pack",
+  "version": "0.1.0",
+  "description": "Build focused, privacy-aware code review packs for browser-based AI reviewers",
+  "license": "MIT",
+  "author": "ReviewLume contributors",
+  "publisher": "reviewlume",
+  "private": true,
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "code review",
+    "git diff",
+    "ai review",
+    "review pack",
+    "privacy"
+  ],
+  "activationEvents": [
+    "onCommand:reviewlume.hello"
+  ],
+  "main": "dist/extension.js",
+  "scripts": {
+    "build": "tsc",
+    "clean": "rm -rf dist",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.0.vsix",
+    "pretest": "npm run build"
+  },
+  "contributes": {
+    "commands": [
+      {
+        "command": "reviewlume.hello",
+        "title": "ReviewLume: Hello (Verify Extension)"
+      }
+    ]
+  },
+  "dependencies": {
+    "@reviewlume/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.100.0",
+    "@vscode/vsce": "^3.0.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0",
+    "eslint": "^8.57.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/reviewlume/reviewlume.git"
+  }
+}
