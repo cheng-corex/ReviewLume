@@ -28,6 +28,12 @@ vi.mock('vscode', () => {
     },
   };
 
+  class MockEventEmitter<T = unknown> {
+    readonly event = vi.fn();
+    readonly fire = vi.fn((_value?: T) => undefined);
+    readonly dispose = vi.fn();
+  }
+
   return {
     __testing: testing,
     window: {
@@ -74,10 +80,7 @@ vi.mock('vscode', () => {
       Expanded: 1,
       Collapsed: 2,
     },
-    EventEmitter: vi.fn(() => ({
-      event: vi.fn(),
-      fire: vi.fn(),
-    })),
+    EventEmitter: MockEventEmitter,
     ThemeIcon: class MockThemeIcon {
       id: string;
 
