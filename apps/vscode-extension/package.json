@@ -27,12 +27,13 @@
   "main": "dist/extension.js",
   "scripts": {
     "build": "tsc",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "prepackage": "pnpm build",
     "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.0.vsix",
-    "pretest": "npm run build"
+    "pretest": "pnpm build"
   },
   "contributes": {
     "commands": [
@@ -57,6 +58,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/reviewlume/reviewlume.git"
+    "url": "https://github.com/cheng-corex/ReviewLume.git"
   }
 }
