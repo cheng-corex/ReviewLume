@@ -34,11 +34,15 @@ interface VscodeTesting {
 
 const testing = (vscode as unknown as { __testing: VscodeTesting }).__testing;
 
-function listJavaScriptFiles(directory: string): string[] {
+function listPackagedJavaScriptFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
+    if (entry.isDirectory() && entry.name === '__tests__') {
+      return [];
+    }
+
     const entryPath = path.join(directory, entry.name);
     if (entry.isDirectory()) {
-      return listJavaScriptFiles(entryPath);
+      return listPackagedJavaScriptFiles(entryPath);
     }
     return entry.isFile() && entry.name.endsWith('.js') ? [entryPath] : [];
   });
@@ -126,9 +130,9 @@ describe('reviewlume-vscode manifest', () => {
     });
   });
 
-  it('keeps every compiled module free of unpackaged workspace imports', () => {
+  it('keeps every packaged runtime module free of unpackaged workspace imports', () => {
     const distPath = path.resolve(__dirname, '../../dist');
-    const compiledFiles = listJavaScriptFiles(distPath);
+    const compiledFiles = listPackagedJavaScriptFiles(distPath);
     expect(compiledFiles.length).toBeGreaterThan(0);
 
     for (const compiledFile of compiledFiles) {
