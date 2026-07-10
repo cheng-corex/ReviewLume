@@ -23,8 +23,12 @@
 
 - [ ] 检测 Git 可用性。
 - [ ] 获取 repository root。
+- [ ] 枚举多根工作区中的 Git repositories。
+- [ ] 多个 repository 存在时要求用户明确选择一个。
+- [ ] 保证一次审核任务只绑定一个 repository。
 - [ ] 获取 staged/unstaged/untracked 状态。
-- [ ] 支持 commit range。
+- [ ] 支持 commit range，且 base/target 必须属于当前 repository。
+- [ ] 拒绝跨 repository 合并 diff 或文件。
 - [ ] 使用参数数组调用 Git。
 - [ ] 增加超时、取消和错误提示。
 - [ ] 覆盖路径包含空格和中文的测试。
@@ -35,10 +39,11 @@
 - [ ] 支持勾选/取消。
 - [ ] 支持手动添加关联文件。
 - [ ] 支持测试文件推荐。
-- [ ] 限制在工作区内。
+- [ ] 限制在当前审核绑定的 repository 内。
 - [ ] 遵守 `.gitignore`。
 - [ ] 支持 `.reviewlumeignore`。
-- [ ] 拒绝符号链接逃逸工作区。
+- [ ] 拒绝符号链接逃逸 repository。
+- [ ] 多根工作区中不能选择其他 repository 的文件。
 
 ## P4：敏感扫描
 
@@ -47,27 +52,38 @@
 - [ ] 实现常见 Token 检测。
 - [ ] 实现连接串检测。
 - [ ] 实现脱敏预览。
-- [ ] 支持 BLOCK/WARN/INFO。
+- [ ] 支持 HARD_BLOCK/BLOCK/WARN/INFO。
+- [ ] HARD_BLOCK 永远禁止导出且不能通过设置关闭。
+- [ ] BLOCK 必须排除或脱敏后重新扫描，不能直接确认放行。
+- [ ] WARN 必须逐项确认并记录确认状态。
 - [ ] 允许用户排除命中内容。
-- [ ] 不允许静默绕过 BLOCK。
+- [ ] 修改范围或脱敏内容后强制重新扫描。
+- [ ] 日志和诊断信息不保存原始命中秘密。
 
 ## P5：Review Pack
 
 - [ ] 定义 schema v1。
+- [ ] 定义 `workspaceId`：规范化 repository identity 的 SHA-256 前 16 位。
+- [ ] 定义 `reviewId`：UTC 时间加 12 位密码学安全随机十六进制值。
+- [ ] 创建历史目录前检查 ID 冲突并重试。
 - [ ] 生成元数据。
+- [ ] manifest 记录 `workspaceId`、`reviewId`、repository display name 和安全扫描计数。
+- [ ] manifest 不保存原始绝对路径和带凭据 remote URL。
 - [ ] 生成审核说明。
 - [ ] 嵌入需求和实施报告。
 - [ ] 嵌入 diff。
 - [ ] 嵌入所选文件。
 - [ ] 记录排除和截断。
 - [ ] 实现大小预算。
-- [ ] 导出 Markdown。
-- [ ] 可选导出 ZIP。
+- [ ] 导出 Markdown 主文件名固定为 `REVIEW_REQUEST.md`。
+- [ ] 可选导出 ZIP，目录名为 `reviewlume-pack-<review-id>`。
+- [ ] HARD_BLOCK、未处理 BLOCK 或未确认 WARN 存在时禁止最终导出。
 
 ## P6：审核面板
 
 - [ ] 创建 Webview。
 - [ ] 文件树和扫描结果可视化。
+- [ ] 分开展示 HARD_BLOCK、BLOCK、WARN、INFO。
 - [ ] 显示字符数和估算大小。
 - [ ] 显示完整发送预览。
 - [ ] 复制提示。
@@ -77,8 +93,11 @@
 
 ## P7：报告历史
 
-- [ ] 定义 reviewId。
+- [ ] 按 `<workspaceId>/<reviewId>` 保存历史。
+- [ ] 内部请求快照使用 `request.md`，不与导出的 `REVIEW_REQUEST.md` 混用。
 - [ ] 保存 request、response、report、resolution。
+- [ ] `reviewId` 创建后保持不可变。
+- [ ] 定义 schema 迁移入口，升级时不改变既有 ID 语义。
 - [ ] 导入文本回答。
 - [ ] 基础标题解析。
 - [ ] 允许人工编辑问题清单。
@@ -94,6 +113,7 @@
 - [ ] 导入修复摘要。
 - [ ] 生成复核包。
 - [ ] 展示首次和复核差异。
+- [ ] 同一闭环保持 `reviewId` 不变，使用轮次或子记录区分复核。
 
 ## P9：浏览器桥接
 
@@ -106,6 +126,8 @@
 - [ ] 页面适配器接口。
 - [ ] 填入提示但不发送。
 - [ ] 用户主动导入回答。
+- [ ] 桥接请求必须绑定现有 `reviewId`。
+- [ ] 浏览器端不能改变 repository 或本地文件范围。
 - [ ] 不申请 Cookie 权限。
 - [ ] 不访问内部 API。
 
