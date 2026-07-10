@@ -4,7 +4,11 @@
     {
       "label": "Build Extension",
       "type": "shell",
-      "command": "cd ${workspaceFolder}/apps/vscode-extension && pnpm build",
+      "command": "pnpm",
+      "args": ["build"],
+      "options": {
+        "cwd": "${workspaceFolder}/apps/vscode-extension"
+      },
       "group": "build",
       "problemMatcher": ["$tsc"],
       "presentation": {
