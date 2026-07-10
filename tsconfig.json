@@ -1,0 +1,12 @@
+{
+  "files": [],
+  "references": [
+    { "path": "./packages/core" },
+    { "path": "./packages/git-context" },
+    { "path": "./packages/prompt-templates" },
+    { "path": "./packages/report-parser" },
+    { "path": "./packages/review-pack" },
+    { "path": "./packages/secret-scanner" },
+    { "path": "./apps/vscode-extension" }
+  ]
+}
