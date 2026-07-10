@@ -15,7 +15,7 @@
   },
   "scripts": {
     "build": "tsc",
-    "clean": "rm -rf dist",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
