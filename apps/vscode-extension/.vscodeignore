@@ -1,6 +1,7 @@
 .vscodeignore
 node_modules
 src
+scripts
 tsconfig.json
 tsconfig.tsbuildinfo
 **/tsconfig.tsbuildinfo

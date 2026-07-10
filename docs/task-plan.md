@@ -12,12 +12,12 @@
 
 ## P1：扩展入口
 
-- [ ] 注册 `ReviewLume: Create Review Pack`。
-- [ ] 注册 `ReviewLume: Open Review History`。
-- [ ] 注册 `ReviewLume: Import Review Response`。
-- [ ] 支持 Workspace Trust。
-- [ ] 添加 Activity Bar 图标和 View Container。
-- [ ] 增加日志 OutputChannel。
+- [x] 注册 `ReviewLume: Create Review Pack`。
+- [x] 注册 `ReviewLume: Open Review History`。
+- [x] 注册 `ReviewLume: Import Review Response`。
+- [x] 支持 Workspace Trust。
+- [x] 添加 Activity Bar 图标和 View Container。
+- [x] 增加日志 OutputChannel。
 
 ## P2：Git 上下文
 

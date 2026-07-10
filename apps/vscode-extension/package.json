@@ -22,7 +22,11 @@
     "privacy"
   ],
   "activationEvents": [
-    "onCommand:reviewlume.hello"
+    "onCommand:reviewlume.hello",
+    "onCommand:reviewlume.createReviewPack",
+    "onCommand:reviewlume.openReviewHistory",
+    "onCommand:reviewlume.importReviewResponse",
+    "onView:reviewlume.mainView"
   ],
   "main": "dist/extension.js",
   "scripts": {
@@ -40,8 +44,38 @@
       {
         "command": "reviewlume.hello",
         "title": "ReviewLume: Hello (Verify Extension)"
+      },
+      {
+        "command": "reviewlume.createReviewPack",
+        "title": "ReviewLume: Create Review Pack"
+      },
+      {
+        "command": "reviewlume.openReviewHistory",
+        "title": "ReviewLume: Open Review History"
+      },
+      {
+        "command": "reviewlume.importReviewResponse",
+        "title": "ReviewLume: Import Review Response"
       }
-    ]
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "reviewlume",
+          "title": "ReviewLume",
+          "icon": "resources/icon.png"
+        }
+      ]
+    },
+    "views": {
+      "reviewlume": [
+        {
+          "type": "tree",
+          "id": "reviewlume.mainView",
+          "name": "ReviewLume"
+        }
+      ]
+    }
   },
   "dependencies": {
     "@reviewlume/core": "workspace:*"
