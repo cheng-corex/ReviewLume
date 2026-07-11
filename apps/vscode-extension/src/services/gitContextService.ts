@@ -2,7 +2,7 @@ import type {
   DiscoveryResult,
   GitRepository,
   GitStatusSnapshot,
-} from '../../../../packages/git-context';
+} from '../../../../packages/git-context/dist/index.js';
 
 interface GitRunnerLike {
   isAvailable(signal?: AbortSignal): Promise<boolean>;
@@ -40,7 +40,7 @@ export type GitContextInspection =
     };
 
 function createDefaultDependencies(): GitContextDependencies {
-  type GitContextRuntime = typeof import('../../../../packages/git-context');
+  type GitContextRuntime = typeof import('../../../../packages/git-context/dist/index.js');
   // The extension build compiles the package beside this module as CommonJS.
   // eslint-disable-next-line @typescript-eslint/no-var-requires
   const runtime = require('../vendor/git-context/index.js') as GitContextRuntime;
