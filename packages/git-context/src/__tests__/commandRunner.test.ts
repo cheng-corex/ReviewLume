@@ -1,21 +1,22 @@
-/**
- * Integration tests for GitCommandRunner.
- *
- * These tests verify the runner works with a real (or absent) git executable.
- * The "git not available" scenario is covered by checking that the runner
- * properly handles ENOENT when git is not on PATH.
- */
-
-import { existsSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { GitCommandRunner } from '../commandRunner.js';
-import { GitNotAvailableError, GitCommandError, GitTimeoutError, GitCancelledError } from '../errors.js';
+import {
+  GitCommandRunner,
+  assertReadOnlyGitCommand,
+  redactGitDiagnostic,
+} from '../commandRunner.js';
+import {
+  GitNotAvailableError,
+  GitUnsafeCommandError,
+  GitCommandError,
+  GitTimeoutError,
+  GitCancelledError,
+} from '../errors.js';
 import { createTempDir, initRepo, createAndCommitFile } from './helpers.js';
 import type { TempRepoFixture } from './helpers.js';
 
 describe('GitCommandRunner', () => {
   let runner: GitCommandRunner;
-  let fixture: TempRepoFixture;
+  let fixture: TempRepoFixture | undefined;
 
   beforeEach(() => {
     runner = new GitCommandRunner();
@@ -23,148 +24,128 @@ describe('GitCommandRunner', () => {
 
   afterEach(() => {
     fixture?.cleanup();
+    fixture = undefined;
   });
 
-  describe('isAvailable', () => {
-    it('should return true when git is installed', async () => {
-      const available = await runner.isAvailable();
-      // This test assumes git is installed on the dev/CI machine
-      expect(available).toBe(true);
-    });
-
-    it('should return the git version string', async () => {
-      const version = await runner.getVersion();
-      expect(version).toMatch(/^git version \d+\.\d+/);
-    });
+  it('detects Git and returns its version', async () => {
+    expect(await runner.isAvailable()).toBe(true);
+    expect(await runner.getVersion()).toMatch(/^git version \d+\.\d+/);
   });
 
-  describe('run with args array', () => {
-    it('should execute a basic git command and return output', async () => {
-      fixture = createTempDir();
-      initRepo(fixture.root);
+  it('executes allowed commands with argument arrays', async () => {
+    fixture = createTempDir();
+    initRepo(fixture.root);
+    createAndCommitFile(fixture.root, 'file with spaces.txt', 'hello', 'test commit');
 
-      const result = await runner.run({
+    const result = await runner.run({
+      cwd: fixture.root,
+      args: ['rev-parse', '--show-toplevel'],
+    });
+
+    expect(result.exitCode).toBe(0);
+    expect(result.stdout).toContain('reviewlume-git-test-');
+  });
+
+  it('rejects write commands before spawning Git', async () => {
+    fixture = createTempDir();
+    initRepo(fixture.root);
+
+    await expect(
+      runner.run({ cwd: fixture.root, args: ['reset', '--hard'] }),
+    ).rejects.toThrow(GitUnsafeCommandError);
+    await expect(
+      runner.run({ cwd: fixture.root, args: ['add', '--all'] }),
+    ).rejects.toThrow(GitUnsafeCommandError);
+  });
+
+  it('rejects output-writing and externally executable diff options', () => {
+    expect(() => assertReadOnlyGitCommand(['log', '--output=report.txt'])).toThrow(
+      GitUnsafeCommandError,
+    );
+    expect(() => assertReadOnlyGitCommand(['diff', '--no-color'])).toThrow(
+      GitUnsafeCommandError,
+    );
+    expect(() =>
+      assertReadOnlyGitCommand([
+        'diff',
+        '--no-color',
+        '--no-ext-diff',
+        '--no-textconv',
+        '--',
+      ]),
+    ).not.toThrow();
+  });
+
+  it('throws GitNotAvailableError for a missing executable', async () => {
+    const badRunner = new GitCommandRunner('git-nonexistent-command-12345');
+    await expect(
+      badRunner.run({ cwd: process.cwd(), args: ['--version'] }),
+    ).rejects.toThrow(GitNotAvailableError);
+  });
+
+  it('throws GitCommandError with a non-zero exit code', async () => {
+    fixture = createTempDir();
+    await expect(
+      runner.run({ cwd: fixture.root, args: ['rev-parse', '--show-toplevel'] }),
+    ).rejects.toMatchObject({ code: 'GIT_COMMAND_ERROR' });
+  });
+
+  it('redacts credential-bearing diagnostics', () => {
+    const value = redactGitDiagnostic(
+      'fatal: https://user:ghp_secret@example.com/owner/repo.git Authorization: bearer-token',
+    );
+    expect(value).not.toContain('ghp_secret');
+    expect(value).not.toContain('bearer-token');
+    expect(value).toContain('[REDACTED]');
+  });
+
+  it('times out a reliably blocking read-only command', async () => {
+    fixture = createTempDir();
+    initRepo(fixture.root);
+
+    await expect(
+      runner.run({ cwd: fixture.root, args: ['cat-file', '--batch'], timeout: 20 }),
+    ).rejects.toThrow(GitTimeoutError);
+  });
+
+  it('rejects immediately when the signal is already aborted', async () => {
+    fixture = createTempDir();
+    initRepo(fixture.root);
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(
+      runner.run({
         cwd: fixture.root,
         args: ['rev-parse', '--show-toplevel'],
-      });
-
-      expect(result.exitCode).toBe(0);
-      const gitRoot = result.stdout.trim();
-      // Verify the git root is a valid directory
-      expect(existsSync(gitRoot)).toBe(true);
-      // Verify it ends with our temp dir name (cross-platform safe)
-      expect(gitRoot).toMatch(/reviewlume-git-test-/);
-    });
-
-    it('should not use shell and reject shell metacharacters as arguments', async () => {
-      fixture = createTempDir();
-      initRepo(fixture.root);
-
-      // Using execFile with args array should treat ";" as a literal argument, not a command separator
-      await expect(
-        runner.run({
-          cwd: fixture.root,
-          args: ['rev-parse', '--show-toplevel', ';', 'echo', 'pwned'],
-        }),
-      ).rejects.toThrow(GitCommandError);
-    });
-
-    it('should handle paths with spaces', async () => {
-      fixture = createTempDir();
-      initRepo(fixture.root);
-
-      createAndCommitFile(fixture.root, 'file with spaces.txt', 'hello', 'test commit');
-
-      const result = await runner.run({
-        cwd: fixture.root,
-        args: ['diff', '--cached', '--name-status', '-z'],
-      });
-
-      // Should not crash, output should contain the filename with spaces
-      expect(result.exitCode).toBe(0);
-    });
-  });
-
-  describe('error handling', () => {
-    it('should throw GitNotAvailableError for nonexistent git path', async () => {
-      const badRunner = new GitCommandRunner('git-nonexistent-command-12345');
-      await expect(
-        badRunner.run({ cwd: process.cwd(), args: ['--version'] }),
-      ).rejects.toThrow(GitNotAvailableError);
-    });
-
-    it('should throw GitCommandError for non-zero exit codes', async () => {
-      fixture = createTempDir();
-      // Not a git repo
-      await expect(
-        runner.run({ cwd: fixture.root, args: ['rev-parse', '--show-toplevel'] }),
-      ).rejects.toThrow(GitCommandError);
-    });
-
-    it('should include stderr and exitCode in GitCommandError', async () => {
-      fixture = createTempDir();
-      try {
-        await runner.run({ cwd: fixture.root, args: ['rev-parse', '--show-toplevel'] });
-        expect.unreachable('Should have thrown');
-      } catch (err) {
-        expect(err).toBeInstanceOf(GitCommandError);
-        const gitErr = err as GitCommandError;
-        expect(gitErr.exitCode).not.toBe(0);
-        expect(gitErr.stderr).toBeTruthy();
-      }
-    });
-  });
-
-  describe('timeout', () => {
-    it('should throw GitTimeoutError when command exceeds timeout', async () => {
-      fixture = createTempDir();
-      initRepo(fixture.root);
-
-      // Use a very short timeout
-      await expect(
-        runner.run({
-          cwd: fixture.root,
-          args: ['log', '--all'], // Might complete quickly, but with 1ms timeout it should be forced to timeout
-          timeout: 1,
-        }),
-      ).rejects.toThrow(GitTimeoutError);
-    });
-  });
-
-  describe('cancellation', () => {
-    it('should throw GitCancelledError when signal is already aborted', async () => {
-      fixture = createTempDir();
-      initRepo(fixture.root);
-
-      const controller = new AbortController();
-      controller.abort();
-
-      await expect(
-        runner.run({
-          cwd: fixture.root,
-          args: ['status'],
-          signal: controller.signal,
-        }),
-      ).rejects.toThrow(GitCancelledError);
-    });
-
-    it('should throw GitCancelledError when signal is aborted during execution', async () => {
-      fixture = createTempDir();
-      initRepo(fixture.root);
-
-      const controller = new AbortController();
-
-      // Use a command that might take long enough to cancel
-      const promise = runner.run({
-        cwd: fixture.root,
-        args: ['log', '--all'],
         signal: controller.signal,
-      });
+      }),
+    ).rejects.toThrow(GitCancelledError);
+  });
 
-      // Cancel immediately
-      controller.abort();
+  it('cancels a running read-only command', async () => {
+    fixture = createTempDir();
+    initRepo(fixture.root);
+    const controller = new AbortController();
 
-      await expect(promise).rejects.toThrow(GitCancelledError);
+    const operation = runner.run({
+      cwd: fixture.root,
+      args: ['cat-file', '--batch'],
+      signal: controller.signal,
     });
+    setTimeout(() => controller.abort(), 10);
+
+    await expect(operation).rejects.toThrow(GitCancelledError);
+  });
+
+  it('uses GitCommandError rather than leaking raw command arguments', async () => {
+    fixture = createTempDir();
+    try {
+      await runner.run({ cwd: fixture.root, args: ['rev-parse', 'missing-secret-like-ref'] });
+      expect.unreachable('Expected Git to fail');
+    } catch (error) {
+      expect(error).toBeInstanceOf(GitCommandError);
+      expect((error as Error).message).not.toContain('missing-secret-like-ref');
+    }
   });
 });

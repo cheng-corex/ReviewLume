@@ -16,17 +16,8 @@
       "description": "ReviewLume can show workspace status in Restricted Mode, but commands that inspect repository content require Workspace Trust."
     }
   },
-  "categories": [
-    "Other",
-    "Visualization"
-  ],
-  "keywords": [
-    "code review",
-    "git diff",
-    "ai review",
-    "review pack",
-    "privacy"
-  ],
+  "categories": ["Other", "Visualization"],
+  "keywords": ["code review", "git diff", "ai review", "review pack", "privacy"],
   "activationEvents": [
     "onCommand:reviewlume.hello",
     "onCommand:reviewlume.createReviewPack",
@@ -36,7 +27,7 @@
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "tsc",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -47,39 +38,19 @@
   },
   "contributes": {
     "commands": [
-      {
-        "command": "reviewlume.hello",
-        "title": "ReviewLume: Hello (Verify Extension)"
-      },
-      {
-        "command": "reviewlume.createReviewPack",
-        "title": "ReviewLume: Create Review Pack"
-      },
-      {
-        "command": "reviewlume.openReviewHistory",
-        "title": "ReviewLume: Open Review History"
-      },
-      {
-        "command": "reviewlume.importReviewResponse",
-        "title": "ReviewLume: Import Review Response"
-      }
+      { "command": "reviewlume.hello", "title": "ReviewLume: Hello (Verify Extension)" },
+      { "command": "reviewlume.createReviewPack", "title": "ReviewLume: Create Review Pack" },
+      { "command": "reviewlume.openReviewHistory", "title": "ReviewLume: Open Review History" },
+      { "command": "reviewlume.importReviewResponse", "title": "ReviewLume: Import Review Response" }
     ],
     "viewsContainers": {
       "activitybar": [
-        {
-          "id": "reviewlume",
-          "title": "ReviewLume",
-          "icon": "resources/icon.png"
-        }
+        { "id": "reviewlume", "title": "ReviewLume", "icon": "resources/icon.png" }
       ]
     },
     "views": {
       "reviewlume": [
-        {
-          "type": "tree",
-          "id": "reviewlume.mainView",
-          "name": "ReviewLume"
-        }
+        { "type": "tree", "id": "reviewlume.mainView", "name": "ReviewLume" }
       ]
     }
   },

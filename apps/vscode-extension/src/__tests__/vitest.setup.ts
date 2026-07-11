@@ -1,6 +1,7 @@
 /**
  * Vitest setup: mock the `vscode` module so unit tests can exercise command,
- * workspace-state, logging, and tree-view behavior without Extension Host.
+ * workspace-state, logging, progress, and tree-view behavior without an
+ * Extension Host.
  */
 import { vi } from 'vitest';
 
@@ -44,7 +45,20 @@ vi.mock('vscode', () => {
       showInformationMessage: vi.fn(),
       showWarningMessage: vi.fn(),
       showErrorMessage: vi.fn(),
+      showQuickPick: vi.fn(),
+      withProgress: vi.fn(async (_options, task) =>
+        task(
+          { report: vi.fn() },
+          {
+            isCancellationRequested: false,
+            onCancellationRequested: vi.fn(() => ({ dispose: vi.fn() })),
+          },
+        ),
+      ),
       createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+    },
+    ProgressLocation: {
+      Notification: 15,
     },
     workspace: {
       get workspaceFolders() {

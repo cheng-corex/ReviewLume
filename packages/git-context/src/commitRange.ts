@@ -1,12 +1,5 @@
 /**
  * @reviewlume/git-context — Commit range support
- *
- * Validates and retrieves diff for a commit range within a single repository.
- *
- * Security guarantees:
- * - Both base and target commits are verified to exist in the repository.
- * - Cross-repository commit ranges are rejected.
- * - All output uses NUL-delimited format for safe path handling.
  */
 
 import { GitCommandRunner } from './commandRunner.js';
@@ -14,171 +7,154 @@ import { GitRepository, verifyCommitInRepository } from './repository.js';
 import { CrossRepositoryError } from './errors.js';
 import type { GitChangeEntry } from './statusSnapshot.js';
 
-/** A validated commit range within a single repository. */
+/** A validated commit range represented by canonical object IDs. */
 export interface CommitRange {
-  /** Base commit (exclusive — range starts after this). */
   readonly base: string;
-  /** Target commit (inclusive — range ends at this). */
   readonly target: string;
 }
 
-/**
- * Validates commit ranges and retrieves diffs.
- *
- * All commit references are verified against the current repository
- * before any diff operation is performed.
- */
+/** Validates commit ranges and retrieves read-only diffs. */
 export class GitCommitRangeService {
   constructor(private readonly runner: GitCommandRunner) {}
 
-  /**
-   * Validate that `base` and `target` are valid commits in the repository.
-   *
-   * @returns A validated `CommitRange` object.
-   * @throws {InvalidCommitError} if either commit does not exist.
-   */
-  async validate(repo: GitRepository, base: string, target: string): Promise<CommitRange> {
-    const trimmedBase = base.trim();
-    const trimmedTarget = target.trim();
+  async validate(
+    repo: GitRepository,
+    base: string,
+    target: string,
+    signal?: AbortSignal,
+  ): Promise<CommitRange> {
+    const baseRef = base.trim();
+    const targetRef = target.trim();
 
-    if (!trimmedBase || !trimmedTarget) {
+    if (!baseRef || !targetRef) {
       throw new CrossRepositoryError('Both base and target commits must be specified.');
     }
 
-    if (trimmedBase === trimmedTarget) {
-      throw new CrossRepositoryError('Base and target commits must be different.');
+    const [baseObjectId, targetObjectId] = await Promise.all([
+      verifyCommitInRepository(this.runner, repo, baseRef, signal),
+      verifyCommitInRepository(this.runner, repo, targetRef, signal),
+    ]);
+
+    if (baseObjectId === targetObjectId) {
+      throw new CrossRepositoryError('Base and target resolve to the same commit.');
     }
 
-    // Verify both commits exist in this repository
-    await verifyCommitInRepository(this.runner, repo, trimmedBase);
-    await verifyCommitInRepository(this.runner, repo, trimmedTarget);
-
-    return { base: trimmedBase, target: trimmedTarget };
+    return { base: baseObjectId, target: targetObjectId };
   }
 
-  /**
-   * Get the full diff (patch) for a commit range.
-   *
-   * Uses `git diff <base>..<target> --no-color` to get the combined diff.
-   */
   async getDiff(
     repo: GitRepository,
     range: CommitRange,
     signal?: AbortSignal,
   ): Promise<string> {
-    // Re-validate to ensure cross-repo safety
-    await verifyCommitInRepository(this.runner, repo, range.base);
-    await verifyCommitInRepository(this.runner, repo, range.target);
-
+    const validated = await this.#revalidate(repo, range, signal);
     const result = await this.runner.run({
       cwd: repo.root,
-      args: ['diff', '--no-color', `${range.base}..${range.target}`],
+      args: [
+        'diff',
+        '--no-color',
+        '--no-ext-diff',
+        '--no-textconv',
+        `${validated.base}..${validated.target}`,
+        '--',
+      ],
       signal,
     });
-
     return result.stdout;
   }
 
-  /**
-   * Get the list of changed files in a commit range.
-   *
-   * Uses `git diff <base>..<target> --name-status -z`.
-   */
   async getChangedFiles(
     repo: GitRepository,
     range: CommitRange,
+    signal?: AbortSignal,
   ): Promise<GitChangeEntry[]> {
-    // Re-validate to ensure cross-repo safety
-    await verifyCommitInRepository(this.runner, repo, range.base);
-    await verifyCommitInRepository(this.runner, repo, range.target);
-
+    const validated = await this.#revalidate(repo, range, signal);
     const result = await this.runner.run({
       cwd: repo.root,
-      args: ['diff', '--no-color', '--name-status', '-z', `${range.base}..${range.target}`],
+      args: [
+        'diff',
+        '--name-status',
+        '-z',
+        '--no-color',
+        '--no-ext-diff',
+        '--no-textconv',
+        `${validated.base}..${validated.target}`,
+        '--',
+      ],
+      signal,
     });
-
     return this.#parseNameStatusZ(result.stdout);
   }
 
-  /**
-   * Get the commit log for a range (one-line format).
-   */
   async getLog(
     repo: GitRepository,
     range: CommitRange,
     signal?: AbortSignal,
   ): Promise<string> {
-    await verifyCommitInRepository(this.runner, repo, range.base);
-    await verifyCommitInRepository(this.runner, repo, range.target);
-
+    const validated = await this.#revalidate(repo, range, signal);
     const result = await this.runner.run({
       cwd: repo.root,
-      args: [
-        'log',
-        '--oneline',
-        '--no-color',
-        `${range.base}..${range.target}`,
-      ],
+      args: ['log', '--oneline', '--no-color', `${validated.base}..${validated.target}`, '--'],
       signal,
     });
-
     return result.stdout;
   }
 
-  // ---- Private helpers ----
+  async #revalidate(
+    repo: GitRepository,
+    range: CommitRange,
+    signal?: AbortSignal,
+  ): Promise<CommitRange> {
+    const [base, target] = await Promise.all([
+      verifyCommitInRepository(this.runner, repo, range.base, signal),
+      verifyCommitInRepository(this.runner, repo, range.target, signal),
+    ]);
+    if (base === target) {
+      throw new CrossRepositoryError('Base and target resolve to the same commit.');
+    }
+    return { base, target };
+  }
 
-  /**
-   * Parse NUL-delimited `--name-status -z` output.
-   */
   #parseNameStatusZ(output: string): GitChangeEntry[] {
     const entries: GitChangeEntry[] = [];
     const parts = output.split('\0');
+    let index = 0;
 
-    let i = 0;
-    while (i < parts.length) {
-      const statusField = parts[i]?.trim();
-      if (!statusField) {
-        i++;
+    while (index < parts.length) {
+      const statusField = parts[index];
+      if (statusField === undefined || statusField === '') {
+        index += 1;
         continue;
       }
 
-      const statusChar = statusField[0]!;
-      const isRename = statusChar === 'R' || statusChar === 'C';
-      const isCopy = statusChar === 'C';
-
-      if (isRename || isCopy) {
-        const oldPath = parts[i + 1];
-        const newPath = parts[i + 2];
-        if (oldPath && newPath) {
+      const statusChar = statusField[0] ?? '';
+      if (statusChar === 'R' || statusChar === 'C') {
+        const oldPath = parts[index + 1];
+        const newPath = parts[index + 2];
+        if (oldPath !== undefined && newPath !== undefined && oldPath !== '' && newPath !== '') {
           entries.push({
-            path: newPath.replace(/\\/g, '/'),
-            status: isCopy ? 'copied' as const : 'renamed' as const,
-            oldPath: oldPath.replace(/\\/g, '/'),
+            path: newPath,
+            status: statusChar === 'C' ? 'copied' : 'renamed',
+            oldPath,
           });
-          i += 3;
-        } else {
-          i++;
+          index += 3;
+          continue;
         }
       } else {
-        const filePath = parts[i + 1];
-        if (filePath) {
-          entries.push({
-            path: filePath.replace(/\\/g, '/'),
-            status: this.#mapStatus(statusChar),
-          });
-          i += 2;
-        } else {
-          i++;
+        const filePath = parts[index + 1];
+        if (filePath !== undefined && filePath !== '') {
+          entries.push({ path: filePath, status: this.#mapStatus(statusChar) });
+          index += 2;
+          continue;
         }
       }
+
+      index += 1;
     }
 
     return entries;
   }
 
-  /**
-   * Map a git diff status character to our status type.
-   */
   #mapStatus(char: string): GitChangeEntry['status'] {
     switch (char) {
       case 'A':
@@ -191,8 +167,12 @@ export class GitCommitRangeService {
         return 'renamed';
       case 'C':
         return 'copied';
+      case 'T':
+        return 'type-changed';
+      case 'U':
+        return 'unmerged';
       default:
-        return 'modified';
+        return 'unknown';
     }
   }
 }

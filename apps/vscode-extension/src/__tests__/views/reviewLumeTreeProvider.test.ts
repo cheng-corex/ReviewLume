@@ -16,35 +16,32 @@ function section(provider: ReviewLumeTreeProvider, label: string) {
   return item!;
 }
 
-beforeEach(() => {
-  testing.reset();
-});
+beforeEach(() => testing.reset());
 
 describe('ReviewLumeTreeProvider', () => {
   it('shows the no-workspace empty state', () => {
     testing.setWorkspaceState([], true);
     const provider = new ReviewLumeTreeProvider();
-
-    const statusItems = provider.getChildren(section(provider, 'Status'));
-    expect(statusItems).toHaveLength(1);
-    expect(statusItems[0].label).toBe('No Workspace Folder');
+    expect(provider.getChildren(section(provider, 'Status'))[0].label).toBe(
+      'No Workspace Folder',
+    );
   });
 
   it('shows Restricted Mode without inspecting repository content', () => {
     testing.setWorkspaceState([{}], false);
     const provider = new ReviewLumeTreeProvider();
-
-    const statusItems = provider.getChildren(section(provider, 'Status'));
-    expect(statusItems[0].label).toBe('Restricted Mode');
+    expect(provider.getChildren(section(provider, 'Status'))[0].label).toBe(
+      'Restricted Mode',
+    );
   });
 
-  it('shows the trusted-workspace state and all P1 actions', () => {
+  it('does not claim Git readiness before the P2 inspection command runs', () => {
     testing.setWorkspaceState([{}], true);
     const provider = new ReviewLumeTreeProvider();
 
-    const statusItems = provider.getChildren(section(provider, 'Status'));
-    expect(statusItems[0].label).toBe('Ready');
-    expect(statusItems[0].description).toBe('ReviewLume is active');
+    const status = provider.getChildren(section(provider, 'Status'))[0];
+    expect(status.label).toBe('Workspace Trusted');
+    expect(status.description).toContain('inspect Git repositories');
 
     const actions = provider.getChildren(section(provider, 'Actions'));
     expect(actions.map((item) => item.command?.command)).toEqual([

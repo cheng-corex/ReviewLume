@@ -1,190 +1,224 @@
 /**
  * @reviewlume/git-context — Git command runner
  *
- * Executes Git subprocesses using `child_process.execFile` with parameter
- * arrays — never shell string concatenation.
- *
- * Security guarantees:
- * - No `shell: true` or equivalent.
- * - Arguments are passed as an array, never concatenated into a string.
- * - Timeout and cancellation via AbortSignal.
- * - Non-zero exit codes throw typed errors — the extension never crashes.
+ * Executes Git subprocesses with `child_process.execFile` and argument arrays.
+ * The runner enforces a narrow read-only command policy before a process is
+ * created, disables terminal prompts and optional index locks, and supports
+ * timeout/cancellation without invoking a shell.
  */
 
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import {
   GitNotAvailableError,
+  GitUnsafeCommandError,
   GitCommandError,
   GitTimeoutError,
   GitCancelledError,
 } from './errors.js';
 
-/** Maximum buffer size for git stdout/stderr (100 MiB). */
 const MAX_BUFFER = 100 * 1024 * 1024;
-
-/** Default timeout for git commands (30 seconds). */
 const DEFAULT_TIMEOUT = 30_000;
 
-/** Result of a successful git command execution. */
+const READ_ONLY_COMMANDS = new Set([
+  'rev-parse',
+  'diff',
+  'ls-files',
+  'log',
+  'merge-base',
+]);
+
 export interface GitResult {
-  /** Standard output. */
   readonly stdout: string;
-  /** Standard error. */
   readonly stderr: string;
-  /** Exit code (0 for success). */
   readonly exitCode: number;
 }
 
-/** Options for running a git command. */
 export interface GitCommandOptions {
-  /** Working directory for the git command. */
-  cwd: string;
-  /** Arguments to pass to git (not including the git executable). */
-  args: string[];
-  /** Timeout in milliseconds (default: 30000, 0 = no timeout). */
-  timeout?: number;
-  /** Signal to cancel the operation. */
-  signal?: AbortSignal;
+  readonly cwd: string;
+  readonly args: readonly string[];
+  readonly timeout?: number;
+  readonly signal?: AbortSignal;
 }
 
-/**
- * Safe, typed Git command runner.
- *
- * Uses `child_process.execFile` with parameter arrays.
- * Never uses shell string concatenation.
- */
+export function redactGitDiagnostic(value: string): string {
+  return value
+    .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?::[^\s/@]*)?@/gi, '$1[REDACTED]@')
+    .replace(/(authorization\s*:\s*)\S+/gi, '$1[REDACTED]');
+}
+
+export function assertReadOnlyGitCommand(args: readonly string[]): void {
+  if (args.length === 1 && args[0] === '--version') {
+    return;
+  }
+
+  const command = args[0] ?? '';
+
+  if (command === 'remote' && args[1] === 'get-url') {
+    return;
+  }
+
+  if (
+    command === 'cat-file' &&
+    (args[1] === '--batch' || args[1] === '--batch-check') &&
+    args.length === 2
+  ) {
+    return;
+  }
+
+  if (!READ_ONLY_COMMANDS.has(command)) {
+    throw new GitUnsafeCommandError(command);
+  }
+
+  if (args.some((arg) => arg === '--output' || arg.startsWith('--output='))) {
+    throw new GitUnsafeCommandError(`${command} --output`);
+  }
+
+  if (
+    command === 'diff' &&
+    (!args.includes('--no-ext-diff') || !args.includes('--no-textconv'))
+  ) {
+    throw new GitUnsafeCommandError('diff without --no-ext-diff/--no-textconv');
+  }
+}
+
 export class GitCommandRunner {
-  /**
-   * @param gitPath Path to the git executable (default: `"git"`).
-   */
   constructor(private readonly gitPath: string = 'git') {}
 
-  /**
-   * Check whether the git executable is available.
-   */
-  async isAvailable(): Promise<boolean> {
+  async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
-      await this.run({ cwd: process.cwd(), args: ['--version'] });
+      await this.run({ cwd: process.cwd(), args: ['--version'], signal });
       return true;
-    } catch {
-      return false;
+    } catch (error) {
+      if (error instanceof GitNotAvailableError) {
+        return false;
+      }
+      throw error;
     }
   }
 
-  /**
-   * Get the git version string.
-   */
-  async getVersion(): Promise<string> {
-    const result = await this.run({ cwd: process.cwd(), args: ['--version'] });
+  async getVersion(signal?: AbortSignal): Promise<string> {
+    const result = await this.run({ cwd: process.cwd(), args: ['--version'], signal });
     return result.stdout.trim();
   }
 
-  /**
-   * Execute a git command safely.
-   *
-   * @throws {GitNotAvailableError}  Git executable not found.
-   * @throws {GitCommandError}       Git process returned non-zero exit code.
-   * @throws {GitTimeoutError}       Command exceeded time limit.
-   * @throws {GitCancelledError}     Command was cancelled via AbortSignal.
-   */
   async run(options: GitCommandOptions): Promise<GitResult> {
     const { cwd, args, signal } = options;
     const timeout = options.timeout ?? DEFAULT_TIMEOUT;
 
+    assertReadOnlyGitCommand(args);
+
+    if (signal?.aborted) {
+      throw new GitCancelledError();
+    }
+
+    if (!existsSync(cwd)) {
+      throw new GitCommandError('Git working directory is unavailable.', -1, '');
+    }
+
     return new Promise<GitResult>((resolve, reject) => {
       let completed = false;
+      let timer: NodeJS.Timeout | undefined;
+      let onAbort: (() => void) | undefined;
 
+      const cleanup = (): void => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = undefined;
+        }
+        if (signal && onAbort) {
+          signal.removeEventListener('abort', onAbort);
+          onAbort = undefined;
+        }
+      };
+
+      const finish = (action: () => void): void => {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        action();
+      };
+
+      const commandName = args[0] ?? '<empty>';
       const child = execFile(
         this.gitPath,
-        args,
+        [...args],
         {
           cwd,
+          encoding: 'utf8',
           maxBuffer: MAX_BUFFER,
           windowsHide: true,
+          env: {
+            ...process.env,
+            GIT_OPTIONAL_LOCKS: '0',
+            GIT_TERMINAL_PROMPT: '0',
+            GIT_PAGER: 'cat',
+          },
         },
         (error, stdout, stderr) => {
-          if (completed) return;
-          completed = true;
-
           if (error) {
             const nodeError = error as NodeJS.ErrnoException;
-
-            // Git executable not found
             if (nodeError.code === 'ENOENT' || nodeError.code === 'ENOEXEC') {
-              reject(new GitNotAvailableError(this.gitPath));
+              finish(() => reject(new GitNotAvailableError(this.gitPath)));
               return;
             }
 
-            // Non-zero exit
-            const exitCode =
-              typeof nodeError.code === 'number'
-                ? nodeError.code
-                : typeof (error as Record<string, unknown>).status === 'number'
-                  ? (error as Record<string, unknown>).status as number
-                  : 1;
-
-            reject(
-              new GitCommandError(
-                `Git command failed: git ${args.join(' ')}`,
-                exitCode,
-                stderr || error.message,
+            const exitCode = typeof nodeError.code === 'number' ? nodeError.code : 1;
+            const safeStderr = redactGitDiagnostic(stderr || error.message);
+            finish(() =>
+              reject(
+                new GitCommandError(
+                  `Git command "${commandName}" failed.`,
+                  exitCode,
+                  safeStderr,
+                ),
               ),
             );
             return;
           }
 
-          resolve({ stdout, stderr, exitCode: 0 });
+          finish(() => resolve({ stdout, stderr, exitCode: 0 }));
         },
       );
 
-      child.on('error', (err) => {
-        if (completed) return;
-        completed = true;
-        reject(
-          new GitCommandError(
-            `Git process error: ${err.message}`,
-            -1,
-            err.message,
+      child.once('error', (error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT' || error.code === 'ENOEXEC') {
+          finish(() => reject(new GitNotAvailableError(this.gitPath)));
+          return;
+        }
+        finish(() =>
+          reject(
+            new GitCommandError(
+              `Git process "${commandName}" failed to start.`,
+              -1,
+              redactGitDiagnostic(error.message),
+            ),
           ),
         );
       });
 
-      // --- Timeout handling ---
-      if (timeout > 0) {
-        const timer = setTimeout(() => {
-          if (completed) return;
-          completed = true;
-          child.kill('SIGTERM');
-          // Also try SIGKILL on Windows after a short delay
-          if (process.platform === 'win32') {
-            setTimeout(() => {
-              try { child.kill('SIGKILL'); } catch { /* ignore */ }
-            }, 1000);
-          }
-          reject(new GitTimeoutError(timeout));
-        }, timeout);
+      child.once('exit', () => {
+        if (timer) {
+          clearTimeout(timer);
+          timer = undefined;
+        }
+      });
 
-        child.on('exit', () => clearTimeout(timer));
+      if (timeout > 0) {
+        timer = setTimeout(() => {
+          if (completed) return;
+          child.kill('SIGTERM');
+          finish(() => reject(new GitTimeoutError(timeout)));
+        }, timeout);
       }
 
-      // --- Cancellation handling ---
       if (signal) {
-        if (signal.aborted) {
-          completed = true;
-          child.kill('SIGTERM');
-          reject(new GitCancelledError());
-          return;
-        }
-
-        const onAbort = (): void => {
+        onAbort = () => {
           if (completed) return;
-          completed = true;
           child.kill('SIGTERM');
-          reject(new GitCancelledError());
+          finish(() => reject(new GitCancelledError()));
         };
-
         signal.addEventListener('abort', onAbort, { once: true });
-        child.on('exit', () => signal.removeEventListener('abort', onAbort));
       }
     });
   }

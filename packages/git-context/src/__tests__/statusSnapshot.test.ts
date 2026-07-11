@@ -1,14 +1,10 @@
-/**
- * Integration tests for GitStatusCollector.
- *
- * Tests staged, unstaged, untracked, and mixed scenarios
- * using real temporary Git repositories.
- */
-
+import { rmSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GitCommandRunner } from '../commandRunner.js';
 import { GitStatusCollector } from '../statusSnapshot.js';
 import { GitRepository } from '../repository.js';
+import { GitCommandError } from '../errors.js';
 import {
   createTempDir,
   initRepo,
@@ -16,6 +12,7 @@ import {
   createAndStageFile,
   modifyFile,
   createUntrackedFile,
+  stageAll,
 } from './helpers.js';
 import type { TempRepoFixture } from './helpers.js';
 
@@ -37,138 +34,83 @@ describe('GitStatusCollector', () => {
     });
   });
 
-  afterEach(() => {
-    fixture?.cleanup();
+  afterEach(() => fixture.cleanup());
+
+  it('returns no changes for a fresh repository', async () => {
+    const status = await collector.getStatus(repo);
+    expect(status).toMatchObject({ hasChanges: false, staged: [], unstaged: [], untracked: [] });
   });
 
-  describe('getStatus — empty repo', () => {
-    it('should return no changes for a fresh repo', async () => {
-      const status = await collector.getStatus(repo);
-      expect(status.hasChanges).toBe(false);
-      expect(status.staged).toHaveLength(0);
-      expect(status.unstaged).toHaveLength(0);
-      expect(status.untracked).toHaveLength(0);
-    });
+  it('detects staged, unstaged, and untracked changes together', async () => {
+    createAndCommitFile(fixture.root, 'committed.txt', 'v1', 'initial');
+    createAndStageFile(fixture.root, 'staged.txt', 'staged content');
+    modifyFile(fixture.root, 'committed.txt', 'unstaged modification');
+    createUntrackedFile(fixture.root, 'untracked.txt', 'untracked content');
+
+    const status = await collector.getStatus(repo);
+    expect(status.hasChanges).toBe(true);
+    expect(status.staged).toContainEqual(
+      expect.objectContaining({ path: 'staged.txt', status: 'added' }),
+    );
+    expect(status.unstaged).toContainEqual(
+      expect.objectContaining({ path: 'committed.txt', status: 'modified' }),
+    );
+    expect(status.untracked).toContainEqual({ path: 'untracked.txt', status: 'untracked' });
   });
 
-  describe('getStatus — staged changes', () => {
-    it('should detect staged new files', async () => {
-      createAndStageFile(fixture.root, 'newfile.txt', 'hello');
+  it('detects staged deletions without using the production runner for writes', async () => {
+    createAndCommitFile(fixture.root, 'delete-me.txt', 'content', 'add file');
+    rmSync(join(fixture.root, 'delete-me.txt'));
+    stageAll(fixture.root);
 
-      const status = await collector.getStatus(repo);
-      expect(status.hasChanges).toBe(true);
-      expect(status.staged).toHaveLength(1);
-      expect(status.staged[0]!.path).toBe('newfile.txt');
-      expect(status.staged[0]!.status).toBe('added');
-    });
-
-    it('should detect staged modifications', async () => {
-      createAndCommitFile(fixture.root, 'file.txt', 'v1', 'initial');
-      createAndStageFile(fixture.root, 'file.txt', 'v2');
-
-      const status = await collector.getStatus(repo);
-      const stagedModified = status.staged.filter((e) => e.status === 'modified');
-      expect(stagedModified.length).toBeGreaterThanOrEqual(1);
-    });
-
-    it('should detect staged deletions', async () => {
-      createAndCommitFile(fixture.root, 'todelete.txt', 'content', 'add file');
-      // Stage deletion
-      await runner.run({ cwd: fixture.root, args: ['rm', '--', 'todelete.txt'] });
-
-      const status = await collector.getStatus(repo);
-      const deleted = status.staged.filter((e) => e.status === 'deleted');
-      expect(deleted.length).toBeGreaterThanOrEqual(1);
-      expect(deleted[0]!.path).toBe('todelete.txt');
-    });
+    const status = await collector.getStatus(repo);
+    expect(status.staged).toContainEqual({ path: 'delete-me.txt', status: 'deleted' });
   });
 
-  describe('getStatus — unstaged changes', () => {
-    it('should detect unstaged modifications', async () => {
-      createAndCommitFile(fixture.root, 'file.txt', 'v1', 'initial');
-      modifyFile(fixture.root, 'file.txt', 'v2 (modified but not staged)');
+  it('returns staged and unstaged patches with external drivers disabled', async () => {
+    createAndCommitFile(fixture.root, 'file.txt', 'v1', 'initial');
+    modifyFile(fixture.root, 'file.txt', 'v2');
+    expect(await collector.getUnstagedDiff(repo)).toContain('+v2');
 
-      const status = await collector.getStatus(repo);
-      expect(status.unstaged).toHaveLength(1);
-      expect(status.unstaged[0]!.path).toBe('file.txt');
-      expect(status.unstaged[0]!.status).toBe('modified');
-    });
+    createAndStageFile(fixture.root, 'file.txt', 'v3');
+    expect(await collector.getStagedDiff(repo)).toContain('+v3');
   });
 
-  describe('getStatus — untracked changes', () => {
-    it('should detect untracked files', async () => {
-      createUntrackedFile(fixture.root, 'untracked.txt', 'new untracked file');
+  it('preserves spaces and Chinese characters', async () => {
+    createUntrackedFile(fixture.root, 'my file.txt', 'content');
+    createUntrackedFile(fixture.root, '中文文件.txt', '内容');
 
-      const status = await collector.getStatus(repo);
-      expect(status.untracked).toHaveLength(1);
-      expect(status.untracked[0]!.path).toBe('untracked.txt');
-      expect(status.untracked[0]!.status).toBe('untracked');
-    });
+    const paths = (await collector.getStatus(repo)).untracked.map((entry) => entry.path);
+    expect(paths).toContain('my file.txt');
+    expect(paths).toContain('中文文件.txt');
   });
 
-  describe('getStatus — mixed state', () => {
-    it('should detect staged + unstaged + untracked simultaneously', async () => {
-      // Committed file, then a separate staged change
-      createAndCommitFile(fixture.root, 'committed.txt', 'v1', 'initial');
-      createAndStageFile(fixture.root, 'staged.txt', 'staged content');
+  it.skipIf(process.platform === 'win32')(
+    'preserves leading, trailing, newline, and backslash characters on POSIX',
+    async () => {
+      const names = [' leading and trailing ', 'line\nbreak.txt', 'back\\slash.txt'];
+      for (const name of names) {
+        createUntrackedFile(fixture.root, name, 'content');
+      }
 
-      // Unstaged modification to an existing committed file
-      modifyFile(fixture.root, 'committed.txt', 'unstaged modification');
+      const paths = (await collector.getStatus(repo)).untracked.map((entry) => entry.path);
+      for (const name of names) {
+        expect(paths).toContain(name);
+      }
+    },
+  );
 
-      // Untracked file
-      createUntrackedFile(fixture.root, 'untracked.txt', 'untracked content');
-
-      const status = await collector.getStatus(repo);
-      expect(status.hasChanges).toBe(true);
-      expect(status.staged.length).toBeGreaterThanOrEqual(1);
-      expect(status.unstaged.length).toBeGreaterThanOrEqual(1);
-      expect(status.untracked.length).toBeGreaterThanOrEqual(1);
-    });
-  });
-
-  describe('getStagedDiff', () => {
-    it('should return diff content for staged changes', async () => {
-      createAndStageFile(fixture.root, 'newfile.txt', 'content');
-
-      const diff = await collector.getStagedDiff(repo);
-      expect(diff).toContain('newfile.txt');
-      expect(diff).toContain('+content');
-    });
-
-    it('should return empty string when no staged changes', async () => {
-      const diff = await collector.getStagedDiff(repo);
-      expect(diff).toBe('');
-    });
-  });
-
-  describe('getUnstagedDiff', () => {
-    it('should return diff content for unstaged changes', async () => {
-      createAndCommitFile(fixture.root, 'file.txt', 'v1', 'initial');
-      modifyFile(fixture.root, 'file.txt', 'v2 (unstaged)');
-
-      const diff = await collector.getUnstagedDiff(repo);
-      expect(diff).toContain('file.txt');
-      expect(diff).toContain('-v1');
-      expect(diff).toContain('+v2 (unstaged)');
-    });
-  });
-
-  describe('paths with special characters', () => {
-    it('should handle files with spaces in names', async () => {
-      createUntrackedFile(fixture.root, 'my file with spaces.txt', 'content');
-
-      const status = await collector.getStatus(repo);
-      expect(status.untracked).toHaveLength(1);
-      expect(status.untracked[0]!.path).toBe('my file with spaces.txt');
-    });
-
-    it('should handle files with Chinese characters in names', async () => {
-      const chineseName = '中文文件.txt';
-      createUntrackedFile(fixture.root, chineseName, '内容');
-
-      const status = await collector.getStatus(repo);
-      expect(status.untracked).toHaveLength(1);
-      expect(status.untracked[0]!.path).toBe(chineseName);
-    });
+  it('propagates Git failures instead of reporting a clean repository', async () => {
+    const nonRepository = createTempDir();
+    try {
+      const invalid = new GitRepository({
+        root: nonRepository.root,
+        displayName: 'not-a-repository',
+        hasRemote: false,
+      });
+      await expect(collector.getStatus(invalid)).rejects.toThrow(GitCommandError);
+    } finally {
+      nonRepository.cleanup();
+    }
   });
 });

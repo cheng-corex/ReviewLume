@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../packages/git-context/src",
+    "outDir": "dist/vendor/git-context",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "verbatimModuleSyntax": false,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["../../packages/git-context/src/**/*.ts"],
+  "exclude": ["../../packages/git-context/src/__tests__/**"]
+}
