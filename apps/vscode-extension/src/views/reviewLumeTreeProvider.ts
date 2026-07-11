@@ -266,6 +266,12 @@ export class ReviewLumeTreeProvider
   private getActionItems(): ReviewLumeTreeItem[] {
     return [
       actionItem(
+        'Open Review Panel',
+        'Open the review panel Webview',
+        COMMANDS.OPEN_REVIEW_PANEL,
+        'preview',
+      ),
+      actionItem(
         'Create Review Pack',
         'Inspect Git changes and start a file-selection session',
         COMMANDS.CREATE_REVIEW_PACK,

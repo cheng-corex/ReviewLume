@@ -14,6 +14,7 @@ describe('constants', () => {
         ADD_EXPORT_DIRECTORY_TO_GITIGNORE: 'reviewlume.addExportDirectoryToGitignore',
         OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
         IMPORT_REVIEW_RESPONSE: 'reviewlume.importReviewResponse',
+        OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
       });
     });
   });

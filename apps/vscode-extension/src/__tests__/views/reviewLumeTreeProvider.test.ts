@@ -74,6 +74,7 @@ describe('ReviewLumeTreeProvider', () => {
 
     const actions = provider.getChildren(section(provider, 'Actions'));
     expect(actions.map((item) => item.command?.command)).toEqual([
+      COMMANDS.OPEN_REVIEW_PANEL,
       COMMANDS.CREATE_REVIEW_PACK,
       COMMANDS.ADD_RELATED_FILES,
       COMMANDS.RECOMMEND_TEST_FILES,

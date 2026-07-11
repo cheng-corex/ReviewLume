@@ -68,6 +68,7 @@ describe('reviewlume-vscode manifest', () => {
     },
     { command: 'reviewlume.openReviewHistory', title: 'Open Review History' },
     { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
+    { command: 'reviewlume.openReviewPanel', title: 'Open Review Panel' },
   ];
 
   for (const { command, title } of expectedCommands) {

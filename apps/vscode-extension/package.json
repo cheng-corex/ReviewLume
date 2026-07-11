@@ -16,8 +16,17 @@
       "description": "ReviewLume can show workspace status in Restricted Mode, but commands that inspect repository content require Workspace Trust."
     }
   },
-  "categories": ["Other", "Visualization"],
-  "keywords": ["code review", "git diff", "ai review", "review pack", "privacy"],
+  "categories": [
+    "Other",
+    "Visualization"
+  ],
+  "keywords": [
+    "code review",
+    "git diff",
+    "ai review",
+    "review pack",
+    "privacy"
+  ],
   "activationEvents": [
     "onCommand:reviewlume.hello",
     "onCommand:reviewlume.createReviewPack",
@@ -28,6 +37,7 @@
     "onCommand:reviewlume.addExportDirectoryToGitignore",
     "onCommand:reviewlume.openReviewHistory",
     "onCommand:reviewlume.importReviewResponse",
+    "onCommand:reviewlume.openReviewPanel",
     "onView:reviewlume.mainView"
   ],
   "main": "dist/extension.js",
@@ -43,22 +53,56 @@
   },
   "contributes": {
     "commands": [
-      { "command": "reviewlume.hello", "title": "ReviewLume: Hello (Verify Extension)" },
-      { "command": "reviewlume.createReviewPack", "title": "ReviewLume: Create Review Pack" },
-      { "command": "reviewlume.addRelatedFiles", "title": "ReviewLume: Add Related Files" },
-      { "command": "reviewlume.recommendTestFiles", "title": "ReviewLume: Recommend Test Files" },
-      { "command": "reviewlume.scanSelectedFiles", "title": "ReviewLume: Scan Selected Files" },
-      { "command": "reviewlume.exportReviewPack", "title": "ReviewLume: Export Review Pack" },
-      { "command": "reviewlume.addExportDirectoryToGitignore", "title": "ReviewLume: Add Export Directory to .gitignore" },
-      { "command": "reviewlume.openReviewHistory", "title": "ReviewLume: Open Review History" },
-      { "command": "reviewlume.importReviewResponse", "title": "ReviewLume: Import Review Response" }
+      {
+        "command": "reviewlume.hello",
+        "title": "ReviewLume: Hello (Verify Extension)"
+      },
+      {
+        "command": "reviewlume.createReviewPack",
+        "title": "ReviewLume: Create Review Pack"
+      },
+      {
+        "command": "reviewlume.addRelatedFiles",
+        "title": "ReviewLume: Add Related Files"
+      },
+      {
+        "command": "reviewlume.recommendTestFiles",
+        "title": "ReviewLume: Recommend Test Files"
+      },
+      {
+        "command": "reviewlume.scanSelectedFiles",
+        "title": "ReviewLume: Scan Selected Files"
+      },
+      {
+        "command": "reviewlume.exportReviewPack",
+        "title": "ReviewLume: Export Review Pack"
+      },
+      {
+        "command": "reviewlume.addExportDirectoryToGitignore",
+        "title": "ReviewLume: Add Export Directory to .gitignore"
+      },
+      {
+        "command": "reviewlume.openReviewHistory",
+        "title": "ReviewLume: Open Review History"
+      },
+      {
+        "command": "reviewlume.importReviewResponse",
+        "title": "ReviewLume: Import Review Response"
+      },
+      {
+        "command": "reviewlume.openReviewPanel",
+        "title": "ReviewLume: Open Review Panel"
+      }
     ],
     "configuration": {
       "title": "ReviewLume",
       "properties": {
         "reviewlume.export.mode": {
           "type": "string",
-          "enum": ["automatic", "askEveryTime"],
+          "enum": [
+            "automatic",
+            "askEveryTime"
+          ],
           "default": "automatic",
           "description": "Automatically save Review Packs inside the active repository or ask for a destination every time."
         },
@@ -69,7 +113,11 @@
         },
         "reviewlume.export.format": {
           "type": "string",
-          "enum": ["markdown", "zip", "both"],
+          "enum": [
+            "markdown",
+            "zip",
+            "both"
+          ],
           "default": "markdown",
           "description": "Output format used by automatic Review Pack export."
         },
@@ -82,27 +130,36 @@
     },
     "viewsContainers": {
       "activitybar": [
-        { "id": "reviewlume", "title": "ReviewLume", "icon": "resources/icon.png" }
+        {
+          "id": "reviewlume",
+          "title": "ReviewLume",
+          "icon": "resources/icon.png"
+        }
       ]
     },
     "views": {
       "reviewlume": [
-        { "type": "tree", "id": "reviewlume.mainView", "name": "ReviewLume" }
+        {
+          "type": "tree",
+          "id": "reviewlume.mainView",
+          "name": "ReviewLume"
+        }
       ]
     }
   },
   "dependencies": {
-    "@reviewlume/core": "workspace:*"
+    "@reviewlume/core": "workspace:*",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
     "@types/vscode": "^1.100.0",
-    "@vscode/vsce": "^3.0.0",
-    "typescript": "^5.4.0",
-    "vitest": "^1.6.0",
-    "eslint": "^8.57.0",
     "@typescript-eslint/eslint-plugin": "^7.0.0",
-    "@typescript-eslint/parser": "^7.0.0"
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/vsce": "^3.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
   },
   "repository": {
     "type": "git",

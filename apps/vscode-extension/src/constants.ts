@@ -21,6 +21,8 @@ export const COMMANDS = {
   OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
   /** Import an AI review response */
   IMPORT_REVIEW_RESPONSE: 'reviewlume.importReviewResponse',
+  /** Open the review panel Webview (P6) */
+  OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
 } as const;
 
 /** View and view-container identifiers. */

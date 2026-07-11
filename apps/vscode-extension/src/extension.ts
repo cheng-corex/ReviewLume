@@ -5,6 +5,7 @@ import { registerCreateReviewPack } from './commands/createReviewPack';
 import { registerFileSelectionCommands } from './commands/fileSelectionCommands';
 import { registerSecurityReviewCommands } from './commands/securityReviewCommands';
 import { registerOpenReviewHistory } from './commands/openReviewHistory';
+import { registerOpenReviewPanel } from './commands/openReviewPanel';
 import { registerImportReviewResponse } from './commands/importReviewResponse';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
@@ -37,6 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerFileSelectionCommands(context, fileSelectionService, selectionChanged);
   registerSecurityReviewCommands(context, securityReviewService, () => treeProvider.refresh());
   registerOpenReviewHistory(context);
+  registerOpenReviewPanel(context, fileSelectionService, securityReviewService);
   registerImportReviewResponse(context);
 
   logInfo('ReviewLume extension activated');
