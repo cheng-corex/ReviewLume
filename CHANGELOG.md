@@ -59,6 +59,9 @@
   and Review Pack manifests.
 - Prevented raw matched values and adjacent same-line secrets from entering scan results,
   previews, logs, or diagnostics.
+- Added the scan and export commands to the clickable Activity Bar action list.
+- Excluded generated `.reviewlume/exports/**` files from new review-selection sessions to
+  prevent Review Packs from recursively including earlier Review Packs.
 
 ## [0.1.0] - 2026-07-10
 
