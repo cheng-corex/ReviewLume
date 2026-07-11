@@ -30,7 +30,7 @@ export class ReviewLumeTreeItem extends vscode.TreeItem {
 
 /** Activity Bar tree for workspace status and ReviewLume entry points. */
 export class ReviewLumeTreeProvider
-  implements vscode.TreeDataProvider<ReviewLumeTreeItem>
+  implements vscode.TreeDataProvider<ReviewLumeTreeItem>, vscode.Disposable
 {
   private readonly _onDidChangeTreeData = new vscode.EventEmitter<
     ReviewLumeTreeItem | undefined | null | void
@@ -40,6 +40,10 @@ export class ReviewLumeTreeProvider
 
   refresh(): void {
     this._onDidChangeTreeData.fire();
+  }
+
+  dispose(): void {
+    this._onDidChangeTreeData.dispose();
   }
 
   getTreeItem(element: ReviewLumeTreeItem): vscode.TreeItem {
@@ -182,9 +186,9 @@ export function registerReviewLumeTreeView(
 
   context.subscriptions.push(
     treeView,
+    provider,
     vscode.workspace.onDidChangeWorkspaceFolders(() => provider.refresh()),
     vscode.workspace.onDidGrantWorkspaceTrust(() => provider.refresh()),
-    provider['_onDidChangeTreeData'],
   );
 
   return provider;
