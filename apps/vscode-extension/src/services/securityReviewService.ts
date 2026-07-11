@@ -15,6 +15,9 @@ import type {
 } from '../../../../packages/review-pack/dist/index.js';
 
 const MAX_SELECTED_FILE_BYTES = 2 * 1024 * 1024;
+const REVIEW_INSTRUCTIONS = 'Review the selected changes for correctness, security, regressions, lifecycle issues, and missing tests. Report findings by severity with repository-relative file paths and actionable fixes.';
+const DIFF_SCAN_PATH = '@reviewlume/git-diff.patch';
+const INSTRUCTIONS_SCAN_PATH = '@reviewlume/review-instructions.txt';
 
 interface SecretScannerRuntime {
   readonly SecretScanner: new () => SecretScanner;
@@ -22,6 +25,13 @@ interface SecretScannerRuntime {
 
 interface ReviewPackRuntime {
   readonly ReviewPackBuilder: new () => ReviewPackBuilder;
+}
+
+interface CollectedReviewContent {
+  readonly repository: GitRepository;
+  readonly files: readonly ScanInputFile[];
+  readonly diff: string;
+  readonly scanInputs: readonly ScanInputFile[];
 }
 
 export class SecurityReviewService {
@@ -47,8 +57,8 @@ export class SecurityReviewService {
   }
 
   async scan(signal?: AbortSignal): Promise<ScanResult> {
-    const files = await this.#readSelectedFiles(signal);
-    const result = this.#getScanner().scan(files);
+    const collected = await this.#collectReviewContent(signal);
+    const result = this.#getScanner().scan(collected.scanInputs);
     this.#lastScan = result;
     return result;
   }
@@ -66,35 +76,21 @@ export class SecurityReviewService {
   }
 
   async buildReviewPack(signal?: AbortSignal): Promise<ReviewPackBuildResult> {
-    const repository = this.fileSelectionService.repository;
-    if (!repository) throw new Error('No active review repository.');
     if (!this.#lastScan) throw new Error('Run the sensitive-content scan before exporting.');
-
-    const files = await this.#readSelectedFiles(signal);
-    const current = this.#getScanner().scan(files);
+    const collected = await this.#collectReviewContent(signal);
+    const current = this.#getScanner().scan(collected.scanInputs);
     this.#getScanner().assertExportAllowed(this.#lastScan, current.contentFingerprint);
 
-    const selectedPaths = this.fileSelectionService.entries
-      .filter((entry) => entry.selected)
-      .map((entry) => entry.path);
-    const diff = selectedPaths.length > 0
-      ? await this.gitRunner.run({
-          cwd: repository.root,
-          args: ['diff', '--no-ext-diff', '--no-textconv', '--no-color', 'HEAD', '--', ...selectedPaths],
-          signal,
-        })
-      : { stdout: '' };
-
     return this.#getBuilder().build({
-      repositoryIdentity: repository.remoteUrl ?? repository.root,
-      repositoryDisplayName: repository.displayName,
+      repositoryIdentity: collected.repository.remoteUrl ?? collected.repository.root,
+      repositoryDisplayName: collected.repository.displayName,
       reviewMode: 'standard',
       gitBase: 'HEAD',
       gitTarget: 'WORKTREE',
       security: this.#lastScan,
-      instructions: 'Review the selected changes for correctness, security, regressions, lifecycle issues, and missing tests. Report findings by severity with repository-relative file paths and actionable fixes.',
-      diff: diff.stdout,
-      files: files.map((file) => ({
+      instructions: REVIEW_INSTRUCTIONS,
+      diff: collected.diff,
+      files: collected.files.map((file) => ({
         path: file.path,
         content: file.content,
         source: this.fileSelectionService.entries.find((entry) => entry.path === file.path)?.source,
@@ -103,6 +99,32 @@ export class SecurityReviewService {
         .filter((entry) => !entry.selected)
         .map((entry) => ({ path: entry.path, reason: 'not selected for this review' })),
     });
+  }
+
+  async #collectReviewContent(signal?: AbortSignal): Promise<CollectedReviewContent> {
+    const repository = this.fileSelectionService.repository;
+    if (!repository) throw new Error('No active review repository.');
+    const files = await this.#readSelectedFiles(signal);
+    const selectedPaths = this.fileSelectionService.entries
+      .filter((entry) => entry.selected)
+      .map((entry) => entry.path);
+    const diff = selectedPaths.length > 0
+      ? (await this.gitRunner.run({
+          cwd: repository.root,
+          args: ['diff', '--no-ext-diff', '--no-textconv', '--no-color', 'HEAD', '--', ...selectedPaths],
+          signal,
+        })).stdout
+      : '';
+    return {
+      repository,
+      files,
+      diff,
+      scanInputs: [
+        ...files,
+        { path: DIFF_SCAN_PATH, content: diff },
+        { path: INSTRUCTIONS_SCAN_PATH, content: REVIEW_INSTRUCTIONS },
+      ],
+    };
   }
 
   async #readSelectedFiles(signal?: AbortSignal): Promise<ScanInputFile[]> {
