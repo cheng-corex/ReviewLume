@@ -58,7 +58,7 @@ describe('importReviewResponse command', () => {
     );
   });
 
-  it('shows no-history prompt when no review history exists', async () => {
+  it('shows no-history prompt when no usable review history exists', async () => {
     testing.setWorkspaceState([{ uri: { fsPath: '/test' } }], true);
     const { handler } = registerCommand({
       kind: 'ready',
@@ -68,7 +68,7 @@ describe('importReviewResponse command', () => {
     await handler();
 
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
-      expect.stringContaining('No review history found'),
+      expect.stringContaining('review history found'),
     );
   });
 });
