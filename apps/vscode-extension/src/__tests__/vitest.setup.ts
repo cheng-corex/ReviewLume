@@ -1,6 +1,6 @@
 /**
  * Vitest setup: mock the `vscode` module so unit tests can exercise command,
- * workspace-state, logging, progress, file-picking, and tree-view behavior
+ * workspace-state, logging, progress, file-picking, configuration, and tree-view behavior
  * without an Extension Host.
  */
 import { vi } from 'vitest';
@@ -9,9 +9,10 @@ vi.mock('vscode', () => {
   type CommandHandler = (...args: unknown[]) => unknown;
   type CheckboxHandler = (event: { items: Array<[unknown, number]> }) => unknown;
 
-  const workspaceState: { folders: unknown[]; trusted: boolean } = {
+  const workspaceState: { folders: unknown[]; trusted: boolean; configuration: Map<string, unknown> } = {
     folders: [],
     trusted: false,
+    configuration: new Map(),
   };
   const registeredCommands = new Map<string, CommandHandler>();
   let checkboxHandler: CheckboxHandler | undefined;
@@ -20,6 +21,9 @@ vi.mock('vscode', () => {
     setWorkspaceState(folders: unknown[], trusted: boolean): void {
       workspaceState.folders = folders;
       workspaceState.trusted = trusted;
+    },
+    setConfiguration(key: string, value: unknown): void {
+      workspaceState.configuration.set(key, value);
     },
     getRegisteredCommand(command: string): CommandHandler | undefined {
       return registeredCommands.get(command);
@@ -30,6 +34,7 @@ vi.mock('vscode', () => {
     reset(): void {
       workspaceState.folders = [];
       workspaceState.trusted = false;
+      workspaceState.configuration.clear();
       registeredCommands.clear();
       checkboxHandler = undefined;
     },
@@ -44,15 +49,13 @@ vi.mock('vscode', () => {
   return {
     __testing: testing,
     window: {
-      createOutputChannel: vi.fn(() => ({
-        appendLine: vi.fn(),
-        dispose: vi.fn(),
-      })),
+      createOutputChannel: vi.fn(() => ({ appendLine: vi.fn(), dispose: vi.fn() })),
       showInformationMessage: vi.fn(),
       showWarningMessage: vi.fn(),
       showErrorMessage: vi.fn(),
       showQuickPick: vi.fn(),
       showOpenDialog: vi.fn(),
+      showSaveDialog: vi.fn(),
       withProgress: vi.fn(async (_options, task) =>
         task(
           { report: vi.fn() },
@@ -70,9 +73,7 @@ vi.mock('vscode', () => {
         }),
       })),
     },
-    ProgressLocation: {
-      Notification: 15,
-    },
+    ProgressLocation: { Notification: 15 },
     workspace: {
       get workspaceFolders() {
         return workspaceState.folders.length > 0 ? workspaceState.folders : undefined;
@@ -80,6 +81,14 @@ vi.mock('vscode', () => {
       get isTrusted() {
         return workspaceState.trusted;
       },
+      getConfiguration: vi.fn((section: string) => ({
+        get: <T>(key: string, defaultValue?: T): T | undefined => {
+          const fullKey = `${section}.${key}`;
+          return workspaceState.configuration.has(fullKey)
+            ? workspaceState.configuration.get(fullKey) as T
+            : defaultValue;
+        },
+      })),
       onDidChangeWorkspaceFolders: vi.fn(() => ({ dispose: vi.fn() })),
       onDidGrantWorkspaceTrust: vi.fn(() => ({ dispose: vi.fn() })),
     },
@@ -88,10 +97,9 @@ vi.mock('vscode', () => {
         registeredCommands.set(command, handler);
         return { dispose: vi.fn() };
       }),
+      executeCommand: vi.fn(),
     },
-    Uri: {
-      file: vi.fn((fsPath: string) => ({ fsPath })),
-    },
+    Uri: { file: vi.fn((fsPath: string) => ({ fsPath })) },
     TreeItem: class MockTreeItem {
       label: string;
       collapsibleState: number;
@@ -107,22 +115,12 @@ vi.mock('vscode', () => {
         this.collapsibleState = collapsibleState;
       }
     },
-    TreeItemCollapsibleState: {
-      None: 0,
-      Expanded: 1,
-      Collapsed: 2,
-    },
-    TreeItemCheckboxState: {
-      Unchecked: 0,
-      Checked: 1,
-    },
+    TreeItemCollapsibleState: { None: 0, Expanded: 1, Collapsed: 2 },
+    TreeItemCheckboxState: { Unchecked: 0, Checked: 1 },
     EventEmitter: MockEventEmitter,
     ThemeIcon: class MockThemeIcon {
       id: string;
-
-      constructor(id: string) {
-        this.id = id;
-      }
+      constructor(id: string) { this.id = id; }
     },
   };
 });

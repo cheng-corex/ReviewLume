@@ -51,6 +51,28 @@
       { "command": "reviewlume.openReviewHistory", "title": "ReviewLume: Open Review History" },
       { "command": "reviewlume.importReviewResponse", "title": "ReviewLume: Import Review Response" }
     ],
+    "configuration": {
+      "title": "ReviewLume",
+      "properties": {
+        "reviewlume.export.mode": {
+          "type": "string",
+          "enum": ["automatic", "askEveryTime"],
+          "default": "automatic",
+          "description": "Automatically save Review Packs inside the active repository or ask for a destination every time."
+        },
+        "reviewlume.export.directory": {
+          "type": "string",
+          "default": ".reviewlume/exports",
+          "description": "Repository-relative directory used by automatic Review Pack export. Absolute paths and parent traversal are rejected."
+        },
+        "reviewlume.export.format": {
+          "type": "string",
+          "enum": ["markdown", "zip", "both"],
+          "default": "markdown",
+          "description": "Output format used by automatic Review Pack export."
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         { "id": "reviewlume", "title": "ReviewLume", "icon": "resources/icon.png" }

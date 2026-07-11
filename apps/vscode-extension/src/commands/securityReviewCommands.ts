@@ -3,8 +3,16 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import type { SecurityReviewService } from '../services/securityReviewService';
+import {
+  saveAutomaticReviewPack,
+  type ReviewPackExportFormat,
+  type ReviewPackExportMode,
+} from '../services/reviewPackExportService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { logInfo, logWarn } from '../services/logService';
+
+const IGNORE_PROMPT_STATE_KEY = 'reviewlume.export.ignorePromptDismissed';
+const DEFAULT_EXPORT_DIRECTORY = '.reviewlume/exports';
 
 export function registerSecurityReviewCommands(
   context: vscode.ExtensionContext,
@@ -69,14 +77,55 @@ export function registerSecurityReviewCommands(
         const pack = await withCancellation('Building privacy-safe Review Pack', (signal) =>
           service.buildReviewPack(signal),
         );
+        const activeRepository = service.activeRepository;
+        if (!activeRepository) throw new Error('No active review repository.');
+
+        const configuration = vscode.workspace.getConfiguration('reviewlume.export');
+        const mode = configuration.get<ReviewPackExportMode>('mode', 'automatic');
+        const configuredFormat = configuration.get<ReviewPackExportFormat>('format', 'markdown');
+        const configuredDirectory = configuration.get<string>('directory', DEFAULT_EXPORT_DIRECTORY);
+
+        if (mode === 'automatic') {
+          const result = await saveAutomaticReviewPack(
+            activeRepository.root,
+            configuredDirectory,
+            configuredFormat,
+            pack,
+          );
+
+          const choice = await vscode.window.showInformationMessage(
+            `ReviewLume: Review Pack ${pack.reviewId} saved automatically (${configuredFormat}).`,
+            'Open File',
+            'Open Folder',
+          );
+          if (choice === 'Open File' && result.files[0]) {
+            await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(result.files[0]));
+          } else if (choice === 'Open Folder') {
+            await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(result.directory));
+          }
+
+          if (
+            configuredDirectory === DEFAULT_EXPORT_DIRECTORY &&
+            !context.globalState.get<boolean>(IGNORE_PROMPT_STATE_KEY, false)
+          ) {
+            const ignoreChoice = await vscode.window.showInformationMessage(
+              'ReviewLume: Consider adding .reviewlume/exports/ to .gitignore so generated Review Packs are not committed.',
+              'Do Not Remind Again',
+            );
+            if (ignoreChoice === 'Do Not Remind Again') {
+              await context.globalState.update(IGNORE_PROMPT_STATE_KEY, true);
+            }
+          }
+          logInfo(`Review Pack exported automatically (${pack.reviewId}, ${configuredFormat})`);
+          return;
+        }
+
         const format = await vscode.window.showQuickPick(['Markdown', 'ZIP'] as const, {
           title: 'ReviewLume: Export Review Pack',
           placeHolder: 'Choose an export format',
         });
         if (!format) return;
 
-        const activeRepository = service.activeRepository;
-        if (!activeRepository) throw new Error('No active review repository.');
         const defaultName = format === 'Markdown' ? 'REVIEW_REQUEST.md' : `${pack.directoryName}.zip`;
         const destination = await vscode.window.showSaveDialog({
           title: 'ReviewLume: Save Review Pack',
@@ -96,8 +145,10 @@ export function registerSecurityReviewCommands(
         if (code === 'CANCELLED') return;
         logWarn(`Review Pack export failed (${code})`);
         const message = code === 'EEXIST'
-          ? 'ReviewLume: The selected export file already exists. Choose a new file name.'
-          : 'ReviewLume: Review Pack export was blocked or failed. Run the sensitive-content scan again and resolve all findings.';
+          ? 'ReviewLume: The export target already exists. Create a new review or choose a different location.'
+          : code === 'INVALID_EXPORT_DIRECTORY'
+            ? 'ReviewLume: The automatic export directory must stay inside the active repository and cannot traverse symbolic links.'
+            : 'ReviewLume: Review Pack export was blocked or failed. Run the sensitive-content scan again and resolve all findings.';
         await vscode.window.showErrorMessage(message);
       }
     }),

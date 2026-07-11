@@ -35,6 +35,12 @@
   - Fixed `REVIEW_REQUEST.md` name and optional store-mode ZIP output under
     `reviewlume-pack-<review-id>`.
   - `ReviewLume: Export Review Pack` command.
+- Automatic Review Pack export:
+  - Default no-dialog Markdown export under `.reviewlume/exports/<reviewId>/REVIEW_REQUEST.md`.
+  - Configurable Markdown, ZIP, or both output formats.
+  - Optional `askEveryTime` mode that preserves the save dialog workflow.
+  - Repository-bound export-directory validation and symbolic-link escape rejection.
+  - First-use reminder to ignore generated Review Packs without modifying `.gitignore` automatically.
 
 ### Fixed
 
