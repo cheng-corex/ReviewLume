@@ -11,6 +11,7 @@ import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
 import { SecurityReviewService } from './services/securityReviewService';
 import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
+import { refreshReviewPanel } from './webview/reviewPanel';
 
 /** Activates the ReviewLume VS Code extension. */
 export function activate(context: vscode.ExtensionContext): void {
@@ -20,7 +21,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.HELLO, () => {
-      vscode.window.showInformationMessage('ReviewLume extension is active!');
+      void vscode.window.showInformationMessage('ReviewLume extension is active!');
       logInfo('hello command invoked');
     }),
   );
@@ -29,14 +30,18 @@ export function activate(context: vscode.ExtensionContext): void {
   const fileSelectionService = new FileSelectionService(gitRunner);
   const securityReviewService = new SecurityReviewService(fileSelectionService, gitRunner);
   const treeProvider = registerReviewLumeTreeView(context, fileSelectionService);
+  const refreshViews = (): void => {
+    treeProvider.refresh();
+    refreshReviewPanel();
+  };
   const selectionChanged = (): void => {
     securityReviewService.invalidate();
-    treeProvider.refresh();
+    refreshViews();
   };
 
   registerCreateReviewPack(context, undefined, fileSelectionService, selectionChanged);
   registerFileSelectionCommands(context, fileSelectionService, selectionChanged);
-  registerSecurityReviewCommands(context, securityReviewService, () => treeProvider.refresh());
+  registerSecurityReviewCommands(context, securityReviewService, refreshViews);
   registerOpenReviewHistory(context);
   registerOpenReviewPanel(context, fileSelectionService, securityReviewService);
   registerImportReviewResponse(context);
