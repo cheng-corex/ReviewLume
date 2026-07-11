@@ -1,8 +1,8 @@
 import { createHash, randomBytes } from 'node:crypto';
-import { CURRENT_SCHEMA_VERSION, REVIEW_REQUEST_FILENAME } from '@reviewlume/core';
 import type { ReviewMode } from '@reviewlume/core';
 
-export const REVIEW_PACK_SCHEMA_VERSION = CURRENT_SCHEMA_VERSION;
+export const REVIEW_PACK_SCHEMA_VERSION = 1 as const;
+export const REVIEW_REQUEST_FILENAME = 'REVIEW_REQUEST.md' as const;
 export const REVIEW_PACK_DIRECTORY_PREFIX = 'reviewlume-pack-';
 
 export interface ReviewPackSecuritySummary {
@@ -258,7 +258,8 @@ export class ReviewPackBuilder {
       if (!truncations.includes('pack')) truncations.push('pack');
     }
 
-    const manifestJson = JSON.stringify({ ...manifest, truncations: [...truncations] }, null, 2) + '\n';
+    const finalManifest: ReviewPackManifest = { ...manifest, truncations: [...truncations] };
+    const manifestJson = JSON.stringify(finalManifest, null, 2) + '\n';
     const zip = createZip([
       { name: `${directoryName}/${REVIEW_REQUEST_FILENAME}`, data: Buffer.from(markdown, 'utf8') },
       { name: `${directoryName}/manifest.json`, data: Buffer.from(manifestJson, 'utf8') },
@@ -266,7 +267,7 @@ export class ReviewPackBuilder {
 
     return {
       markdown,
-      manifest: { ...manifest, truncations: [...truncations] },
+      manifest: finalManifest,
       workspaceId,
       reviewId,
       directoryName,
