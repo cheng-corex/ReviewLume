@@ -84,8 +84,7 @@
     }
   },
   "dependencies": {
-    "@reviewlume/core": "workspace:*",
-    "@reviewlume/git-context": "workspace:*"
+    "@reviewlume/core": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
