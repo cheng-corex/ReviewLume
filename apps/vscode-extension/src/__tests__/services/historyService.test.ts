@@ -23,7 +23,7 @@ async function fixture(): Promise<string> {
 const pack = {
   reviewId: '20260711T010203Z-010203040506',
   workspaceId: 'abc123def4567890',
-  byteLength: 43,
+  byteLength: 46,
   markdown: '# Review request\n\nThis is the review content.\n',
   zip: Uint8Array.from([0x50, 0x4b, 0x03, 0x04]),
   directoryName: 'reviewlume-pack-20260711T010203Z-010203040506',
