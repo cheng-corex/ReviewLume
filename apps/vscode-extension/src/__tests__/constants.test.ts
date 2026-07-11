@@ -11,6 +11,14 @@ describe('constants', () => {
       expect(COMMANDS.CREATE_REVIEW_PACK).toBe('reviewlume.createReviewPack');
     });
 
+    it('should define the addRelatedFiles command', () => {
+      expect(COMMANDS.ADD_RELATED_FILES).toBe('reviewlume.addRelatedFiles');
+    });
+
+    it('should define the recommendTestFiles command', () => {
+      expect(COMMANDS.RECOMMEND_TEST_FILES).toBe('reviewlume.recommendTestFiles');
+    });
+
     it('should define the openReviewHistory command', () => {
       expect(COMMANDS.OPEN_REVIEW_HISTORY).toBe('reviewlume.openReviewHistory');
     });
@@ -24,6 +32,8 @@ describe('constants', () => {
       expect(keys).toEqual([
         'HELLO',
         'CREATE_REVIEW_PACK',
+        'ADD_RELATED_FILES',
+        'RECOMMEND_TEST_FILES',
         'OPEN_REVIEW_HISTORY',
         'IMPORT_REVIEW_RESPONSE',
       ]);
