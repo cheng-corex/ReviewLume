@@ -264,70 +264,47 @@ export class ReviewLumeTreeProvider
 
   private getActionItems(): ReviewLumeTreeItem[] {
     return [
-      new ReviewLumeTreeItem(
-        'action',
+      actionItem(
         'Create Review Pack',
-        vscode.TreeItemCollapsibleState.None,
-        {
-          description: 'Inspect Git changes and start a file-selection session',
-          command: {
-            command: COMMANDS.CREATE_REVIEW_PACK,
-            title: 'Create Review Pack',
-          },
-          iconName: 'new-file',
-        },
+        'Inspect Git changes and start a file-selection session',
+        COMMANDS.CREATE_REVIEW_PACK,
+        'new-file',
       ),
-      new ReviewLumeTreeItem(
-        'action',
+      actionItem(
         'Add Related Files',
-        vscode.TreeItemCollapsibleState.None,
-        {
-          description: 'Add repository-local files that support the review',
-          command: {
-            command: COMMANDS.ADD_RELATED_FILES,
-            title: 'Add Related Files',
-          },
-          iconName: 'link',
-        },
+        'Add repository-local files that support the review',
+        COMMANDS.ADD_RELATED_FILES,
+        'link',
       ),
-      new ReviewLumeTreeItem(
-        'action',
+      actionItem(
         'Recommend Test Files',
-        vscode.TreeItemCollapsibleState.None,
-        {
-          description: 'Find likely tests for selected implementation files',
-          command: {
-            command: COMMANDS.RECOMMEND_TEST_FILES,
-            title: 'Recommend Test Files',
-          },
-          iconName: 'beaker',
-        },
+        'Find likely tests for selected implementation files',
+        COMMANDS.RECOMMEND_TEST_FILES,
+        'beaker',
       ),
-      new ReviewLumeTreeItem(
-        'action',
+      actionItem(
+        'Scan Selected Files',
+        'Scan the exact review input for sensitive content',
+        COMMANDS.SCAN_SELECTED_FILES,
+        'shield',
+      ),
+      actionItem(
+        'Export Review Pack',
+        'Build and save the privacy-checked Review Pack',
+        COMMANDS.EXPORT_REVIEW_PACK,
+        'export',
+      ),
+      actionItem(
         'Open Review History',
-        vscode.TreeItemCollapsibleState.None,
-        {
-          description: 'Browse past review sessions',
-          command: {
-            command: COMMANDS.OPEN_REVIEW_HISTORY,
-            title: 'Open Review History',
-          },
-          iconName: 'history',
-        },
+        'Browse past review sessions',
+        COMMANDS.OPEN_REVIEW_HISTORY,
+        'history',
       ),
-      new ReviewLumeTreeItem(
-        'action',
+      actionItem(
         'Import Review Response',
-        vscode.TreeItemCollapsibleState.None,
-        {
-          description: 'Import an AI review response',
-          command: {
-            command: COMMANDS.IMPORT_REVIEW_RESPONSE,
-            title: 'Import Review Response',
-          },
-          iconName: 'cloud-download',
-        },
+        'Import an AI review response',
+        COMMANDS.IMPORT_REVIEW_RESPONSE,
+        'cloud-download',
       ),
     ];
   }
@@ -365,6 +342,20 @@ export function registerReviewLumeTreeView(
   );
 
   return provider;
+}
+
+function actionItem(
+  label: string,
+  description: string,
+  command: string,
+  iconName: string,
+): ReviewLumeTreeItem {
+  return new ReviewLumeTreeItem('action', label, vscode.TreeItemCollapsibleState.None, {
+    description,
+    command: { command, title: label },
+    iconName,
+    tooltip: `${label} — click to run`,
+  });
 }
 
 function describeFileEntry(entry: ReviewFileSelectionEntry): string {
