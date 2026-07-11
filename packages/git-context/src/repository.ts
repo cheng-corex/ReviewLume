@@ -2,8 +2,6 @@
  * @reviewlume/git-context — Git repository model
  *
  * Represents a single Git repository with path-boundary validation.
- * All path comparisons use resolved absolute paths to prevent
- * directory traversal and cross-repository access.
  */
 
 import * as path from 'node:path';
@@ -13,22 +11,17 @@ import { CrossRepositoryError, InvalidCommitError } from './errors.js';
 
 /** Data required to construct a GitRepository. */
 export interface GitRepositoryData {
-  /** Absolute path to the repository root (resolved, no trailing slash). */
+  /** Absolute path to the repository root. */
   readonly root: string;
-  /** Human-readable display name (e.g. "reviewlume"). */
+  /** Human-readable display name. */
   readonly displayName: string;
-  /** Whether the repository has a remote named "origin". */
+  /** Whether the repository has an origin remote. */
   readonly hasRemote: boolean;
-  /** Raw remote URL (may contain credentials — handle with care). */
+  /** Sanitized remote URL. Credential-bearing user info is never retained. */
   readonly remoteUrl?: string;
 }
 
-/**
- * Immutable Git repository representation.
- *
- * Every GitRepository is tied to one resolved root path and provides
- * boundary checking to prevent cross-repository access.
- */
+/** Immutable Git repository representation. */
 export class GitRepository {
   readonly #root: string;
   readonly #displayName: string;
@@ -36,75 +29,53 @@ export class GitRepository {
   readonly #remoteUrl: string | undefined;
 
   constructor(data: GitRepositoryData) {
-    // Normalize and resolve the root path
     this.#root = path.resolve(data.root);
     this.#displayName = data.displayName;
     this.#hasRemote = data.hasRemote;
-    this.#remoteUrl = data.remoteUrl;
+    this.#remoteUrl = data.remoteUrl ? sanitizeRemoteUrl(data.remoteUrl) : undefined;
   }
 
-  /** Absolute, resolved path to the repository root. */
   get root(): string {
     return this.#root;
   }
 
-  /** Human-readable display name. */
   get displayName(): string {
     return this.#displayName;
   }
 
-  /** Whether the repo has a remote named "origin". */
   get hasRemote(): boolean {
     return this.#hasRemote;
   }
 
-  /**
-   * Sanitized remote URL (credentials stripped).
-   * Returns `undefined` if no remote or if sanitization fails.
-   */
+  /** Sanitized remote URL, if present. */
   get remoteUrl(): string | undefined {
-    return this.#remoteUrl ? sanitizeRemoteUrl(this.#remoteUrl) : undefined;
-  }
-
-  /**
-   * Raw remote URL — only for internal workspaceId computation.
-   * Never log, display, or persist this value.
-   */
-  get rawRemoteUrl(): string | undefined {
     return this.#remoteUrl;
   }
 
-  /**
-   * Check whether `filePath` is inside this repository.
-   *
-   * Resolves the path and verifies it starts with the repository root.
-   * This prevents `../` traversal and symlink escapes to parent dirs.
-   */
+  /** Check whether a resolved path is inside this repository. */
   containsPath(filePath: string): boolean {
     const resolved = path.resolve(this.#root, filePath);
-    // Ensure the resolved path starts with the repo root
-    const normalizedRoot = this.#root.endsWith(path.sep)
-      ? this.#root
-      : this.#root + path.sep;
-    return resolved.startsWith(normalizedRoot) || resolved === this.#root;
+    const relative = path.relative(this.#root, resolved);
+    return (
+      relative === '' ||
+      (!relative.startsWith(`..${path.sep}`) && relative !== '..' && !path.isAbsolute(relative))
+    );
   }
 
-  /**
-   * Verify that the resolved path is strictly inside the repository
-   * (not equal to the root itself) — useful for file-level checks.
-   */
+  /** Check whether a resolved path is strictly inside the repository root. */
   containsStrict(filePath: string): boolean {
     const resolved = path.resolve(this.#root, filePath);
-    const normalizedRoot = this.#root.endsWith(path.sep)
-      ? this.#root
-      : this.#root + path.sep;
-    return resolved.startsWith(normalizedRoot) && resolved !== this.#root;
+    const relative = path.relative(this.#root, resolved);
+    return (
+      relative !== '' &&
+      !relative.startsWith(`..${path.sep}`) &&
+      relative !== '..' &&
+      !path.isAbsolute(relative)
+    );
   }
 }
 
-/**
- * Derive a display name from a remote URL.
- */
+/** Derive a display name from a remote URL. */
 export function deriveDisplayName(remoteUrl: string): string {
   const sanitized = sanitizeRemoteUrl(remoteUrl);
 
@@ -114,54 +85,52 @@ export function deriveDisplayName(remoteUrl: string): string {
     const parts = pathname.split('/').filter(Boolean);
     return parts[parts.length - 1] || url.hostname;
   } catch {
-    // SSH-style: git@github.com:owner/repo.git
     const match = sanitized.match(/[:/]([^/]+?)(?:\.git)?$/);
-    if (match) {
-      return match[1]!;
-    }
-    // Fallback: use the URL itself
-    return sanitized;
+    return match?.[1] || 'repository';
   }
 }
 
 /**
- * Strip credentials from a remote URL.
- *
- * - `https://user:token@host.com/owner/repo.git` → `https://host.com/owner/repo.git`
- * - SSH URLs (`git@host.com:owner/repo.git`) have no credentials to strip.
+ * Strip credentials from a remote URL before it is stored, displayed, logged,
+ * or used as repository identity input.
  */
-export function sanitizeRemoteUrl(url: string): string {
-  // Strip trailing newlines/spaces
-  const trimmed = url.trim();
+export function sanitizeRemoteUrl(value: string): string {
+  const trimmed = value.replace(/\r?\n$/, '');
 
   try {
     const parsed = new URL(trimmed);
-    if (parsed.username) {
-      parsed.username = '';
-      parsed.password = '';
-      // URL parsing removes the username but leaves '://' - reconstruct
-      return parsed.toString().replace('//@', '//');
-    }
-    return parsed.toString();
+    parsed.username = '';
+    parsed.password = '';
+    return parsed.toString().replace('//@', '//');
   } catch {
-    // Not a URL (e.g. SSH git@ style), return as-is — no credentials to strip
-    return trimmed;
+    // Standard SCP-style SSH remote. The user component is not needed for
+    // identity and may itself contain sensitive material, so omit it.
+    const scpStyle = trimmed.match(/^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/);
+    if (scpStyle && !/^[A-Za-z]:[\\/]/.test(trimmed)) {
+      return `ssh://${scpStyle[1]}/${scpStyle[2]}`;
+    }
+
+    // Last-resort redaction for malformed URL-like strings.
+    return trimmed.replace(
+      /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?::[^\s/@]*)?@/gi,
+      '$1[REDACTED]@',
+    );
   }
 }
 
-/**
- * Resolve a relative path inside the repository.
- * Throws if the resolved path escapes the repository.
- */
+/** Resolve a relative path inside the repository. */
 export function resolveSafePath(repo: GitRepository, relativePath: string): string {
+  if (path.isAbsolute(relativePath) || relativePath.includes('\0')) {
+    throw new CrossRepositoryError('Only relative repository paths are allowed.');
+  }
+
   const resolved = path.resolve(repo.root, relativePath);
-  if (!repo.containsPath(resolved)) {
+  if (!repo.containsStrict(resolved)) {
     throw new CrossRepositoryError(
-      `Path "${relativePath}" resolves outside the repository "${repo.displayName}".`,
+      `Path "${relativePath}" resolves outside repository "${repo.displayName}".`,
     );
   }
 
-  // Verify the path actually exists
   if (!fs.existsSync(resolved)) {
     throw new CrossRepositoryError(
       `Path "${relativePath}" does not exist in repository "${repo.displayName}".`,
@@ -172,21 +141,28 @@ export function resolveSafePath(repo: GitRepository, relativePath: string): stri
 }
 
 /**
- * Verify that a commit reference exists in the given repository.
- *
- * @throws {InvalidCommitError} if the commit does not exist.
+ * Verify a commit reference and return its canonical object ID.
+ * Canonical IDs are used for later commands so user-supplied refs cannot be
+ * reinterpreted as command-line options.
  */
 export async function verifyCommitInRepository(
   runner: GitCommandRunner,
   repo: GitRepository,
   ref: string,
-): Promise<void> {
+  signal?: AbortSignal,
+): Promise<string> {
   try {
-    await runner.run({
+    const result = await runner.run({
       cwd: repo.root,
-      args: ['rev-parse', '--verify', '--quiet', `${ref}^{commit}`],
+      args: ['rev-parse', '--verify', '--quiet', '--end-of-options', `${ref}^{commit}`],
+      signal,
     });
+    const objectId = result.stdout.trim();
+    if (!/^[0-9a-f]{40,64}$/i.test(objectId)) {
+      throw new Error('Git returned an invalid commit object ID.');
+    }
+    return objectId.toLowerCase();
   } catch {
-    throw new InvalidCommitError(ref, repo.root);
+    throw new InvalidCommitError(ref, repo.displayName);
   }
 }
