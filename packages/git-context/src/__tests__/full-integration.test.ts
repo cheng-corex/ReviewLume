@@ -1,3 +1,5 @@
+import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { GitCommandRunner } from '../commandRunner.js';
 import { GitRepositoryDiscovery } from '../discovery.js';
@@ -36,12 +38,14 @@ describe('git-context full integration', () => {
     try {
       initRepo(first.root);
       initRepo(second.root);
+      const nestedFolder = join(first.root, 'src');
+      mkdirSync(nestedFolder, { recursive: true });
       const discovery = new GitRepositoryDiscovery(new GitCommandRunner());
 
       expect(await discovery.discover([plain.root])).toHaveLength(0);
       expect(await discovery.discover([first.root, plain.root])).toHaveLength(1);
       expect(await discovery.discover([first.root, second.root])).toHaveLength(2);
-      expect(await discovery.discover([first.root, `${first.root}/src`])).toHaveLength(1);
+      expect(await discovery.discover([first.root, nestedFolder])).toHaveLength(1);
     } finally {
       first.cleanup();
       second.cleanup();
@@ -109,9 +113,13 @@ describe('git-context full integration', () => {
       });
 
       createAndCommitFile(fixture.root, 'a.txt', 'a', 'first');
-      firstHash = (await runner.run({ cwd: fixture.root, args: ['rev-parse', 'HEAD'] })).stdout.trim();
+      firstHash = (
+        await runner.run({ cwd: fixture.root, args: ['rev-parse', 'HEAD'] })
+      ).stdout.trim();
       createAndCommitFile(fixture.root, 'b.txt', 'b', 'second');
-      secondHash = (await runner.run({ cwd: fixture.root, args: ['rev-parse', 'HEAD'] })).stdout.trim();
+      secondHash = (
+        await runner.run({ cwd: fixture.root, args: ['rev-parse', 'HEAD'] })
+      ).stdout.trim();
     });
 
     afterEach(() => fixture.cleanup());
