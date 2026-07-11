@@ -36,7 +36,7 @@
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "tsc",
+    "build": "pnpm --filter @reviewlume/git-context build && tsc && node scripts/vendor-git-context.cjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -84,7 +84,8 @@
     }
   },
   "dependencies": {
-    "@reviewlume/core": "workspace:*"
+    "@reviewlume/core": "workspace:*",
+    "@reviewlume/git-context": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^20.0.0",
