@@ -61,7 +61,7 @@ describe('ReviewLumeTreeProvider', () => {
     );
   });
 
-  it('shows the P3 actions and an honest pre-selection state', () => {
+  it('shows every review action as a directly executable command', () => {
     testing.setWorkspaceState([{}], true);
     const provider = new ReviewLumeTreeProvider(selectionService());
 
@@ -77,9 +77,16 @@ describe('ReviewLumeTreeProvider', () => {
       COMMANDS.CREATE_REVIEW_PACK,
       COMMANDS.ADD_RELATED_FILES,
       COMMANDS.RECOMMEND_TEST_FILES,
+      COMMANDS.SCAN_SELECTED_FILES,
+      COMMANDS.EXPORT_REVIEW_PACK,
       COMMANDS.OPEN_REVIEW_HISTORY,
       COMMANDS.IMPORT_REVIEW_RESPONSE,
     ]);
+    for (const action of actions) {
+      expect(action.itemKind).toBe('action');
+      expect(action.command).toBeDefined();
+      expect(action.tooltip).toContain('click to run');
+    }
   });
 
   it('renders repository-relative folders and checkbox state', () => {
