@@ -5,6 +5,9 @@
   --rl-primary-background: var(--vscode-button-background, var(--accent));
   --rl-primary-foreground: var(--vscode-button-foreground, #fff);
   --rl-primary-hover: var(--vscode-button-hoverBackground, var(--accent));
+  --rl-warning-background: var(--warning, #cca700);
+  --rl-warning-foreground: #111;
+  --rl-warning-hover: #b89500;
   --rl-input-background: var(--vscode-dropdown-background, var(--bg-secondary));
   --rl-input-foreground: var(--vscode-dropdown-foreground, var(--text-primary));
   --rl-input-border: var(--vscode-dropdown-border, var(--border-color));
@@ -36,17 +39,28 @@
   outline-offset: 2px;
 }
 
-.btn-primary,
-.btn-warning {
+.btn-primary {
   background: var(--rl-primary-background);
   color: var(--rl-primary-foreground);
   border-color: var(--vscode-button-border, transparent);
 }
 
-.btn-primary:hover:not(:disabled),
-.btn-warning:hover:not(:disabled) {
+.btn-primary:hover:not(:disabled) {
   background: var(--rl-primary-hover);
   color: var(--rl-primary-foreground);
+  filter: none;
+}
+
+.btn-warning {
+  background: var(--rl-warning-background);
+  color: var(--rl-warning-foreground);
+  border-color: var(--rl-warning-background);
+}
+
+.btn-warning:hover:not(:disabled) {
+  background: var(--rl-warning-hover);
+  color: var(--rl-warning-foreground);
+  border-color: var(--rl-warning-hover);
   filter: none;
 }
 
