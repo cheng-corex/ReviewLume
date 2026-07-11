@@ -6,6 +6,7 @@ import { registerFileSelectionCommands } from './commands/fileSelectionCommands'
 import { registerOpenReviewHistory } from './commands/openReviewHistory';
 import { registerImportReviewResponse } from './commands/importReviewResponse';
 import { FileSelectionService } from './services/fileSelectionService';
+import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
 import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
 
 /** Activates the ReviewLume VS Code extension. */
@@ -21,7 +22,7 @@ export function activate(context: vscode.ExtensionContext): void {
     }),
   );
 
-  const fileSelectionService = new FileSelectionService();
+  const fileSelectionService = new FileSelectionService(new LazyFileSelectionGitRunner());
   const treeProvider = registerReviewLumeTreeView(context, fileSelectionService);
 
   registerCreateReviewPack(
