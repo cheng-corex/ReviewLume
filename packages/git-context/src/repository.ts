@@ -95,7 +95,7 @@ export function deriveDisplayName(remoteUrl: string): string {
  * or used as repository identity input.
  */
 export function sanitizeRemoteUrl(value: string): string {
-  const trimmed = value.replace(/\r?\n$/, '');
+  const trimmed = value.trim();
 
   try {
     const parsed = new URL(trimmed);
