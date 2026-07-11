@@ -62,7 +62,7 @@ export class SecurityReviewService {
 
     if (this.#lastBuiltPack) return this.#lastBuiltPack;
 
-    this.#lastBuiltPack = this.#getBuilder().build({
+    const builtPack = this.#getBuilder().build({
       repositoryIdentity: collected.repository.remoteUrl ?? collected.repository.root,
       repositoryDisplayName: collected.repository.displayName,
       reviewMode: 'standard', gitBase: 'HEAD', gitTarget: 'WORKTREE', security: this.#lastScan,
@@ -74,7 +74,8 @@ export class SecurityReviewService {
       excluded: this.fileSelectionService.entries.filter((entry) => !entry.selected)
         .map((entry) => ({ path: entry.path, reason: 'not selected for this review' })),
     });
-    return this.#lastBuiltPack;
+    this.#lastBuiltPack = builtPack;
+    return builtPack;
   }
 
   async #collectReviewContent(signal?: AbortSignal): Promise<CollectedReviewContent> {
