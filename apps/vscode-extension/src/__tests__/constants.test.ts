@@ -11,6 +11,7 @@ describe('constants', () => {
         RECOMMEND_TEST_FILES: 'reviewlume.recommendTestFiles',
         SCAN_SELECTED_FILES: 'reviewlume.scanSelectedFiles',
         EXPORT_REVIEW_PACK: 'reviewlume.exportReviewPack',
+        ADD_EXPORT_DIRECTORY_TO_GITIGNORE: 'reviewlume.addExportDirectoryToGitignore',
         OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
         IMPORT_REVIEW_RESPONSE: 'reviewlume.importReviewResponse',
       });
