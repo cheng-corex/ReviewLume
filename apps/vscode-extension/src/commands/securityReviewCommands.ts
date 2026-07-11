@@ -8,12 +8,17 @@ import {
   type ReviewPackExportFormat,
   type ReviewPackExportMode,
 } from '../services/reviewPackExportService';
-import { HistoryService } from '../services/historyService';
+import {
+  HISTORY_DIRECTORY,
+  HistoryService,
+  type HistorySaveOptions,
+} from '../services/historyService';
 import { ensureExportDirectoryIgnored } from '../services/gitignoreService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { logInfo, logWarn } from '../services/logService';
 
 const DEFAULT_EXPORT_DIRECTORY = '.reviewlume/exports';
+type BuiltReviewPack = Awaited<ReturnType<SecurityReviewService['buildReviewPack']>>;
 
 export function registerSecurityReviewCommands(
   context: vscode.ExtensionContext,
@@ -100,13 +105,11 @@ export function registerSecurityReviewCommands(
             pack,
           );
 
-          // Save history after successful automatic export
-          try {
-            const historyService = new HistoryService();
-            await historyService.save(activeRepository.root, pack, configuredFormat as string);
-          } catch (saveError) {
-            logWarn(`Failed to save review history (${getErrorCode(saveError)})`);
-          }
+          await recordHistory(activeRepository.root, pack, {
+            format: configuredFormat,
+            mode: 'automatic',
+            exportDirectory: configuredDirectory,
+          });
 
           if (configuration.get<boolean>('autoUpdateGitignore', true)) {
             try {
@@ -167,14 +170,12 @@ export function registerSecurityReviewCommands(
           `ReviewLume: Review Pack ${pack.reviewId} saved (${pack.byteLength} Markdown bytes).`,
         );
 
-        // Save history after manual export
-        try {
-          const historyService = new HistoryService();
-          const effectiveFormat = format === 'ZIP' ? 'zip' : 'markdown';
-          await historyService.save(activeRepository.root, pack, effectiveFormat);
-        } catch (saveError) {
-          logWarn(`Failed to save review history (${getErrorCode(saveError)})`);
-        }
+        const effectiveFormat: ReviewPackExportFormat =
+          format === 'ZIP' ? 'zip' : 'markdown';
+        await recordHistory(activeRepository.root, pack, {
+          format: effectiveFormat,
+          mode: 'askEveryTime',
+        });
 
         logInfo(`Review Pack exported (${pack.reviewId}, ${format})`);
       } catch (error) {
@@ -233,6 +234,24 @@ export function registerSecurityReviewCommands(
       }
     }),
   );
+}
+
+async function recordHistory(
+  repositoryRoot: string,
+  pack: BuiltReviewPack,
+  options: HistorySaveOptions,
+): Promise<void> {
+  try {
+    // History contains the exact approved review request and must never become Git input.
+    await ensureExportDirectoryIgnored(repositoryRoot, HISTORY_DIRECTORY);
+    await new HistoryService().save(repositoryRoot, pack, options);
+    logInfo(`Review history recorded (${pack.reviewId})`);
+  } catch (error) {
+    logWarn(`Failed to record review history (${getErrorCode(error)})`);
+    await vscode.window.showWarningMessage(
+      'ReviewLume: The Review Pack was saved, but its local history was not recorded safely.',
+    );
+  }
 }
 
 async function withCancellation<T>(
