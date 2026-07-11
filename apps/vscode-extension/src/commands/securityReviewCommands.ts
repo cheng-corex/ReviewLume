@@ -8,10 +8,10 @@ import {
   type ReviewPackExportFormat,
   type ReviewPackExportMode,
 } from '../services/reviewPackExportService';
+import { ensureExportDirectoryIgnored } from '../services/gitignoreService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { logInfo, logWarn } from '../services/logService';
 
-const IGNORE_PROMPT_STATE_KEY = 'reviewlume.export.ignorePromptDismissed';
 const DEFAULT_EXPORT_DIRECTORY = '.reviewlume/exports';
 
 export function registerSecurityReviewCommands(
@@ -28,8 +28,9 @@ export function registerSecurityReviewCommands(
       }
 
       try {
-        let result = await withCancellation('Scanning selected files for sensitive content', (signal) =>
-          service.scan(signal),
+        let result = await withCancellation(
+          'Scanning selected files for sensitive content',
+          (signal) => service.scan(signal),
         );
         const unresolvedWarnings = result.findings.filter(
           (finding) => finding.level === 'WARN' && finding.resolution.kind === 'unresolved',
@@ -50,7 +51,9 @@ export function registerSecurityReviewCommands(
 
         const summary = `HARD_BLOCK ${result.hardBlockCount}, BLOCK ${result.blockCount}, WARN ${result.warnCount} (${result.confirmedWarnCount} confirmed), INFO ${result.infoCount}`;
         if (result.canExport) {
-          await vscode.window.showInformationMessage(`ReviewLume: Sensitive-content scan passed — ${summary}.`);
+          await vscode.window.showInformationMessage(
+            `ReviewLume: Sensitive-content scan passed — ${summary}.`,
+          );
         } else {
           await vscode.window.showWarningMessage(
             `ReviewLume: Export remains blocked — ${summary}. Remove HARD_BLOCK content; exclude or redact BLOCK content and rescan; confirm each WARN.`,
@@ -83,7 +86,10 @@ export function registerSecurityReviewCommands(
         const configuration = vscode.workspace.getConfiguration('reviewlume.export');
         const mode = configuration.get<ReviewPackExportMode>('mode', 'automatic');
         const configuredFormat = configuration.get<ReviewPackExportFormat>('format', 'markdown');
-        const configuredDirectory = configuration.get<string>('directory', DEFAULT_EXPORT_DIRECTORY);
+        const configuredDirectory = configuration.get<string>(
+          'directory',
+          DEFAULT_EXPORT_DIRECTORY,
+        );
 
         if (mode === 'automatic') {
           const result = await saveAutomaticReviewPack(
@@ -93,6 +99,25 @@ export function registerSecurityReviewCommands(
             pack,
           );
 
+          if (configuration.get<boolean>('autoUpdateGitignore', true)) {
+            try {
+              const ignoreResult = await ensureExportDirectoryIgnored(
+                activeRepository.root,
+                configuredDirectory,
+              );
+              logInfo(
+                ignoreResult.added
+                  ? 'Automatic export directory added to repository .gitignore'
+                  : 'Automatic export directory already covered by repository .gitignore',
+              );
+            } catch (error) {
+              logWarn(`Automatic .gitignore update failed (${getErrorCode(error)})`);
+              await vscode.window.showWarningMessage(
+                'ReviewLume: The Review Pack was saved, but the repository .gitignore could not be updated. Use the ReviewLume action to retry.',
+              );
+            }
+          }
+
           const choice = await vscode.window.showInformationMessage(
             `ReviewLume: Review Pack ${pack.reviewId} saved automatically (${configuredFormat}).`,
             'Open File',
@@ -101,21 +126,12 @@ export function registerSecurityReviewCommands(
           if (choice === 'Open File' && result.files[0]) {
             await vscode.commands.executeCommand('vscode.open', vscode.Uri.file(result.files[0]));
           } else if (choice === 'Open Folder') {
-            await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(result.directory));
+            await vscode.commands.executeCommand(
+              'revealFileInOS',
+              vscode.Uri.file(result.directory),
+            );
           }
 
-          if (
-            configuredDirectory === DEFAULT_EXPORT_DIRECTORY &&
-            !context.globalState.get<boolean>(IGNORE_PROMPT_STATE_KEY, false)
-          ) {
-            const ignoreChoice = await vscode.window.showInformationMessage(
-              'ReviewLume: Consider adding .reviewlume/exports/ to .gitignore so generated Review Packs are not committed.',
-              'Do Not Remind Again',
-            );
-            if (ignoreChoice === 'Do Not Remind Again') {
-              await context.globalState.update(IGNORE_PROMPT_STATE_KEY, true);
-            }
-          }
           logInfo(`Review Pack exported automatically (${pack.reviewId}, ${configuredFormat})`);
           return;
         }
@@ -126,7 +142,8 @@ export function registerSecurityReviewCommands(
         });
         if (!format) return;
 
-        const defaultName = format === 'Markdown' ? 'REVIEW_REQUEST.md' : `${pack.directoryName}.zip`;
+        const defaultName =
+          format === 'Markdown' ? 'REVIEW_REQUEST.md' : `${pack.directoryName}.zip`;
         const destination = await vscode.window.showSaveDialog({
           title: 'ReviewLume: Save Review Pack',
           defaultUri: vscode.Uri.file(path.join(activeRepository.root, defaultName)),
@@ -134,7 +151,8 @@ export function registerSecurityReviewCommands(
         });
         if (!destination) return;
 
-        const bytes = format === 'Markdown' ? Buffer.from(pack.markdown, 'utf8') : Buffer.from(pack.zip);
+        const bytes =
+          format === 'Markdown' ? Buffer.from(pack.markdown, 'utf8') : Buffer.from(pack.zip);
         await fs.writeFile(destination.fsPath, bytes, { flag: 'wx' });
         await vscode.window.showInformationMessage(
           `ReviewLume: Review Pack ${pack.reviewId} saved (${pack.byteLength} Markdown bytes).`,
@@ -144,12 +162,55 @@ export function registerSecurityReviewCommands(
         const code = getErrorCode(error);
         if (code === 'CANCELLED') return;
         logWarn(`Review Pack export failed (${code})`);
-        const message = code === 'EEXIST'
-          ? 'ReviewLume: The export target already exists. Create a new review or choose a different location.'
-          : code === 'INVALID_EXPORT_DIRECTORY'
-            ? 'ReviewLume: The automatic export directory must stay inside the active repository and cannot traverse symbolic links.'
-            : 'ReviewLume: Review Pack export was blocked or failed. Run the sensitive-content scan again and resolve all findings.';
+        const message =
+          code === 'EEXIST'
+            ? 'ReviewLume: The export target already exists. Create a new review or choose a different location.'
+            : code === 'INVALID_EXPORT_DIRECTORY'
+              ? 'ReviewLume: The automatic export directory must stay inside the active repository and cannot traverse symbolic links.'
+              : 'ReviewLume: Review Pack export was blocked or failed. Run the sensitive-content scan again and resolve all findings.';
         await vscode.window.showErrorMessage(message);
+      }
+    }),
+
+    vscode.commands.registerCommand(COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE, async () => {
+      const warning = getWorkspaceWarning();
+      if (warning) {
+        await vscode.window.showWarningMessage(`ReviewLume: ${warning}`);
+        return;
+      }
+
+      const activeRepository = service.activeRepository;
+      if (!activeRepository) {
+        await vscode.window.showWarningMessage(
+          'ReviewLume: Create a Review Pack before updating .gitignore.',
+        );
+        return;
+      }
+
+      const configuredDirectory = vscode.workspace
+        .getConfiguration('reviewlume.export')
+        .get<string>('directory', DEFAULT_EXPORT_DIRECTORY);
+
+      try {
+        const result = await ensureExportDirectoryIgnored(
+          activeRepository.root,
+          configuredDirectory,
+        );
+        await vscode.window.showInformationMessage(
+          result.added
+            ? `ReviewLume: Added ${result.rule} to the repository root .gitignore.`
+            : `ReviewLume: ${result.rule} is already covered by the repository root .gitignore.`,
+        );
+        logInfo(
+          result.added
+            ? 'Export directory added to repository .gitignore by user command'
+            : 'Export directory already covered by repository .gitignore',
+        );
+      } catch (error) {
+        logWarn(`Manual .gitignore update failed (${getErrorCode(error)})`);
+        await vscode.window.showErrorMessage(
+          'ReviewLume: The repository .gitignore could not be updated safely.',
+        );
       }
     }),
   );
@@ -160,7 +221,11 @@ async function withCancellation<T>(
   operation: (signal: AbortSignal) => Promise<T>,
 ): Promise<T> {
   return vscode.window.withProgress(
-    { location: vscode.ProgressLocation.Notification, title: `ReviewLume: ${title}`, cancellable: true },
+    {
+      location: vscode.ProgressLocation.Notification,
+      title: `ReviewLume: ${title}`,
+      cancellable: true,
+    },
     async (_progress, token) => {
       const controller = new AbortController();
       const disposable = token.onCancellationRequested(() => controller.abort());
