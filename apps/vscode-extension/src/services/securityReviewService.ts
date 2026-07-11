@@ -1,6 +1,7 @@
 import * as fs from 'node:fs/promises';
 import type { FileSelectionService, ReviewFileSelectionEntry } from './fileSelectionService';
 import type { LazyFileSelectionGitRunner } from './lazyFileSelectionGitRunner';
+import type { GitRepository } from '../../../../packages/git-context/dist/index.js';
 import type {
   ScanFinding,
   ScanInputFile,
@@ -35,6 +36,10 @@ export class SecurityReviewService {
 
   get lastScan(): ScanResult | undefined {
     return this.#lastScan;
+  }
+
+  get activeRepository(): GitRepository | undefined {
+    return this.fileSelectionService.repository;
   }
 
   invalidate(): void {
