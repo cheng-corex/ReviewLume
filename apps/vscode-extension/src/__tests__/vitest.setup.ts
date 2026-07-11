@@ -1,18 +1,20 @@
 /**
  * Vitest setup: mock the `vscode` module so unit tests can exercise command,
- * workspace-state, logging, progress, and tree-view behavior without an
- * Extension Host.
+ * workspace-state, logging, progress, file-picking, and tree-view behavior
+ * without an Extension Host.
  */
 import { vi } from 'vitest';
 
 vi.mock('vscode', () => {
   type CommandHandler = (...args: unknown[]) => unknown;
+  type CheckboxHandler = (event: { items: Array<[unknown, number]> }) => unknown;
 
   const workspaceState: { folders: unknown[]; trusted: boolean } = {
     folders: [],
     trusted: false,
   };
   const registeredCommands = new Map<string, CommandHandler>();
+  let checkboxHandler: CheckboxHandler | undefined;
 
   const testing = {
     setWorkspaceState(folders: unknown[], trusted: boolean): void {
@@ -22,10 +24,14 @@ vi.mock('vscode', () => {
     getRegisteredCommand(command: string): CommandHandler | undefined {
       return registeredCommands.get(command);
     },
+    getCheckboxHandler(): CheckboxHandler | undefined {
+      return checkboxHandler;
+    },
     reset(): void {
       workspaceState.folders = [];
       workspaceState.trusted = false;
       registeredCommands.clear();
+      checkboxHandler = undefined;
     },
   };
 
@@ -46,6 +52,7 @@ vi.mock('vscode', () => {
       showWarningMessage: vi.fn(),
       showErrorMessage: vi.fn(),
       showQuickPick: vi.fn(),
+      showOpenDialog: vi.fn(),
       withProgress: vi.fn(async (_options, task) =>
         task(
           { report: vi.fn() },
@@ -55,7 +62,13 @@ vi.mock('vscode', () => {
           },
         ),
       ),
-      createTreeView: vi.fn(() => ({ dispose: vi.fn() })),
+      createTreeView: vi.fn(() => ({
+        dispose: vi.fn(),
+        onDidChangeCheckboxState: vi.fn((handler: CheckboxHandler) => {
+          checkboxHandler = handler;
+          return { dispose: vi.fn() };
+        }),
+      })),
     },
     ProgressLocation: {
       Notification: 15,
@@ -76,6 +89,9 @@ vi.mock('vscode', () => {
         return { dispose: vi.fn() };
       }),
     },
+    Uri: {
+      file: vi.fn((fsPath: string) => ({ fsPath })),
+    },
     TreeItem: class MockTreeItem {
       label: string;
       collapsibleState: number;
@@ -83,6 +99,8 @@ vi.mock('vscode', () => {
       tooltip?: string;
       iconPath?: unknown;
       command?: unknown;
+      checkboxState?: number;
+      contextValue?: string;
 
       constructor(label: string, collapsibleState = 0) {
         this.label = label;
@@ -93,6 +111,10 @@ vi.mock('vscode', () => {
       None: 0,
       Expanded: 1,
       Collapsed: 2,
+    },
+    TreeItemCheckboxState: {
+      Unchecked: 0,
+      Checked: 1,
     },
     EventEmitter: MockEventEmitter,
     ThemeIcon: class MockThemeIcon {
