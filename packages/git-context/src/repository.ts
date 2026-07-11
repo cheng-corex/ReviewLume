@@ -7,7 +7,7 @@
 import * as path from 'node:path';
 import * as fs from 'node:fs';
 import { GitCommandRunner } from './commandRunner.js';
-import { CrossRepositoryError, InvalidCommitError } from './errors.js';
+import { CrossRepositoryError, GitCommandError, InvalidCommitError } from './errors.js';
 
 /** Data required to construct a GitRepository. */
 export interface GitRepositoryData {
@@ -103,14 +103,11 @@ export function sanitizeRemoteUrl(value: string): string {
     parsed.password = '';
     return parsed.toString().replace('//@', '//');
   } catch {
-    // Standard SCP-style SSH remote. The user component is not needed for
-    // identity and may itself contain sensitive material, so omit it.
     const scpStyle = trimmed.match(/^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/);
     if (scpStyle && !/^[A-Za-z]:[\\/]/.test(trimmed)) {
       return `ssh://${scpStyle[1]}/${scpStyle[2]}`;
     }
 
-    // Last-resort redaction for malformed URL-like strings.
     return trimmed.replace(
       /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?::[^\s/@]*)?@/gi,
       '$1[REDACTED]@',
@@ -140,11 +137,7 @@ export function resolveSafePath(repo: GitRepository, relativePath: string): stri
   return resolved;
 }
 
-/**
- * Verify a commit reference and return its canonical object ID.
- * Canonical IDs are used for later commands so user-supplied refs cannot be
- * reinterpreted as command-line options.
- */
+/** Verify a commit reference and return its canonical object ID. */
 export async function verifyCommitInRepository(
   runner: GitCommandRunner,
   repo: GitRepository,
@@ -159,10 +152,13 @@ export async function verifyCommitInRepository(
     });
     const objectId = result.stdout.trim();
     if (!/^[0-9a-f]{40,64}$/i.test(objectId)) {
-      throw new Error('Git returned an invalid commit object ID.');
+      throw new GitCommandError('Git returned an invalid commit object ID.', 1, '');
     }
     return objectId.toLowerCase();
-  } catch {
-    throw new InvalidCommitError(ref, repo.displayName);
+  } catch (error) {
+    if (error instanceof GitCommandError) {
+      throw new InvalidCommitError(ref, repo.displayName);
+    }
+    throw error;
   }
 }
