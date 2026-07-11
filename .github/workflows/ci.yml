@@ -40,7 +40,16 @@ jobs:
         run: pnpm lint
 
       - name: Type check
-        run: pnpm typecheck
+        shell: bash
+        run: pnpm typecheck 2>&1 | tee typecheck-output.txt
+
+      - name: Upload typecheck output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewlume-typecheck-${{ matrix.os }}-node-${{ matrix.node-version }}
+          path: typecheck-output.txt
+          if-no-files-found: error
 
       - name: Test
         run: pnpm test
