@@ -62,7 +62,7 @@ export class SecurityReviewService {
 
     if (this.#lastBuiltPack) return this.#lastBuiltPack;
 
-    const builtPack = this.#getBuilder().build({
+    const builtPack = await this.#getBuilder().build({
       repositoryIdentity: collected.repository.remoteUrl ?? collected.repository.root,
       repositoryDisplayName: collected.repository.displayName,
       reviewMode: 'standard', gitBase: 'HEAD', gitTarget: 'WORKTREE', security: this.#lastScan,
