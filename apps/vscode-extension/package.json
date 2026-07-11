@@ -23,13 +23,15 @@
     "onCommand:reviewlume.createReviewPack",
     "onCommand:reviewlume.addRelatedFiles",
     "onCommand:reviewlume.recommendTestFiles",
+    "onCommand:reviewlume.scanSelectedFiles",
+    "onCommand:reviewlume.exportReviewPack",
     "onCommand:reviewlume.openReviewHistory",
     "onCommand:reviewlume.importReviewResponse",
     "onView:reviewlume.mainView"
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -44,6 +46,8 @@
       { "command": "reviewlume.createReviewPack", "title": "ReviewLume: Create Review Pack" },
       { "command": "reviewlume.addRelatedFiles", "title": "ReviewLume: Add Related Files" },
       { "command": "reviewlume.recommendTestFiles", "title": "ReviewLume: Recommend Test Files" },
+      { "command": "reviewlume.scanSelectedFiles", "title": "ReviewLume: Scan Selected Files" },
+      { "command": "reviewlume.exportReviewPack", "title": "ReviewLume: Export Review Pack" },
       { "command": "reviewlume.openReviewHistory", "title": "ReviewLume: Open Review History" },
       { "command": "reviewlume.importReviewResponse", "title": "ReviewLume: Import Review Response" }
     ],
