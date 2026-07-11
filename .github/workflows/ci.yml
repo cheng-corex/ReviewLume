@@ -43,7 +43,15 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        run: pnpm test
+        run: pnpm test > test-output-${{ matrix.os }}.txt 2>&1
+
+      - name: Upload failing test output
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reviewlume-test-output-${{ matrix.os }}-node-${{ matrix.node-version }}
+          path: test-output-${{ matrix.os }}.txt
+          if-no-files-found: error
 
       - name: Build
         run: pnpm build
