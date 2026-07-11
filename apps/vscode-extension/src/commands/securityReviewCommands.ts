@@ -65,8 +65,6 @@ export function registerSecurityReviewCommands(
         return;
       }
 
-      const repository = service['fileSelectionService' as never] as never;
-      void repository;
       try {
         const pack = await withCancellation('Building privacy-safe Review Pack', (signal) =>
           service.buildReviewPack(signal),
