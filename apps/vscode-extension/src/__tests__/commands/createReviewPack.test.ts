@@ -1,10 +1,14 @@
 import * as vscode from 'vscode';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { registerCreateReviewPack } from '../../commands/createReviewPack';
+import {
+  excludeGeneratedReviewLumeExports,
+  registerCreateReviewPack,
+} from '../../commands/createReviewPack';
 import { COMMANDS } from '../../constants';
 import { initLogService } from '../../services/logService';
 import type { GitContextService } from '../../services/gitContextService';
 import type { FileSelectionService } from '../../services/fileSelectionService';
+import type { GitStatusSnapshot } from '../../../../../packages/git-context/dist/index.js';
 
 interface VscodeTesting {
   setWorkspaceState(folders: unknown[], trusted: boolean): void;
@@ -118,11 +122,40 @@ describe('createReviewPack command', () => {
 
     await testing.getRegisteredCommand(COMMANDS.CREATE_REVIEW_PACK)!();
 
-    expect(initialize).toHaveBeenCalledWith(repository, status, expect.any(AbortSignal));
+    expect(initialize).toHaveBeenCalledWith(
+      repository,
+      expect.objectContaining({ staged: [], unstaged: [], untracked: [], hasChanges: false }),
+      expect.any(AbortSignal),
+    );
     expect(refresh).toHaveBeenCalledTimes(1);
     expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
       expect.stringContaining('3 file(s) selected'),
     );
+  });
+
+  it('removes generated exports from every Git status category before selection', () => {
+    const repository = { root: '/repo' } as GitStatusSnapshot['repository'];
+    const filtered = excludeGeneratedReviewLumeExports({
+      repository,
+      staged: [
+        { path: '.reviewlume/exports/old/REVIEW_REQUEST.md', status: 'added' },
+        { path: 'src/a.ts', status: 'modified' },
+      ],
+      unstaged: [
+        { path: '.reviewlume/exports/pack.zip', status: 'modified' },
+        { path: 'src/b.ts', status: 'modified' },
+      ],
+      untracked: [
+        { path: '.reviewlume/exports/new/REVIEW_REQUEST.md', status: 'untracked' },
+        { path: 'src/c.ts', status: 'untracked' },
+      ],
+      hasChanges: true,
+    });
+
+    expect(filtered.staged.map((entry) => entry.path)).toEqual(['src/a.ts']);
+    expect(filtered.unstaged.map((entry) => entry.path)).toEqual(['src/b.ts']);
+    expect(filtered.untracked.map((entry) => entry.path)).toEqual(['src/c.ts']);
+    expect(filtered.hasChanges).toBe(true);
   });
 
   it('uses an explicit Quick Pick when the service requests repository selection', async () => {
