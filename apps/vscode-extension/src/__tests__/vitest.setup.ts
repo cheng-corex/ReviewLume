@@ -1,7 +1,7 @@
 /**
  * Vitest setup: mock the `vscode` module so unit tests can exercise command,
- * workspace-state, logging, progress, file-picking, configuration, and tree-view behavior
- * without an Extension Host.
+ * workspace-state, logging, progress, file-picking, configuration, locale,
+ * clipboard, and tree-view behavior without an Extension Host.
  */
 import { vi } from 'vitest';
 
@@ -9,13 +9,24 @@ vi.mock('vscode', () => {
   type CommandHandler = (...args: unknown[]) => unknown;
   type CheckboxHandler = (event: { items: Array<[unknown, number]> }) => unknown;
 
-  const workspaceState: { folders: unknown[]; trusted: boolean; configuration: Map<string, unknown> } = {
+  const workspaceState: {
+    folders: unknown[];
+    trusted: boolean;
+    configuration: Map<string, unknown>;
+    language: string;
+  } = {
     folders: [],
     trusted: false,
     configuration: new Map(),
+    language: 'en',
   };
   const registeredCommands = new Map<string, CommandHandler>();
   let checkboxHandler: CheckboxHandler | undefined;
+
+  const clipboard = {
+    readText: vi.fn(async () => ''),
+    writeText: vi.fn(async () => undefined),
+  };
 
   const testing = {
     setWorkspaceState(folders: unknown[], trusted: boolean): void {
@@ -24,6 +35,9 @@ vi.mock('vscode', () => {
     },
     setConfiguration(key: string, value: unknown): void {
       workspaceState.configuration.set(key, value);
+    },
+    setLanguage(language: string): void {
+      workspaceState.language = language;
     },
     getRegisteredCommand(command: string): CommandHandler | undefined {
       return registeredCommands.get(command);
@@ -35,8 +49,11 @@ vi.mock('vscode', () => {
       workspaceState.folders = [];
       workspaceState.trusted = false;
       workspaceState.configuration.clear();
+      workspaceState.language = 'en';
       registeredCommands.clear();
       checkboxHandler = undefined;
+      clipboard.readText.mockReset().mockResolvedValue('');
+      clipboard.writeText.mockReset().mockResolvedValue(undefined);
     },
   };
 
@@ -72,6 +89,12 @@ vi.mock('vscode', () => {
           return { dispose: vi.fn() };
         }),
       })),
+    },
+    env: {
+      get language() {
+        return workspaceState.language;
+      },
+      clipboard,
     },
     ProgressLocation: { Notification: 15 },
     workspace: {
