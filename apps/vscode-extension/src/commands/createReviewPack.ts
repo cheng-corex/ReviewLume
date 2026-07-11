@@ -2,8 +2,7 @@ import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { GitContextService } from '../services/gitContextService';
-import type { DiscoveryResult } from '../vendor/gitContextRuntime';
-import { GitCancelledError } from '../vendor/gitContextRuntime';
+import type { DiscoveryResult } from '../../../../packages/git-context';
 import { logInfo, logWarn } from '../services/logService';
 
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
@@ -13,8 +12,10 @@ interface RepositoryQuickPickItem extends vscode.QuickPickItem {
 /** Register the P2-aware Create Review Pack entry point. */
 export function registerCreateReviewPack(
   context: vscode.ExtensionContext,
-  gitContextService: GitContextService = new GitContextService(),
+  providedGitContextService?: GitContextService,
 ): void {
+  let gitContextService = providedGitContextService;
+
   const disposable = vscode.commands.registerCommand(
     COMMANDS.CREATE_REVIEW_PACK,
     async () => {
@@ -25,6 +26,7 @@ export function registerCreateReviewPack(
         return;
       }
 
+      gitContextService ??= new GitContextService();
       const workspaceFolders =
         vscode.workspace.workspaceFolders?.map((folder) => folder.uri.fsPath) ?? [];
 
@@ -39,7 +41,7 @@ export function registerCreateReviewPack(
             const controller = new AbortController();
             const cancellation = token.onCancellationRequested(() => controller.abort());
             try {
-              return await gitContextService.inspect(
+              return await gitContextService!.inspect(
                 workspaceFolders,
                 async (repositories) => pickRepository(repositories),
                 controller.signal,
@@ -79,15 +81,12 @@ export function registerCreateReviewPack(
           }
         }
       } catch (error) {
-        if (error instanceof GitCancelledError) {
+        if (isErrorCode(error, 'GIT_CANCELLED')) {
           logInfo('createReviewPack Git inspection cancelled');
           return;
         }
 
-        const code =
-          typeof error === 'object' && error !== null && 'code' in error
-            ? String((error as { code: unknown }).code)
-            : 'UNKNOWN';
+        const code = getErrorCode(error);
         logWarn(`Git context inspection failed (${code})`);
         await vscode.window.showErrorMessage(
           'ReviewLume: Git context inspection failed. Check the ReviewLume output channel.',
@@ -119,4 +118,14 @@ async function pickRepository(
   });
 
   return selected?.discoveryResult;
+}
+
+function getErrorCode(error: unknown): string {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code: unknown }).code)
+    : 'UNKNOWN';
+}
+
+function isErrorCode(error: unknown, code: string): boolean {
+  return getErrorCode(error) === code;
 }
