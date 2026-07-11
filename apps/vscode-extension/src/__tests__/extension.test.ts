@@ -62,6 +62,10 @@ describe('reviewlume-vscode manifest', () => {
     { command: 'reviewlume.recommendTestFiles', title: 'Recommend Test Files' },
     { command: 'reviewlume.scanSelectedFiles', title: 'Scan Selected Files' },
     { command: 'reviewlume.exportReviewPack', title: 'Export Review Pack' },
+    {
+      command: 'reviewlume.addExportDirectoryToGitignore',
+      title: 'Add Export Directory to .gitignore',
+    },
     { command: 'reviewlume.openReviewHistory', title: 'Open Review History' },
     { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
   ];
@@ -69,15 +73,25 @@ describe('reviewlume-vscode manifest', () => {
   for (const { command, title } of expectedCommands) {
     it(`registers command and activation event for ${command}`, () => {
       const content = readPkg();
-      expect(content.contributes.commands.find((item) => item.command === command)?.title).toContain(title);
+      expect(
+        content.contributes.commands.find((item) => item.command === command)?.title,
+      ).toContain(title);
       expect(content.activationEvents).toContain(`onCommand:${command}`);
     });
   }
 
   it('contributes the Activity Bar view', () => {
     const content = readPkg();
-    expect(content.contributes.viewsContainers?.activitybar.find((item) => item.id === VIEWS.CONTAINER)?.title).toBe('ReviewLume');
-    expect(content.contributes.views?.[VIEWS.CONTAINER]?.find((item) => item.id === VIEWS.MAIN_VIEW)).toMatchObject({ type: 'tree', name: 'ReviewLume' });
+    expect(
+      content.contributes.viewsContainers?.activitybar.find(
+        (item) => item.id === VIEWS.CONTAINER,
+      )?.title,
+    ).toBe('ReviewLume');
+    expect(
+      content.contributes.views?.[VIEWS.CONTAINER]?.find(
+        (item) => item.id === VIEWS.MAIN_VIEW,
+      ),
+    ).toMatchObject({ type: 'tree', name: 'ReviewLume' });
     expect(content.activationEvents).toContain(`onView:${VIEWS.MAIN_VIEW}`);
   });
 
@@ -89,9 +103,15 @@ describe('reviewlume-vscode manifest', () => {
       path.join(root, 'review-pack', 'index.js'),
     ];
     for (const file of required) expect(fs.existsSync(file), file).toBe(true);
-    expect(fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8')).toContain('check-ignore');
-    expect(fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8')).toContain('HARD_BLOCK');
-    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain('REVIEW_REQUEST.md');
+    expect(
+      fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8'),
+    ).toContain('check-ignore');
+    expect(
+      fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8'),
+    ).toContain('HARD_BLOCK');
+    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain(
+      'REVIEW_REQUEST.md',
+    );
   });
 
   it('keeps every packaged runtime module free of bare workspace imports', () => {
@@ -134,6 +154,8 @@ describe('extension activation', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
     testing.getRegisteredCommand(COMMANDS.HELLO)!();
-    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith('ReviewLume extension is active!');
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      'ReviewLume extension is active!',
+    );
   });
 });
