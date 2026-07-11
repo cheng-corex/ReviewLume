@@ -35,15 +35,15 @@
 
 ## P3：文件选择
 
-- [ ] 展示变更文件树。
-- [ ] 支持勾选/取消。
-- [ ] 支持手动添加关联文件。
-- [ ] 支持测试文件推荐。
-- [ ] 限制在当前审核绑定的 repository 内。
-- [ ] 遵守 `.gitignore`。
-- [ ] 支持 `.reviewlumeignore`。
-- [ ] 拒绝符号链接逃逸 repository。
-- [ ] 多根工作区中不能选择其他 repository 的文件。
+- [x] 展示变更文件树。
+- [x] 支持勾选/取消。
+- [x] 支持手动添加关联文件。
+- [x] 支持测试文件推荐。
+- [x] 限制在当前审核绑定的 repository 内。
+- [x] 遵守 `.gitignore`。
+- [x] 支持 `.reviewlumeignore`。
+- [x] 拒绝符号链接逃逸 repository。
+- [x] 多根工作区中不能选择其他 repository 的文件。
 
 ## P4：敏感扫描
 
