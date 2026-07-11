@@ -22,6 +22,7 @@ const DEFAULT_TIMEOUT = 30_000;
 
 const READ_ONLY_COMMANDS = new Set([
   'rev-parse',
+  'status',
   'diff',
   'ls-files',
   'check-ignore',
