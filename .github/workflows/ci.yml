@@ -40,28 +40,10 @@ jobs:
         run: pnpm lint
 
       - name: Type check
-        shell: bash
-        run: pnpm typecheck 2>&1 | tee typecheck-output.txt
-
-      - name: Upload typecheck output
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: reviewlume-typecheck-${{ matrix.os }}-node-${{ matrix.node-version }}
-          path: typecheck-output.txt
-          if-no-files-found: error
+        run: pnpm typecheck
 
       - name: Test
-        shell: bash
-        run: pnpm test 2>&1 | tee test-output.txt
-
-      - name: Upload test output
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: reviewlume-test-${{ matrix.os }}-node-${{ matrix.node-version }}
-          path: test-output.txt
-          if-no-files-found: error
+        run: pnpm test
 
       - name: Build
         run: pnpm build
