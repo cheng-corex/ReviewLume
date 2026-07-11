@@ -7,7 +7,7 @@ import type {
   DiscoveryResult,
   GitRepository,
   GitStatusSnapshot,
-} from '../../../../../packages/git-context';
+} from '../../../../../packages/git-context/dist/index.js';
 
 function repository(name: string): GitRepository {
   return {
