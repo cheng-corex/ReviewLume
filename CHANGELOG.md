@@ -43,6 +43,11 @@
   - Silent repository-root `.gitignore` updates after successful automatic export, controlled by
     `reviewlume.export.autoUpdateGitignore`.
   - Clickable `ReviewLume: Add Export Directory to .gitignore` recovery action.
+- P6 Review Panel usability:
+  - Automatic Chinese UI for Chinese VS Code locales and English for all other locales.
+  - Localized extension command and settings titles through VS Code NLS resources.
+  - In-panel Markdown, ZIP, or combined export-format selection that updates workspace settings.
+  - Theme-aware primary, hover, focus, and disabled button states using VS Code color variables.
 
 ### Fixed
 

@@ -1,51 +1,25 @@
-/**
- * ReviewLume Review Panel — Webview frontend
- *
- * ═══════════════════════════════════════════════════════════════════
- * SECURITY: This script runs inside the Webview (untrusted boundary).
- * It never accesses the file system, never runs Git, and never
- * constructs Review Packs. All communication with the extension host
- * goes through the validated message bridge.
- *
- * No eval, new Function, or inline event handlers are used.
- * ═══════════════════════════════════════════════════════════════════
- */
 /* eslint-env browser */
 /* global acquireVsCodeApi */
 (function () {
   'use strict';
 
-  // ─── VSCode API ──────────────────────────────────────────────────
   var vscode = acquireVsCodeApi();
-
-  // ─── State ───────────────────────────────────────────────────────
+  var i18n = window.__REVIEWLUME_I18N__ || {};
   var currentState = null;
-
-  // ─── Collapse state ──────────────────────────────────────────────
-  var collapsedSections = {
-    files: false,
-    scanResults: false,
-    preview: false,
-  };
-
-  // ─── DOM refs ────────────────────────────────────────────────────
+  var collapsedSections = { files: false, scanResults: false, preview: false };
   var app = document.getElementById('app');
 
-  // ─── Helpers ─────────────────────────────────────────────────────
-  function $$(selector, parent) {
-    return Array.from((parent || document).querySelectorAll(selector));
+  function text(key, fallback) {
+    return typeof i18n[key] === 'string' ? i18n[key] : fallback;
   }
 
   function createElement(tag, attrs) {
     var el = document.createElement(tag);
-    if (attrs) {
-      if (attrs.className) el.className = attrs.className;
-      if (attrs.textContent) el.textContent = attrs.textContent;
-      if (attrs.innerHTML) el.innerHTML = attrs.innerHTML;
-      if (attrs.onclick) el.addEventListener('click', attrs.onclick);
-      if (attrs.disabled) el.disabled = true;
-      if (attrs.id) el.id = attrs.id;
-    }
+    if (!attrs) return el;
+    if (attrs.className) el.className = attrs.className;
+    if (attrs.textContent !== undefined) el.textContent = attrs.textContent;
+    if (attrs.disabled) el.disabled = true;
+    if (attrs.id) el.id = attrs.id;
     return el;
   }
 
@@ -53,10 +27,8 @@
     vscode.postMessage(message);
   }
 
-  // ─── Render ──────────────────────────────────────────────────────
   function render(state) {
     currentState = state;
-
     if (!state || !state.hasSession) {
       renderEmptyState();
       return;
@@ -65,140 +37,163 @@
     app.innerHTML = '';
     app.appendChild(renderSummaryBar(state));
     app.appendChild(renderActionsBar(state));
-    app.appendChild(renderSection(
-      'Files',
-      'files',
-      collapsedSections.files,
-      () => renderFileTree(state),
-    ));
-    app.appendChild(renderSection(
-      'Scan Results',
-      'scanResults',
-      collapsedSections.scanResults,
-      () => renderFindings(state),
-    ));
-    app.appendChild(renderSection(
-      'Review Prompt Preview',
-      'preview',
-      collapsedSections.preview,
-      () => renderPreview(state),
-    ));
-
-    // Bind collapse toggles
-    $$('.section-header').forEach(function (header) {
-      header.addEventListener('click', function () {
-        var key = header.dataset.sectionKey;
-        if (!key) return;
-        collapsedSections[key] = !collapsedSections[key];
-        render(currentState);
-      });
-    });
+    app.appendChild(renderSection(text('files', 'Files'), 'files', function () {
+      return renderFileTree(state);
+    }));
+    app.appendChild(renderSection(text('scanResults', 'Scan Results'), 'scanResults', function () {
+      return renderFindings(state);
+    }));
+    app.appendChild(renderSection(text('preview', 'Review Prompt Preview'), 'preview', function () {
+      return renderPreview(state);
+    }));
   }
 
   function renderEmptyState() {
-    app.innerHTML =
-      '<div class="empty-state">' +
-        '<h2>No Active Review Session</h2>' +
-        '<p>Create a new Review Pack to start a review session. ' +
-        'Use the "Create Review Pack" action from the ReviewLume sidebar ' +
-        'or the Command Palette.</p>' +
-      '</div>';
+    app.innerHTML = '';
+    var container = createElement('div', { className: 'empty-state' });
+    container.appendChild(createElement('h2', {
+      textContent: text('noActiveReview', 'No Active Review Session'),
+    }));
+    container.appendChild(createElement('p', {
+      textContent: text('noActiveReviewHelp', 'Create a Review Pack to start a review session.'),
+    }));
+    app.appendChild(container);
+  }
+
+  function summaryItem(label, valueNode) {
+    var item = createElement('div', { className: 'summary-item' });
+    item.appendChild(createElement('span', { className: 'summary-label', textContent: label }));
+    var value = createElement('span', { className: 'summary-value' });
+    if (typeof valueNode === 'string') value.textContent = valueNode;
+    else value.appendChild(valueNode);
+    item.appendChild(value);
+    return item;
+  }
+
+  function badge(label, kind) {
+    return createElement('span', { className: 'status-badge ' + kind, textContent: label });
   }
 
   function renderSummaryBar(state) {
     var bar = createElement('div', { className: 'summary-bar' });
-    bar.innerHTML =
-      '<div class="summary-item">' +
-        '<span class="summary-label">Repository</span>' +
-        '<span class="summary-value repository">' + escapeHtml(state.repositoryDisplayName) + '</span>' +
-      '</div>' +
-      '<div class="summary-item">' +
-        '<span class="summary-label">Selected Files</span>' +
-        '<span class="summary-value">' + state.selectedCount + ' / ' + state.totalCount + '</span>' +
-      '</div>' +
-      '<div class="summary-item">' +
-        '<span class="summary-label">Scan Status</span>' +
-        '<span class="summary-value">' + (state.hasScanResult ? renderScanBadge(state) : '<span class="status-badge neutral">Not scanned</span>') + '</span>' +
-      '</div>' +
-      '<div class="summary-item">' +
-        '<span class="summary-label">Export</span>' +
-        '<span class="summary-value">' + (state.canExport ? '<span class="status-badge passed">Ready</span>' : '<span class="status-badge failed">Blocked</span>') + '</span>' +
-      '</div>' +
-      '<div class="summary-item">' +
-        '<span class="summary-label">Est. Size</span>' +
-        '<span class="summary-value">' + formatBytes(state.reviewPackByteLength) + '</span>' +
-      '</div>' +
-      '<div class="summary-item">' +
-        '<span class="summary-label">Est. Tokens</span>' +
-        '<span class="summary-value">' + state.estimatedTokens.toLocaleString() + '</span>' +
-      '</div>';
+    bar.appendChild(summaryItem(text('repository', 'Repository'), state.repositoryDisplayName));
+    bar.appendChild(summaryItem(text('selectedFiles', 'Selected Files'), state.selectedCount + ' / ' + state.totalCount));
+    bar.appendChild(summaryItem(
+      text('scanStatus', 'Scan Status'),
+      state.hasScanResult ? renderScanBadge(state) : badge(text('notScanned', 'Not scanned'), 'neutral'),
+    ));
+    bar.appendChild(summaryItem(
+      text('exportStatus', 'Export'),
+      state.canExport ? badge(text('ready', 'Ready'), 'passed') : badge(text('blocked', 'Blocked'), 'failed'),
+    ));
+    bar.appendChild(summaryItem(text('estimatedSize', 'Est. Size'), formatBytes(state.reviewPackByteLength)));
+    bar.appendChild(summaryItem(text('estimatedTokens', 'Est. Tokens'), Number(state.estimatedTokens || 0).toLocaleString()));
     return bar;
   }
 
   function renderScanBadge(state) {
-    if (state.canExport) {
-      return '<span class="status-badge passed">Passed</span>';
-    }
+    if (state.canExport) return badge(text('passed', 'Passed'), 'passed');
     var reasons = [];
     if (state.hardBlockCount > 0) reasons.push(state.hardBlockCount + ' HARD_BLOCK');
     if (state.blockCount > 0) reasons.push(state.blockCount + ' BLOCK');
-    if (state.warnCount - state.confirmedWarnCount > 0) reasons.push((state.warnCount - state.confirmedWarnCount) + ' unconfirmed WARN');
-    return '<span class="status-badge failed">' + escapeHtml(reasons.join(', ')) + '</span>';
+    var unresolvedWarns = state.warnCount - state.confirmedWarnCount;
+    if (unresolvedWarns > 0) {
+      reasons.push(unresolvedWarns + ' ' + text('unconfirmedWarn', 'unconfirmed WARN'));
+    }
+    return badge(reasons.join(', ') || text('blocked', 'Blocked'), 'failed');
+  }
+
+  function actionButton(label, action, className, disabled) {
+    var button = createElement('button', {
+      className: 'btn' + (className ? ' ' + className : ''),
+      textContent: label,
+      disabled: disabled,
+    });
+    button.dataset.action = action;
+    return button;
+  }
+
+  function renderExportFormatControl(state) {
+    var control = createElement('div', { className: 'export-format-control' });
+    var textContainer = createElement('div', { className: 'export-format-text' });
+    textContainer.appendChild(createElement('label', {
+      className: 'export-format-label',
+      textContent: text('exportFormat', 'Export format'),
+    }));
+    textContainer.appendChild(createElement('span', {
+      className: 'export-format-help',
+      textContent: text('exportFormatHelp', 'Applies to automatic export.'),
+    }));
+
+    var select = createElement('select', { className: 'export-format-select' });
+    select.setAttribute('aria-label', text('exportFormat', 'Export format'));
+    [
+      ['markdown', text('markdown', 'Markdown')],
+      ['zip', text('zip', 'ZIP')],
+      ['both', text('both', 'Markdown + ZIP')],
+    ].forEach(function (entry) {
+      var option = createElement('option', { textContent: entry[1] });
+      option.value = entry[0];
+      select.appendChild(option);
+    });
+    select.value = state.exportFormat || 'markdown';
+    select.addEventListener('change', function () {
+      postMessage({ type: 'setExportFormat', format: select.value });
+    });
+
+    control.appendChild(textContainer);
+    control.appendChild(select);
+    return control;
   }
 
   function renderActionsBar(state) {
     var bar = createElement('div', { className: 'actions-bar' });
     var canExport = state.canExport && state.hasScanResult && state.reviewPackByteLength > 0;
+    bar.appendChild(renderExportFormatControl(state));
+    bar.appendChild(actionButton(text('createReviewPack', 'Create Review Pack'), 'createReviewPack'));
+    bar.appendChild(actionButton(text('addRelatedFiles', 'Add Related Files'), 'addRelatedFiles'));
+    bar.appendChild(actionButton(text('recommendTestFiles', 'Recommend Test Files'), 'recommendTestFiles'));
+    bar.appendChild(actionButton(text('scanSelectedFiles', 'Scan Selected Files'), 'scan', 'btn-warning'));
+    bar.appendChild(actionButton(text('exportReviewPack', 'Export Review Pack'), 'export', 'btn-primary', !canExport));
+    bar.appendChild(actionButton(text('copyReviewPrompt', 'Copy Review Prompt'), 'copyPrompt', '', !canExport));
+    bar.appendChild(actionButton(text('addToGitignore', 'Add to .gitignore'), 'updateGitignore'));
+    bar.appendChild(actionButton(text('refresh', 'Refresh'), 'refresh'));
 
-    bar.innerHTML =
-      '<button class="btn" data-action="createReviewPack">Create Review Pack</button>' +
-      '<button class="btn" data-action="addRelatedFiles">Add Related Files</button>' +
-      '<button class="btn" data-action="recommendTestFiles">Recommend Test Files</button>' +
-      '<button class="btn btn-warning" data-action="scan">Scan Selected Files</button>' +
-      '<button class="btn btn-primary" data-action="export"' + (canExport ? '' : ' disabled') + '>Export Review Pack</button>' +
-      '<button class="btn" data-action="copyPrompt"' + (state.reviewPackByteLength > 0 ? '' : ' disabled') + '>Copy Review Prompt</button>' +
-      '<button class="btn" data-action="updateGitignore">Add to .gitignore</button>' +
-      '<button class="btn" data-action="refresh">Refresh</button>';
-
-    bar.addEventListener('click', function (e) {
-      var btn = e.target.closest('[data-action]');
-      if (!btn) return;
-
-      var action = btn.dataset.action;
-      if (action === 'createReviewPack') postMessage({ type: 'createReviewPack' });
-      else if (action === 'addRelatedFiles') postMessage({ type: 'addRelatedFiles' });
-      else if (action === 'recommendTestFiles') postMessage({ type: 'recommendTestFiles' });
-      else if (action === 'scan') postMessage({ type: 'scan' });
-      else if (action === 'export') postMessage({ type: 'export' });
-      else if (action === 'copyPrompt') postMessage({ type: 'copyPrompt' });
-      else if (action === 'updateGitignore') postMessage({ type: 'updateGitignore' });
-      else if (action === 'refresh') postMessage({ type: 'refresh' });
+    bar.addEventListener('click', function (event) {
+      var target = event.target;
+      if (!(target instanceof Element)) return;
+      var button = target.closest('[data-action]');
+      if (!button || button.disabled) return;
+      var action = button.dataset.action;
+      var messages = {
+        createReviewPack: 'createReviewPack',
+        addRelatedFiles: 'addRelatedFiles',
+        recommendTestFiles: 'recommendTestFiles',
+        scan: 'scan',
+        export: 'export',
+        copyPrompt: 'copyPrompt',
+        updateGitignore: 'updateGitignore',
+        refresh: 'refresh',
+      };
+      if (messages[action]) postMessage({ type: messages[action] });
     });
-
     return bar;
   }
 
-  function renderSection(key, sectionKey, isCollapsed, contentFn) {
+  function renderSection(label, sectionKey, contentFactory) {
     var section = createElement('div', { className: 'review-section' });
+    var collapsed = collapsedSections[sectionKey];
     var header = createElement('div', {
-      className: 'section-header' + (isCollapsed ? ' collapsed' : ''),
-      textContent: key,
+      className: 'section-header' + (collapsed ? ' collapsed' : ''),
     });
-    header.dataset.sectionKey = sectionKey;
-
-    var collapseIcon = createElement('span', {
-      className: 'collapse-icon',
-      textContent: '\u25BC',
+    header.appendChild(createElement('span', { className: 'collapse-icon', textContent: '\u25BC' }));
+    header.appendChild(document.createTextNode(label));
+    header.addEventListener('click', function () {
+      collapsedSections[sectionKey] = !collapsedSections[sectionKey];
+      render(currentState);
     });
-    header.prepend(collapseIcon);
-
-    var body = createElement('div', {
-      className: 'section-body' + (isCollapsed ? ' hidden' : ''),
-    });
-    if (!isCollapsed && contentFn) {
-      body.appendChild(contentFn());
-    }
-
+    var body = createElement('div', { className: 'section-body' + (collapsed ? ' hidden' : '') });
+    if (!collapsed) body.appendChild(contentFactory());
     section.appendChild(header);
     section.appendChild(body);
     return section;
@@ -207,351 +202,144 @@
   function renderFileTree(state) {
     var tree = createElement('ul', { className: 'file-tree' });
     var entries = state.files || [];
-
     if (entries.length === 0) {
-      var empty = createElement('li', {
-        textContent: 'No files in the current review.',
-        className: 'file-item',
-      });
-      tree.appendChild(empty);
+      tree.appendChild(createElement('li', { className: 'file-item', textContent: text('noFiles', 'No files in the current review.') }));
       return tree;
     }
-
-    // Build tree structure from flat paths
-    var treeData = buildFileTree(entries);
-
-    function renderNode(node) {
-      if (node.isDir) {
-        var dirLi = createElement('li', { className: 'file-item' });
-        dirLi.style.fontWeight = '600';
-        dirLi.textContent = node.name + '/';
-        dirLi.dataset.path = node.path;
-        dirLi.addEventListener('click', function () {
-          // Toggle all files under this directory
-          var expanded = dirLi.getAttribute('data-expanded') !== 'true';
-          dirLi.setAttribute('data-expanded', String(expanded));
-
-          var childContainer = dirLi.querySelector('.dir-children');
-          if (!childContainer) return;
-          var checkboxes = childContainer.querySelectorAll('.file-checkbox');
-          checkboxes.forEach(function (cb) {
-            cb.checked = expanded;
-          });
-          // Send toggle for each file in this directory
-          entries.filter(function (f) {
-            return f.path === node.path || f.path.startsWith(node.path + '/');
-          }).forEach(function (f) {
-            if (f.selected !== expanded) {
-              postMessage({ type: 'toggleFile', filePath: f.path, selected: expanded });
-            }
-          });
-        });
-
-        var childrenContainer = createElement('ul', {
-          className: 'dir-children',
-        });
-        childrenContainer.style.paddingLeft = '16px';
-        childrenContainer.style.listStyle = 'none';
-
-        (node.children || []).forEach(function (child) {
-          childrenContainer.appendChild(renderNode(child));
-        });
-
-        dirLi.appendChild(childrenContainer);
-        return dirLi;
-      }
-
-      var fileLi = createElement('li', { className: 'file-item' });
-      var cb = createElement('input', {
-        className: 'checkbox file-checkbox',
-      });
-      cb.type = 'checkbox';
-      cb.checked = node.selected;
-      cb.addEventListener('change', function () {
-        postMessage({ type: 'toggleFile', filePath: node.path, selected: cb.checked });
-      });
-
-      var pathSpan = createElement('span', {
-        className: 'file-path',
-        textContent: node.path,
-      });
-
-      var sourceSpan = createElement('span', {
-        className: 'file-source',
-        textContent: node.sourceLabel,
-      });
-
-      var statusSpan = createElement('span', {
-        className: 'file-status',
-        textContent: node.statusLabel,
-      });
-
-      fileLi.appendChild(cb);
-      fileLi.appendChild(pathSpan);
-      fileLi.appendChild(sourceSpan);
-      fileLi.appendChild(statusSpan);
-      return fileLi;
-    }
-
-    treeData.forEach(function (node) {
-      tree.appendChild(renderNode(node));
-    });
-
-    return tree;
-  }
-
-  function buildFileTree(entries) {
-    var root = [];
-
     entries.forEach(function (entry) {
-      var parts = entry.path.split('/');
-      var current = root;
-
-      for (var i = 0; i < parts.length; i++) {
-        var part = parts[i];
-        var isLast = i === parts.length - 1;
-
-        if (isLast) {
-          // File node
-          var changeDesc = entry.changeKinds && entry.changeKinds.length > 0
-            ? entry.changeKinds.join(', ')
-            : 'unchanged';
-          var sourceLabel = entry.source === 'manual' ? 'related'
-            : entry.source === 'recommended' ? 'test'
-            : 'changed';
-          var statusLabel = entry.exists ? changeDesc : changeDesc + ', deleted';
-
-          current.push({
-            name: part,
-            path: entry.path,
-            selected: entry.selected,
-            isDir: false,
-            sourceLabel: sourceLabel,
-            statusLabel: statusLabel,
-          });
-        } else {
-          // Directory segment
-          var existing = current.filter(function (n) { return n.isDir && n.name === part; });
-          if (existing.length > 0) {
-            current = existing[0].children;
-          } else {
-            var dir = { name: part, path: parts.slice(0, i + 1).join('/'), isDir: true, children: [] };
-            current.push(dir);
-            current = dir.children;
-          }
-        }
-      }
+      var item = createElement('li', { className: 'file-item' });
+      var checkbox = createElement('input', { className: 'checkbox file-checkbox' });
+      checkbox.type = 'checkbox';
+      checkbox.checked = entry.selected;
+      checkbox.addEventListener('change', function () {
+        postMessage({ type: 'toggleFile', filePath: entry.path, selected: checkbox.checked });
+      });
+      item.appendChild(checkbox);
+      item.appendChild(createElement('span', { className: 'file-path', textContent: entry.path }));
+      item.appendChild(createElement('span', {
+        className: 'file-source',
+        textContent: entry.source === 'manual'
+          ? text('related', 'related')
+          : entry.source === 'recommended'
+            ? text('recommendedTest', 'test')
+            : text('changed', 'changed'),
+      }));
+      var changeText = entry.changeKinds && entry.changeKinds.length > 0
+        ? entry.changeKinds.join(', ')
+        : text('unchanged', 'unchanged');
+      if (!entry.exists) changeText += ', ' + text('deleted', 'deleted');
+      item.appendChild(createElement('span', { className: 'file-status', textContent: changeText }));
+      tree.appendChild(item);
     });
-
-    return root;
+    return tree;
   }
 
   function renderFindings(state) {
     var container = createElement('div', { className: 'findings-list' });
     var findings = state.findings || [];
-
     if (!state.hasScanResult || findings.length === 0) {
-      var p = createElement('p', {
-        textContent: 'No scan results yet. Run "Scan Selected Files" to check for sensitive content.',
-        style: 'color: var(--text-secondary); padding: var(--space-sm);',
-      });
-      return p;
+      return createElement('p', { textContent: text('noScanResults', 'No scan results yet.') });
     }
 
-    var levels = [
-      { key: 'HARD_BLOCK', label: 'HARD_BLOCK (' + state.hardBlockCount + ')', level: 'hard_block' },
-      { key: 'BLOCK', label: 'BLOCK (' + state.blockCount + ')', level: 'block' },
-      { key: 'WARN', label: 'WARN (' + state.warnCount + ', ' + state.confirmedWarnCount + ' confirmed)', level: 'warn' },
-      { key: 'INFO', label: 'INFO (' + state.infoCount + ')', level: 'info' },
-    ];
-
-    levels.forEach(function (levelDef) {
-      var levelFindings = findings.filter(function (f) { return f.level === levelDef.key; });
+    [
+      ['HARD_BLOCK', state.hardBlockCount, 'hard_block'],
+      ['BLOCK', state.blockCount, 'block'],
+      ['WARN', state.warnCount, 'warn'],
+      ['INFO', state.infoCount, 'info'],
+    ].forEach(function (definition) {
+      var level = definition[0];
+      var levelFindings = findings.filter(function (finding) { return finding.level === level; });
       if (levelFindings.length === 0) return;
-
       var group = createElement('div', { className: 'finding-group' });
-      var header = createElement('div', {
-        className: 'finding-group-header level-' + levelDef.level,
-        textContent: levelDef.label,
-      });
-      header.dataset.expanded = 'true';
-      header.addEventListener('click', function () {
-        var expanded = header.dataset.expanded === 'true';
-        header.dataset.expanded = String(!expanded);
-        var body = group.querySelector('.finding-group-body');
-        if (body) {
-          body.style.display = expanded ? 'none' : '';
-        }
-      });
-
+      var label = level + ' (' + definition[1];
+      if (level === 'WARN') label += ', ' + state.confirmedWarnCount + ' ' + text('confirmed', 'confirmed');
+      label += ')';
+      group.appendChild(createElement('div', {
+        className: 'finding-group-header level-' + definition[2],
+        textContent: label,
+      }));
       var body = createElement('div', { className: 'finding-group-body' });
-
       levelFindings.forEach(function (finding) {
         var item = createElement('div', { className: 'finding-item' });
-
-        var meta = createElement('div', { className: 'finding-meta' });
-        meta.innerHTML =
-          '<span class="finding-file">' + escapeHtml(finding.file) + '</span>' +
-          '<span class="finding-line">:' + finding.line + ':' + finding.column + '</span>' +
-          '<span class="finding-rule">' + escapeHtml(finding.rule) + '</span>';
-
-        var msgSpan = createElement('div', {
-          className: 'finding-message',
-          textContent: finding.message,
-        });
-
-        var previewSpan = createElement('div', {
-          className: 'finding-preview',
-          textContent: finding.preview,
-        });
-
-        item.appendChild(meta);
-        item.appendChild(msgSpan);
-        item.appendChild(previewSpan);
-
-        // Show confirm button for unresolved WARN findings
-        if (levelDef.key === 'WARN' && !finding.confirmed) {
+        item.appendChild(createElement('div', {
+          className: 'finding-meta',
+          textContent: finding.file + ':' + finding.line + ':' + finding.column + ' · ' + finding.rule,
+        }));
+        item.appendChild(createElement('div', { className: 'finding-message', textContent: finding.message }));
+        item.appendChild(createElement('div', { className: 'finding-preview', textContent: finding.preview }));
+        if (level === 'WARN' && !finding.confirmed) {
           var actions = createElement('div', { className: 'finding-actions' });
-          var confirmBtn = createElement('button', {
-            className: 'btn btn-sm btn-warning',
-            textContent: 'Confirm WARN',
-            onclick: function () {
-              postMessage({ type: 'confirmWarning', findingIds: [finding.id] });
-            },
+          var confirm = actionButton(text('confirmWarn', 'Confirm WARN'), '', 'btn-sm btn-warning');
+          confirm.addEventListener('click', function () {
+            postMessage({ type: 'confirmWarning', findingIds: [finding.id] });
           });
-          actions.appendChild(confirmBtn);
+          actions.appendChild(confirm);
           item.appendChild(actions);
         }
-
         body.appendChild(item);
       });
-
-      group.appendChild(header);
       group.appendChild(body);
       container.appendChild(group);
     });
-
     return container;
   }
 
   function renderPreview(state) {
     var preview = createElement('div', { className: 'preview-area' });
-
     var header = createElement('div', { className: 'preview-header' });
-    header.innerHTML =
-      '<span>REVIEW_REQUEST.md</span>' +
-      '<div class="preview-stats">' +
-        '<span>' + state.reviewPackCharLength.toLocaleString() + ' chars</span>' +
-        '<span>' + formatBytes(state.reviewPackByteLength) + '</span>' +
-        '<span>' + state.estimatedTokens.toLocaleString() + ' tokens</span>' +
-      '</div>';
+    header.appendChild(createElement('span', { textContent: 'REVIEW_REQUEST.md' }));
+    var stats = createElement('div', { className: 'preview-stats' });
+    stats.appendChild(createElement('span', { textContent: Number(state.reviewPackCharLength || 0).toLocaleString() + ' ' + text('chars', 'chars') }));
+    stats.appendChild(createElement('span', { textContent: formatBytes(state.reviewPackByteLength) }));
+    stats.appendChild(createElement('span', { textContent: Number(state.estimatedTokens || 0).toLocaleString() + ' ' + text('tokens', 'tokens') }));
+    header.appendChild(stats);
+    preview.appendChild(header);
 
     var body = createElement('div', { className: 'preview-body' });
     if (state.reviewPackPreview) {
-      var pre = createElement('pre');
-      pre.textContent = state.reviewPackPreview;
-      body.appendChild(pre);
+      body.appendChild(createElement('pre', { textContent: state.reviewPackPreview }));
     } else {
-      body.textContent = 'No preview available. Create a Review Pack to generate a preview.';
-      body.style.padding = 'var(--space-md)';
-      body.style.color = 'var(--text-secondary)';
+      body.textContent = text('noPreview', 'No preview available.');
     }
-
-    preview.appendChild(header);
     preview.appendChild(body);
 
     if (state.reviewPackTruncated && state.truncationMessages.length > 0) {
-      var notice = createElement('div', { className: 'preview-truncation-notice' });
-      notice.innerHTML = '<strong>Truncated:</strong> ' + escapeHtml(state.truncationMessages.join(', '));
-      preview.appendChild(notice);
+      preview.appendChild(createElement('div', {
+        className: 'preview-truncation-notice',
+        textContent: text('truncated', 'Truncated') + ': ' + state.truncationMessages.join(', '),
+      }));
     }
-
     return preview;
   }
 
-  // ─── Utilities ───────────────────────────────────────────────────
-  function escapeHtml(str) {
-    if (!str) return '';
-    var div = document.createElement('div');
-    div.appendChild(document.createTextNode(str));
-    return div.innerHTML;
-  }
-
   function formatBytes(bytes) {
-    if (!bytes || bytes === 0) return '0 B';
+    if (!bytes) return '0 B';
     var units = ['B', 'KB', 'MB'];
-    var i = Math.floor(Math.log(bytes) / Math.log(1024));
-    if (i >= units.length) i = units.length - 1;
-    return (bytes / Math.pow(1024, i)).toFixed(i === 0 ? 0 : 1) + ' ' + units[i];
+    var index = Math.min(Math.floor(Math.log(bytes) / Math.log(1024)), units.length - 1);
+    return (bytes / Math.pow(1024, index)).toFixed(index === 0 ? 0 : 1) + ' ' + units[index];
   }
 
-  // ─── Message handler ─────────────────────────────────────────────
+  function showToast(message, success) {
+    var existing = document.querySelector('.error-toast');
+    if (existing) existing.remove();
+    var toast = createElement('div', {
+      className: 'error-toast' + (success ? ' toast-success' : ''),
+      textContent: message,
+    });
+    document.body.appendChild(toast);
+    setTimeout(function () {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+    }, success ? 3000 : 5000);
+  }
+
   window.addEventListener('message', function (event) {
     var message = event.data;
     if (!message || !message.type) return;
-
-    switch (message.type) {
-      case 'state':
-        render(message.payload);
-        break;
-
-      case 'error':
-        showError(message.message);
-        break;
-
-      case 'scanComplete':
-        render(message.payload);
-        break;
-
-      case 'exportComplete':
-        showToast('Review Pack exported: ' + message.reviewId);
-        break;
-
-      case 'exportError':
-        showError(message.message);
-        break;
-
-      case 'copyComplete':
-        showToast('Review prompt copied to clipboard');
-        break;
-
-      default:
-        break;
-    }
+    if (message.type === 'state') render(message.payload);
+    else if (message.type === 'error') showToast(message.message, false);
+    else if (message.type === 'copyComplete') showToast(text('copied', 'Review prompt copied to clipboard'), true);
+    else if (message.type === 'formatUpdated') showToast(text('formatUpdated', 'Export format updated'), true);
   });
 
-  // ─── Toast notifications ─────────────────────────────────────────
-  function showError(msg) {
-    var existing = document.querySelector('.error-toast');
-    if (existing) existing.remove();
-
-    var toast = createElement('div', {
-      className: 'error-toast',
-      textContent: msg,
-    });
-    document.body.appendChild(toast);
-
-    setTimeout(function () {
-      if (toast.parentNode) toast.parentNode.removeChild(toast);
-    }, 5000);
-  }
-
-  function showToast(msg) {
-    var existing = document.querySelector('.error-toast');
-    if (existing) existing.remove();
-
-    var toast = createElement('div', {
-      className: 'error-toast',
-      textContent: msg,
-    });
-    toast.style.background = 'var(--success)';
-    document.body.appendChild(toast);
-
-    setTimeout(function () {
-      if (toast.parentNode) toast.parentNode.removeChild(toast);
-    }, 3000);
-  }
-
-  // ─── Request initial state ───────────────────────────────────────
   postMessage({ type: 'refresh' });
 })();

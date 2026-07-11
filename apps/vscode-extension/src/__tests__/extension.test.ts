@@ -45,7 +45,14 @@ function listPackagedJavaScriptFiles(directory: string): string[] {
 
 describe('reviewlume-vscode manifest', () => {
   const pkgPath = path.resolve(__dirname, '../../package.json');
+  const nlsPath = path.resolve(__dirname, '../../package.nls.json');
   const readPkg = (): PkgJson => JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as PkgJson;
+  const readNls = (): Record<string, string> =>
+    JSON.parse(fs.readFileSync(nlsPath, 'utf-8')) as Record<string, string>;
+  const resolveNls = (value: string): string => {
+    const match = /^%(.+)%$/.exec(value);
+    return match ? readNls()[match[1]] ?? value : value;
+  };
 
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
@@ -74,9 +81,11 @@ describe('reviewlume-vscode manifest', () => {
   for (const { command, title } of expectedCommands) {
     it(`registers command and activation event for ${command}`, () => {
       const content = readPkg();
-      expect(
-        content.contributes.commands.find((item) => item.command === command)?.title,
-      ).toContain(title);
+      const manifestTitle = content.contributes.commands.find(
+        (item) => item.command === command,
+      )?.title;
+      expect(manifestTitle).toBeDefined();
+      expect(resolveNls(manifestTitle!)).toContain(title);
       expect(content.activationEvents).toContain(`onCommand:${command}`);
     });
   }
@@ -96,7 +105,16 @@ describe('reviewlume-vscode manifest', () => {
     expect(content.activationEvents).toContain(`onView:${VIEWS.MAIN_VIEW}`);
   });
 
-  it('packages self-contained Git, scanner, and Review Pack runtimes', () => {
+  it('includes English and Chinese NLS resources', () => {
+    const english = readNls();
+    const chinese = JSON.parse(
+      fs.readFileSync(path.resolve(__dirname, '../../package.nls.zh-cn.json'), 'utf8'),
+    ) as Record<string, string>;
+    expect(english['command.openReviewPanel']).toContain('Open Review Panel');
+    expect(chinese['command.openReviewPanel']).toContain('打开审核面板');
+  });
+
+  it('packages self-contained Git, scanner, Review Pack, and Webview runtimes', () => {
     const root = path.resolve(__dirname, '../../dist/vendor');
     const required = [
       path.join(root, 'git-context', 'index.js'),
@@ -104,15 +122,13 @@ describe('reviewlume-vscode manifest', () => {
       path.join(root, 'review-pack', 'index.js'),
     ];
     for (const file of required) expect(fs.existsSync(file), file).toBe(true);
-    expect(
-      fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8'),
-    ).toContain('check-ignore');
-    expect(
-      fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8'),
-    ).toContain('HARD_BLOCK');
-    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain(
-      'REVIEW_REQUEST.md',
-    );
+    expect(fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8')).toContain('check-ignore');
+    expect(fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8')).toContain('HARD_BLOCK');
+    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain('REVIEW_REQUEST.md');
+    const mediaRoot = path.resolve(__dirname, '../../dist/webview/media');
+    for (const file of ['reviewPanel.js', 'reviewPanel.css', 'reviewPanelTheme.css']) {
+      expect(fs.existsSync(path.join(mediaRoot, file)), file).toBe(true);
+    }
   });
 
   it('keeps every packaged runtime module free of bare workspace imports', () => {

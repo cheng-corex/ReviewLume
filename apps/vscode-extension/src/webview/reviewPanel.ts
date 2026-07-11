@@ -6,6 +6,11 @@
 import * as crypto from 'node:crypto';
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
+import {
+  getReviewPanelStrings,
+  type ExportFormat,
+  type ReviewPanelStrings,
+} from '../localization';
 import type { FileSelectionService } from '../services/fileSelectionService';
 import { logInfo, logWarn } from '../services/logService';
 import type { SecurityReviewService } from '../services/securityReviewService';
@@ -19,9 +24,6 @@ import {
 } from './reviewPanelMessages';
 
 const REVIEW_PANEL_VIEW_TYPE = 'reviewlume.reviewPanel';
-const GENERIC_OPERATION_ERROR =
-  'ReviewLume: The panel operation failed. Check the ReviewLume output channel.';
-
 let existingPanel: vscode.WebviewPanel | undefined;
 let existingController: ReviewPanelController | undefined;
 
@@ -36,10 +38,11 @@ export function createOrShowReviewPanel(
     return existingPanel;
   }
 
+  const strings = getReviewPanelStrings(vscode.env.language);
   const nonce = crypto.randomBytes(16).toString('base64url');
   const panel = vscode.window.createWebviewPanel(
     REVIEW_PANEL_VIEW_TYPE,
-    'ReviewLume Review Panel',
+    strings.panelTitle,
     vscode.ViewColumn.Beside,
     {
       enableScripts: true,
@@ -50,11 +53,12 @@ export function createOrShowReviewPanel(
     },
   );
 
-  panel.webview.html = buildReviewPanelHtml(panel.webview, nonce);
+  panel.webview.html = buildReviewPanelHtml(panel.webview, nonce, strings);
   const controller = new ReviewPanelController(
     panel,
     fileSelectionService,
     securityReviewService,
+    strings,
   );
   existingPanel = panel;
   existingController = controller;
@@ -68,7 +72,6 @@ export function createOrShowReviewPanel(
   return panel;
 }
 
-/** Refresh the currently open panel after tree/command state changes. */
 export function refreshReviewPanel(): void {
   void existingController?.postState();
 }
@@ -78,16 +81,19 @@ export class ReviewPanelController {
   readonly #panel: vscode.WebviewPanel;
   readonly #fileSelectionService: FileSelectionService;
   readonly #securityReviewService: SecurityReviewService;
+  readonly #strings: ReviewPanelStrings;
   #disposed = false;
 
   constructor(
     panel: vscode.WebviewPanel,
     fileSelectionService: FileSelectionService,
     securityReviewService: SecurityReviewService,
+    strings = getReviewPanelStrings(vscode.env.language),
   ) {
     this.#panel = panel;
     this.#fileSelectionService = fileSelectionService;
     this.#securityReviewService = securityReviewService;
+    this.#strings = strings;
     this.disposables.push(
       panel.webview.onDidReceiveMessage((rawMessage: unknown) =>
         this.#handleMessage(rawMessage),
@@ -109,16 +115,14 @@ export class ReviewPanelController {
   dispose(): void {
     if (this.#disposed) return;
     this.#disposed = true;
-    for (const disposable of this.disposables.splice(0)) {
-      disposable.dispose();
-    }
+    for (const disposable of this.disposables.splice(0)) disposable.dispose();
   }
 
   async #handleMessage(rawMessage: unknown): Promise<void> {
     const parsed = ReviewPanelInboundMessageSchema.safeParse(rawMessage);
     if (!parsed.success) {
       logWarn('ReviewPanel received an invalid message');
-      this.postError('Invalid message received from the Webview.');
+      this.postError(this.#strings.invalidMessage);
       return;
     }
 
@@ -154,6 +158,9 @@ export class ReviewPanelController {
             COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE,
           );
           break;
+        case 'setExportFormat':
+          await this.#setExportFormat(message.format);
+          break;
         case 'refresh':
           break;
       }
@@ -161,8 +168,19 @@ export class ReviewPanelController {
     } catch (error) {
       const code = getErrorCode(error);
       logWarn(`ReviewPanel operation failed (${message.type}, ${code})`);
-      this.postError(GENERIC_OPERATION_ERROR);
+      this.postError(this.#strings.genericOperationError);
     }
+  }
+
+  async #setExportFormat(format: ExportFormat): Promise<void> {
+    const configuration = vscode.workspace.getConfiguration('reviewlume');
+    await configuration.update(
+      'export.format',
+      format,
+      vscode.ConfigurationTarget.Workspace,
+    );
+    await this.#panel.webview.postMessage({ type: 'formatUpdated', format });
+    logInfo(`Review Panel export format updated to ${format}`);
   }
 
   #toggleFile(filePath: string, selected: boolean): void {
@@ -229,15 +247,13 @@ export class ReviewPanelController {
 
   async #buildStateDto(): Promise<ReviewPanelStateDto> {
     const base = this.#buildBaseState();
-    if (!base) return emptyState();
-
+    if (!base) return emptyState(this.#getExportFormat());
     if (!base.canExport || base.selectedCount === 0) return base;
 
     try {
       const pack = await this.#securityReviewService.buildReviewPack();
       return {
         ...base,
-        // Full preview: Copy and Export reuse the same cached, validated pack.
         reviewPackPreview: pack.markdown,
         reviewPackByteLength: pack.byteLength,
         reviewPackCharLength: pack.markdown.length,
@@ -249,6 +265,12 @@ export class ReviewPanelController {
       logWarn(`ReviewPanel preview unavailable (${getErrorCode(error)})`);
       return { ...base, canExport: false };
     }
+  }
+
+  #getExportFormat(): ExportFormat {
+    return vscode.workspace
+      .getConfiguration('reviewlume')
+      .get<ExportFormat>('export.format', 'markdown');
   }
 
   #buildBaseState(): ReviewPanelStateDto | undefined {
@@ -297,11 +319,12 @@ export class ReviewPanelController {
       reviewPackTruncated: false,
       truncationMessages: [],
       estimatedTokens: 0,
+      exportFormat: this.#getExportFormat(),
     };
   }
 }
 
-function emptyState(): ReviewPanelStateDto {
+function emptyState(exportFormat: ExportFormat): ReviewPanelStateDto {
   return {
     hasSession: false,
     repositoryDisplayName: '',
@@ -322,6 +345,7 @@ function emptyState(): ReviewPanelStateDto {
     reviewPackTruncated: false,
     truncationMessages: [],
     estimatedTokens: 0,
+    exportFormat,
   };
 }
 

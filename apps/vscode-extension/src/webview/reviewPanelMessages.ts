@@ -4,6 +4,7 @@
  * before dispatch and outbound DTOs intentionally exclude absolute paths.
  */
 import { z } from 'zod';
+import type { ExportFormat } from '../localization';
 
 export interface ReviewPanelFileDto {
   readonly path: string;
@@ -45,35 +46,28 @@ export interface ReviewPanelStateDto {
   readonly reviewPackTruncated: boolean;
   readonly truncationMessages: readonly string[];
   readonly estimatedTokens: number;
+  readonly exportFormat: ExportFormat;
 }
 
 export type ReviewPanelOutboundMessage =
   | { readonly type: 'state'; readonly payload: ReviewPanelStateDto }
   | { readonly type: 'error'; readonly message: string }
-  | { readonly type: 'scanComplete'; readonly payload: ReviewPanelStateDto }
-  | { readonly type: 'copyComplete' };
+  | { readonly type: 'copyComplete' }
+  | { readonly type: 'formatUpdated'; readonly format: ExportFormat };
+
+const exportFormatSchema = z.enum(['markdown', 'zip', 'both']);
 
 export const ReviewPanelInboundMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('createReviewPack') }).strict(),
-  z
-    .object({
-      type: z.literal('toggleFile'),
-      filePath: z.string().min(1).max(1024),
-      selected: z.boolean(),
-    })
-    .strict(),
+  z.object({ type: z.literal('toggleFile'), filePath: z.string().min(1).max(1024), selected: z.boolean() }).strict(),
   z.object({ type: z.literal('addRelatedFiles') }).strict(),
   z.object({ type: z.literal('recommendTestFiles') }).strict(),
   z.object({ type: z.literal('scan') }).strict(),
-  z
-    .object({
-      type: z.literal('confirmWarning'),
-      findingIds: z.array(z.string().min(1).max(256)).min(1).max(100),
-    })
-    .strict(),
+  z.object({ type: z.literal('confirmWarning'), findingIds: z.array(z.string().min(1).max(256)).min(1).max(100) }).strict(),
   z.object({ type: z.literal('export') }).strict(),
   z.object({ type: z.literal('copyPrompt') }).strict(),
   z.object({ type: z.literal('updateGitignore') }).strict(),
+  z.object({ type: z.literal('setExportFormat'), format: exportFormatSchema }).strict(),
   z.object({ type: z.literal('refresh') }).strict(),
 ]);
 

@@ -1,0 +1,21 @@
+{
+  "extension.displayName": "ReviewLume – AI 代码审核包",
+  "extension.description": "为浏览器 AI 审核生成聚焦且注重隐私的代码审核包",
+  "capabilities.untrustedWorkspaces": "ReviewLume 可在受限模式下显示工作区状态，但检查仓库内容的命令需要先信任工作区。",
+  "command.hello": "ReviewLume：验证扩展",
+  "command.createReviewPack": "ReviewLume：创建审核包",
+  "command.addRelatedFiles": "ReviewLume：添加关联文件",
+  "command.recommendTestFiles": "ReviewLume：推荐测试文件",
+  "command.scanSelectedFiles": "ReviewLume：扫描所选文件",
+  "command.exportReviewPack": "ReviewLume：导出审核包",
+  "command.addExportDirectoryToGitignore": "ReviewLume：将导出目录加入 .gitignore",
+  "command.openReviewHistory": "ReviewLume：打开审核历史",
+  "command.importReviewResponse": "ReviewLume：导入审核回复",
+  "command.openReviewPanel": "ReviewLume：打开审核面板",
+  "config.export.mode.automatic": "自动保存到当前仓库中。",
+  "config.export.mode.askEveryTime": "每次导出时询问保存位置。",
+  "config.export.mode.description": "自动将审核包保存到当前仓库，或每次导出时询问保存位置。",
+  "config.export.directory.description": "自动导出的仓库相对目录。绝对路径和父目录跳转会被拒绝。",
+  "config.export.format.description": "自动导出审核包时使用的输出格式。",
+  "config.export.autoUpdateGitignore.description": "自动导出成功后，静默将仓库内导出目录加入当前仓库根目录的 .gitignore。"
+}
