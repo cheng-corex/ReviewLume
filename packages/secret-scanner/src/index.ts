@@ -11,8 +11,6 @@ export const BUILTIN_EXCLUDE_PATTERNS: readonly string[] = [
 
 export type FindingResolution =
   | { readonly kind: 'unresolved' }
-  | { readonly kind: 'excluded'; readonly at: string }
-  | { readonly kind: 'redacted'; readonly at: string }
   | { readonly kind: 'confirmed'; readonly at: string };
 
 export interface ScanInputFile {
@@ -51,7 +49,7 @@ export interface ScanResult {
 
 export interface ScanResolutionInput {
   readonly findingId: string;
-  readonly action: 'exclude' | 'redact' | 'confirm';
+  readonly action: 'confirm';
   readonly at?: string;
 }
 
@@ -93,14 +91,12 @@ const FILE_RULES: ReadonlyArray<{ id: string; level: SecretLevel; pattern: RegEx
 
 export function redactSecret(value: string): string {
   if (value.length <= 4) return '[REDACTED]';
-  const start = value.slice(0, 2);
-  const end = value.slice(-2);
-  return `${start}…${end} [REDACTED:${value.length}]`;
+  return `${value.slice(0, 2)}…${value.slice(-2)} [REDACTED:${value.length}]`;
 }
 
 function normalizePath(value: string): string {
-  const normalized = value.replace(/\\/g, '/').replace(/^\.\//, '');
-  if (!normalized || normalized.startsWith('/') || normalized.includes('\0') || normalized.split('/').some((part) => part === '..')) {
+  const normalized = value.replace(/^\.\//, '');
+  if (!normalized || normalized.startsWith('/') || /^[A-Za-z]:\//.test(normalized) || normalized.includes('\0') || normalized.split('/').some((part) => part === '..')) {
     throw new SecretScanPolicyError('Scan paths must be repository-relative and cannot escape the repository.');
   }
   return normalized;
@@ -110,32 +106,25 @@ function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+export function computeContentFingerprint(files: readonly ScanInputFile[]): string {
+  return digest(files
+    .map((file) => ({ path: normalizePath(file.path), content: file.content }))
+    .sort((a, b) => a.path.localeCompare(b.path))
+    .map((file) => `${file.path}\0${digest(file.content)}`)
+    .join('\0'));
+}
+
 function location(content: string, index: number): { line: number; column: number; lineText: string } {
   const before = content.slice(0, index);
   const line = before.split('\n').length;
   const lineStart = content.lastIndexOf('\n', Math.max(0, index - 1)) + 1;
   const lineEnd = content.indexOf('\n', index);
-  return {
-    line,
-    column: index - lineStart + 1,
-    lineText: content.slice(lineStart, lineEnd < 0 ? content.length : lineEnd),
-  };
+  return { line, column: index - lineStart + 1, lineText: content.slice(lineStart, lineEnd < 0 ? content.length : lineEnd) };
 }
 
-function finding(params: Omit<ScanFinding, 'id' | 'fingerprint' | 'resolution'> & { rawValue: string }): ScanFinding {
+function makeFinding(params: Omit<ScanFinding, 'id' | 'fingerprint' | 'resolution'> & { rawValue: string }): ScanFinding {
   const fingerprint = digest(`${params.file}\0${params.rule}\0${params.line}\0${params.rawValue}`);
-  return {
-    id: fingerprint.slice(0, 24),
-    fingerprint,
-    level: params.level,
-    file: params.file,
-    line: params.line,
-    column: params.column,
-    rule: params.rule,
-    message: params.message,
-    preview: params.preview,
-    resolution: { kind: 'unresolved' },
-  };
+  return { ...params, id: fingerprint.slice(0, 24), fingerprint, resolution: { kind: 'unresolved' } };
 }
 
 function summarize(findings: readonly ScanFinding[], contentFingerprint: string, createdAt: string): ScanResult {
@@ -144,8 +133,8 @@ function summarize(findings: readonly ScanFinding[], contentFingerprint: string,
   const warnCount = findings.filter((item) => item.level === 'WARN').length;
   const infoCount = findings.filter((item) => item.level === 'INFO').length;
   const confirmedWarnCount = findings.filter((item) => item.level === 'WARN' && item.resolution.kind === 'confirmed').length;
-  const hasUnresolvedBlock = findings.some((item) => item.level === 'BLOCK' && item.resolution.kind === 'unresolved');
-  const hasUnresolvedWarn = findings.some((item) => item.level === 'WARN' && item.resolution.kind !== 'confirmed' && item.resolution.kind !== 'excluded' && item.resolution.kind !== 'redacted');
+  const hasUnresolvedBlock = blockCount > 0;
+  const hasUnresolvedWarn = findings.some((item) => item.level === 'WARN' && item.resolution.kind !== 'confirmed');
   return {
     scanId: digest(`${contentFingerprint}\0${createdAt}`).slice(0, 24),
     contentFingerprint,
@@ -166,38 +155,31 @@ function summarize(findings: readonly ScanFinding[], contentFingerprint: string,
 export class SecretScanner {
   scan(files: readonly ScanInputFile[], now = new Date()): ScanResult {
     const normalizedFiles = files.map((file) => ({ path: normalizePath(file.path), content: file.content }));
-    const contentFingerprint = digest(normalizedFiles
-      .slice()
-      .sort((a, b) => a.path.localeCompare(b.path))
-      .map((file) => `${file.path}\0${digest(file.content)}`)
-      .join('\0'));
     const findings: ScanFinding[] = [];
 
     for (const file of normalizedFiles) {
       for (const rule of FILE_RULES) {
-        if (!rule.pattern.test(file.path)) continue;
-        findings.push(finding({
-          level: rule.level, file: file.path, line: 1, column: 1, rule: rule.id,
-          message: rule.message, preview: `[SENSITIVE FILE: ${file.path.split('/').pop() ?? 'file'}]`, rawValue: file.path,
-        }));
+        if (rule.pattern.test(file.path)) {
+          findings.push(makeFinding({
+            level: rule.level, file: file.path, line: 1, column: 1, rule: rule.id,
+            message: rule.message, preview: `[SENSITIVE FILE: ${file.path.split('/').pop() ?? 'file'}]`, rawValue: file.path,
+          }));
+        }
       }
-
       for (const rule of CONTENT_RULES) {
         rule.pattern.lastIndex = 0;
         for (const match of file.content.matchAll(rule.pattern)) {
           const index = match.index ?? 0;
           const rawValue = match[rule.valueGroup ?? 0] ?? match[0];
           const at = location(file.content, index);
-          const safeLine = at.lineText.replace(rawValue, redactSecret(rawValue)).slice(0, 240);
-          findings.push(finding({
-            level: rule.level, file: file.path, line: at.line, column: at.column,
-            rule: rule.id, message: rule.message, preview: safeLine, rawValue,
+          findings.push(makeFinding({
+            level: rule.level, file: file.path, line: at.line, column: at.column, rule: rule.id,
+            message: rule.message, preview: at.lineText.replace(rawValue, redactSecret(rawValue)).slice(0, 240), rawValue,
           }));
         }
       }
     }
-
-    return summarize(findings, contentFingerprint, now.toISOString());
+    return summarize(findings, computeContentFingerprint(normalizedFiles), now.toISOString());
   }
 
   resolve(result: ScanResult, resolutions: readonly ScanResolutionInput[]): ScanResult {
@@ -205,27 +187,20 @@ export class SecretScanner {
     const findings = result.findings.map((item): ScanFinding => {
       const requested = byId.get(item.id);
       if (!requested) return item;
-      if (item.level === 'HARD_BLOCK') {
-        throw new SecretScanPolicyError('HARD_BLOCK findings cannot be overridden, confirmed, excluded, or redacted in-place. Remove the file or secret and rescan.');
+      if (item.level !== 'WARN' || requested.action !== 'confirm') {
+        throw new SecretScanPolicyError('Only WARN findings can be confirmed. HARD_BLOCK and BLOCK require changing the scope or content and running a fresh scan.');
       }
-      if (item.level === 'BLOCK' && requested.action === 'confirm') {
-        throw new SecretScanPolicyError('BLOCK findings cannot be confirmed. Exclude or redact the content, then rescan.');
-      }
-      if (item.level !== 'WARN' && requested.action === 'confirm') {
-        throw new SecretScanPolicyError('Only WARN findings can be explicitly confirmed.');
-      }
-      const kind = requested.action === 'exclude' ? 'excluded' : requested.action === 'redact' ? 'redacted' : 'confirmed';
-      return { ...item, resolution: { kind, at: requested.at ?? new Date().toISOString() } };
+      return { ...item, resolution: { kind: 'confirmed', at: requested.at ?? new Date().toISOString() } };
     });
     return summarize(findings, result.contentFingerprint, result.createdAt);
   }
 
   assertExportAllowed(result: ScanResult, currentContentFingerprint?: string): void {
     if (currentContentFingerprint && currentContentFingerprint !== result.contentFingerprint) {
-      throw new SecretScanPolicyError('Selected content changed after scanning. Run the sensitive-content scan again.');
+      throw new SecretScanPolicyError('Selected or generated content changed after scanning. Run the sensitive-content scan again.');
     }
     if (result.hasHardBlock) throw new SecretScanPolicyError('Export is blocked by a HARD_BLOCK finding.');
-    if (result.hasUnresolvedBlock) throw new SecretScanPolicyError('Export is blocked by an unresolved BLOCK finding.');
-    if (result.hasUnresolvedWarn) throw new SecretScanPolicyError('Export is blocked until every WARN finding is confirmed, excluded, or redacted.');
+    if (result.hasUnresolvedBlock) throw new SecretScanPolicyError('Export is blocked by a BLOCK finding. Change the scope or content and rescan.');
+    if (result.hasUnresolvedWarn) throw new SecretScanPolicyError('Export is blocked until every WARN finding is confirmed.');
   }
 }
