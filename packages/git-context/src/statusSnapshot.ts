@@ -2,9 +2,8 @@
  * @reviewlume/git-context — Git status snapshot
  *
  * Collects staged, unstaged, and untracked changes from a Git repository.
- * NUL-delimited output is parsed without trimming or separator rewriting so
- * valid POSIX filenames containing whitespace, newlines, or backslashes are
- * preserved exactly.
+ * Porcelain v2 with NUL delimiters is the source of truth so status remains
+ * consistent with `git status` even when diff-only commands omit a path.
  */
 
 import { GitCommandRunner } from './commandRunner.js';
@@ -34,6 +33,12 @@ export interface GitStatusSnapshot {
   readonly hasChanges: boolean;
 }
 
+interface ParsedStatus {
+  readonly staged: GitChangeEntry[];
+  readonly unstaged: GitChangeEntry[];
+  readonly untracked: GitChangeEntry[];
+}
+
 /** Collects and parses Git status information. */
 export class GitStatusCollector {
   constructor(private readonly runner: GitCommandRunner) {}
@@ -42,18 +47,20 @@ export class GitStatusCollector {
     repo: GitRepository,
     signal?: AbortSignal,
   ): Promise<GitStatusSnapshot> {
-    const [staged, unstaged, untracked] = await Promise.all([
-      this.#getStaged(repo, signal),
-      this.#getUnstaged(repo, signal),
-      this.#getUntracked(repo, signal),
-    ]);
+    const result = await this.runner.run({
+      cwd: repo.root,
+      args: ['status', '--porcelain=v2', '-z', '--untracked-files=all'],
+      signal,
+    });
+    const parsed = this.#parsePorcelainV2Z(result.stdout);
 
     return {
       repository: repo,
-      staged,
-      unstaged,
-      untracked,
-      hasChanges: staged.length > 0 || unstaged.length > 0 || untracked.length > 0,
+      ...parsed,
+      hasChanges:
+        parsed.staged.length > 0 ||
+        parsed.unstaged.length > 0 ||
+        parsed.untracked.length > 0,
     };
   }
 
@@ -82,106 +89,90 @@ export class GitStatusCollector {
     return result.stdout;
   }
 
-  async #getStaged(
-    repo: GitRepository,
-    signal?: AbortSignal,
-  ): Promise<GitChangeEntry[]> {
-    const result = await this.runner.run({
-      cwd: repo.root,
-      args: [
-        'diff',
-        '--cached',
-        '--name-status',
-        '-z',
-        '--no-color',
-        '--no-ext-diff',
-        '--no-textconv',
-        '--',
-      ],
-      signal,
-    });
-    return this.#parseNameStatusZ(result.stdout);
-  }
+  #parsePorcelainV2Z(output: string): ParsedStatus {
+    const staged: GitChangeEntry[] = [];
+    const unstaged: GitChangeEntry[] = [];
+    const untracked: GitChangeEntry[] = [];
+    const records = output.split('\0');
 
-  async #getUnstaged(
-    repo: GitRepository,
-    signal?: AbortSignal,
-  ): Promise<GitChangeEntry[]> {
-    const result = await this.runner.run({
-      cwd: repo.root,
-      args: [
-        'diff',
-        '--name-status',
-        '-z',
-        '--no-color',
-        '--no-ext-diff',
-        '--no-textconv',
-        '--',
-      ],
-      signal,
-    });
-    return this.#parseNameStatusZ(result.stdout);
-  }
+    for (let index = 0; index < records.length; index += 1) {
+      const record = records[index] ?? '';
+      if (!record) continue;
 
-  async #getUntracked(
-    repo: GitRepository,
-    signal?: AbortSignal,
-  ): Promise<GitChangeEntry[]> {
-    const result = await this.runner.run({
-      cwd: repo.root,
-      args: ['ls-files', '--others', '--exclude-standard', '-z', '--'],
-      signal,
-    });
-    return this.#parseUntrackedZ(result.stdout);
-  }
-
-  #parseNameStatusZ(output: string): GitChangeEntry[] {
-    const entries: GitChangeEntry[] = [];
-    const parts = output.split('\0');
-
-    let index = 0;
-    while (index < parts.length) {
-      const statusField = parts[index];
-      if (statusField === undefined || statusField === '') {
-        index += 1;
+      if (record.startsWith('? ')) {
+        const filePath = record.slice(2);
+        if (filePath) untracked.push({ path: filePath, status: 'untracked' });
         continue;
       }
 
-      const statusChar = statusField[0] ?? '';
-      const isRenameOrCopy = statusChar === 'R' || statusChar === 'C';
+      if (record.startsWith('! ') || record.startsWith('# ')) continue;
 
-      if (isRenameOrCopy) {
-        const oldPath = parts[index + 1];
-        const newPath = parts[index + 2];
-        if (oldPath !== undefined && newPath !== undefined && oldPath !== '' && newPath !== '') {
-          entries.push({
-            path: newPath,
-            status: statusChar === 'C' ? 'copied' : 'renamed',
-            oldPath,
-          });
-          index += 3;
-          continue;
-        }
-      } else {
-        const filePath = parts[index + 1];
-        if (filePath !== undefined && filePath !== '') {
-          entries.push({ path: filePath, status: this.#mapStatus(statusChar) });
-          index += 2;
-          continue;
-        }
+      if (record.startsWith('1 ')) {
+        const parsed = this.#splitRecord(record, 8);
+        if (!parsed) continue;
+        this.#appendTracked(parsed.xy, parsed.path, undefined, staged, unstaged);
+        continue;
       }
 
-      index += 1;
+      if (record.startsWith('2 ')) {
+        const parsed = this.#splitRecord(record, 9);
+        const oldPath = records[index + 1];
+        if (!parsed || oldPath === undefined) continue;
+        index += 1;
+        this.#appendTracked(parsed.xy, parsed.path, oldPath, staged, unstaged);
+        continue;
+      }
+
+      if (record.startsWith('u ')) {
+        const parsed = this.#splitRecord(record, 10);
+        if (!parsed) continue;
+        const entry: GitChangeEntry = { path: parsed.path, status: 'unmerged' };
+        staged.push(entry);
+        unstaged.push(entry);
+      }
     }
 
-    return entries;
+    return { staged, unstaged, untracked };
   }
 
-  #parseUntrackedZ(output: string): GitChangeEntry[] {
-    return output
-      .split('\0')
-      .filter((filePath) => filePath !== '')
-      .map((filePath) => ({ path: filePath, status: 'untracked' as const }));
+  #splitRecord(record: string, spacesBeforePath: number): { xy: string; path: string } | undefined {
+    let cursor = 0;
+    for (let count = 0; count < spacesBeforePath; count += 1) {
+      cursor = record.indexOf(' ', cursor);
+      if (cursor < 0) return undefined;
+      cursor += 1;
+    }
+    const xyEnd = record.indexOf(' ', 2);
+    if (xyEnd < 0) return undefined;
+    const xy = record.slice(2, xyEnd);
+    const filePath = record.slice(cursor);
+    return xy.length === 2 && filePath ? { xy, path: filePath } : undefined;
+  }
+
+  #appendTracked(
+    xy: string,
+    filePath: string,
+    oldPath: string | undefined,
+    staged: GitChangeEntry[],
+    unstaged: GitChangeEntry[],
+  ): void {
+    const indexStatus = xy[0] ?? '.';
+    const worktreeStatus = xy[1] ?? '.';
+
+    if (indexStatus !== '.') {
+      staged.push({
+        path: filePath,
+        status: this.#mapStatus(indexStatus),
+        ...(oldPath && (indexStatus === 'R' || indexStatus === 'C') ? { oldPath } : {}),
+      });
+    }
+    if (worktreeStatus !== '.') {
+      unstaged.push({
+        path: filePath,
+        status: this.#mapStatus(worktreeStatus),
+        ...(oldPath && (worktreeStatus === 'R' || worktreeStatus === 'C') ? { oldPath } : {}),
+      });
+    }
   }
 
   #mapStatus(char: string): GitChangeEntry['status'] {
