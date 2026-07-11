@@ -25,6 +25,7 @@
     "onCommand:reviewlume.recommendTestFiles",
     "onCommand:reviewlume.scanSelectedFiles",
     "onCommand:reviewlume.exportReviewPack",
+    "onCommand:reviewlume.addExportDirectoryToGitignore",
     "onCommand:reviewlume.openReviewHistory",
     "onCommand:reviewlume.importReviewResponse",
     "onView:reviewlume.mainView"
@@ -48,6 +49,7 @@
       { "command": "reviewlume.recommendTestFiles", "title": "ReviewLume: Recommend Test Files" },
       { "command": "reviewlume.scanSelectedFiles", "title": "ReviewLume: Scan Selected Files" },
       { "command": "reviewlume.exportReviewPack", "title": "ReviewLume: Export Review Pack" },
+      { "command": "reviewlume.addExportDirectoryToGitignore", "title": "ReviewLume: Add Export Directory to .gitignore" },
       { "command": "reviewlume.openReviewHistory", "title": "ReviewLume: Open Review History" },
       { "command": "reviewlume.importReviewResponse", "title": "ReviewLume: Import Review Response" }
     ],
@@ -70,6 +72,11 @@
           "enum": ["markdown", "zip", "both"],
           "default": "markdown",
           "description": "Output format used by automatic Review Pack export."
+        },
+        "reviewlume.export.autoUpdateGitignore": {
+          "type": "boolean",
+          "default": true,
+          "description": "Silently add the repository-local automatic export directory to the active repository root .gitignore after a successful automatic export."
         }
       }
     },
