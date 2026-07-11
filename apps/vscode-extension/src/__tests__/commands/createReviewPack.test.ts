@@ -133,20 +133,23 @@ describe('createReviewPack command', () => {
     );
   });
 
-  it('removes generated exports from every Git status category before selection', () => {
+  it('removes generated exports and history from every Git status category', () => {
     const repository = { root: '/repo' } as GitStatusSnapshot['repository'];
     const filtered = excludeGeneratedReviewLumeExports({
       repository,
       staged: [
         { path: '.reviewlume/exports/old/REVIEW_REQUEST.md', status: 'added' },
+        { path: '.reviewlume/history/old/request.md', status: 'added' },
         { path: 'src/a.ts', status: 'modified' },
       ],
       unstaged: [
         { path: '.reviewlume/exports/pack.zip', status: 'modified' },
+        { path: '.reviewlume/history/old/metadata.json', status: 'modified' },
         { path: 'src/b.ts', status: 'modified' },
       ],
       untracked: [
         { path: '.reviewlume/exports/new/REVIEW_REQUEST.md', status: 'untracked' },
+        { path: '.reviewlume/history/new/request.md', status: 'untracked' },
         { path: 'src/c.ts', status: 'untracked' },
       ],
       hasChanges: true,
