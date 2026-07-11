@@ -40,7 +40,9 @@
   - Configurable Markdown, ZIP, or both output formats.
   - Optional `askEveryTime` mode that preserves the save dialog workflow.
   - Repository-bound export-directory validation and symbolic-link escape rejection.
-  - First-use reminder to ignore generated Review Packs without modifying `.gitignore` automatically.
+  - Silent repository-root `.gitignore` updates after successful automatic export, controlled by
+    `reviewlume.export.autoUpdateGitignore`.
+  - Clickable `ReviewLume: Add Export Directory to .gitignore` recovery action.
 
 ### Fixed
 
