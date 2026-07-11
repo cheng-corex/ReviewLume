@@ -42,7 +42,7 @@ export type GitContextInspection =
 function createDefaultDependencies(): GitContextDependencies {
   type GitContextRuntime = typeof import('../../../../packages/git-context');
   // The extension build compiles the package beside this module as CommonJS.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
   const runtime = require('../vendor/git-context/index.js') as GitContextRuntime;
   const runner = new runtime.GitCommandRunner();
   return {
