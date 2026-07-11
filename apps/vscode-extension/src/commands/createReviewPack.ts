@@ -2,7 +2,10 @@ import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { GitContextService } from '../services/gitContextService';
-import type { DiscoveryResult } from '../../../../packages/git-context/dist/index.js';
+import type {
+  DiscoveryResult,
+  GitStatusSnapshot,
+} from '../../../../packages/git-context/dist/index.js';
 import type { FileSelectionService } from '../services/fileSelectionService';
 import { logInfo, logWarn } from '../services/logService';
 
@@ -50,12 +53,19 @@ export function registerCreateReviewPack(
                 controller.signal,
               );
 
-              if (result.kind === 'ready' && fileSelectionService) {
-                await fileSelectionService.initialize(
-                  result.repository,
-                  result.status,
-                  controller.signal,
-                );
+              if (result.kind === 'ready') {
+                const filteredResult = {
+                  ...result,
+                  status: excludeGeneratedReviewLumeExports(result.status),
+                };
+                if (fileSelectionService) {
+                  await fileSelectionService.initialize(
+                    filteredResult.repository,
+                    filteredResult.status,
+                    controller.signal,
+                  );
+                }
+                return filteredResult;
               }
 
               return result;
@@ -115,6 +125,31 @@ export function registerCreateReviewPack(
   );
 
   context.subscriptions.push(disposable);
+}
+
+/**
+ * Generated packs are local output, never review input. Keeping this guard at
+ * the Git-status boundary also removes exports that were already untracked
+ * before a new file-selection session is created.
+ */
+export function excludeGeneratedReviewLumeExports(
+  status: GitStatusSnapshot,
+): GitStatusSnapshot {
+  const keep = <T extends { readonly path: string }>(entry: T): boolean =>
+    entry.path !== '.reviewlume/exports' &&
+    !entry.path.startsWith('.reviewlume/exports/');
+
+  const staged = status.staged.filter(keep);
+  const unstaged = status.unstaged.filter(keep);
+  const untracked = status.untracked.filter(keep);
+
+  return {
+    ...status,
+    staged,
+    unstaged,
+    untracked,
+    hasChanges: staged.length > 0 || unstaged.length > 0 || untracked.length > 0,
+  };
 }
 
 async function pickRepository(
