@@ -15,6 +15,8 @@ export const COMMANDS = {
   SCAN_SELECTED_FILES: 'reviewlume.scanSelectedFiles',
   /** Export a security-gated Review Pack */
   EXPORT_REVIEW_PACK: 'reviewlume.exportReviewPack',
+  /** Add the automatic export directory to the repository root .gitignore */
+  ADD_EXPORT_DIRECTORY_TO_GITIGNORE: 'reviewlume.addExportDirectoryToGitignore',
   /** Open review history for the current workspace */
   OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
   /** Import an AI review response */
