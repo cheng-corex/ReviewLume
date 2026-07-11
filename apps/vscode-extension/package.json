@@ -21,6 +21,8 @@
   "activationEvents": [
     "onCommand:reviewlume.hello",
     "onCommand:reviewlume.createReviewPack",
+    "onCommand:reviewlume.addRelatedFiles",
+    "onCommand:reviewlume.recommendTestFiles",
     "onCommand:reviewlume.openReviewHistory",
     "onCommand:reviewlume.importReviewResponse",
     "onView:reviewlume.mainView"
@@ -40,6 +42,8 @@
     "commands": [
       { "command": "reviewlume.hello", "title": "ReviewLume: Hello (Verify Extension)" },
       { "command": "reviewlume.createReviewPack", "title": "ReviewLume: Create Review Pack" },
+      { "command": "reviewlume.addRelatedFiles", "title": "ReviewLume: Add Related Files" },
+      { "command": "reviewlume.recommendTestFiles", "title": "ReviewLume: Recommend Test Files" },
       { "command": "reviewlume.openReviewHistory", "title": "ReviewLume: Open Review History" },
       { "command": "reviewlume.importReviewResponse", "title": "ReviewLume: Import Review Response" }
     ],
