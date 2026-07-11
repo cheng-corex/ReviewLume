@@ -32,16 +32,18 @@ afterEach(async () => {
 describe('automatic Review Pack export', () => {
   it('writes Markdown to a review-specific directory', async () => {
     const root = await fixture();
+    const rootRealPath = await fs.realpath(root);
     const result = await saveAutomaticReviewPack(root, '.reviewlume/exports', 'markdown', pack);
     expect(result.files).toHaveLength(1);
-    expect(result.files[0]).toBe(path.join(root, '.reviewlume', 'exports', pack.reviewId, 'REVIEW_REQUEST.md'));
+    expect(result.files[0]).toBe(path.join(rootRealPath, '.reviewlume', 'exports', pack.reviewId, 'REVIEW_REQUEST.md'));
     expect(await fs.readFile(result.files[0], 'utf8')).toBe(pack.markdown);
   });
 
   it('writes ZIP and both formats without a save dialog dependency', async () => {
     const zipRoot = await fixture();
+    const zipRootRealPath = await fs.realpath(zipRoot);
     const zip = await saveAutomaticReviewPack(zipRoot, 'out', 'zip', pack);
-    expect(zip.files).toEqual([path.join(zipRoot, 'out', `${pack.directoryName}.zip`)]);
+    expect(zip.files).toEqual([path.join(zipRootRealPath, 'out', `${pack.directoryName}.zip`)]);
 
     const bothRoot = await fixture();
     const both = await saveAutomaticReviewPack(bothRoot, 'out', 'both', pack);
