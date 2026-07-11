@@ -148,6 +148,25 @@ describe('FileSelectionService', () => {
     expect(service.selectedCount).toBe(3);
   });
 
+  const backslashPathTest = process.platform === 'win32' ? it.skip : it;
+  backslashPathTest('preserves legal POSIX filenames containing a backslash', async () => {
+    const { root, repository } = await createRepository();
+    const fileName = 'literal\\name.ts';
+    await fs.writeFile(path.join(root, fileName), 'export const value = true;');
+
+    const service = new FileSelectionService(gitRunner());
+    await service.initialize(
+      repository,
+      status(repository, {
+        unstaged: [{ path: fileName, status: 'modified' }],
+        hasChanges: true,
+      }),
+    );
+
+    expect(service.entries).toMatchObject([{ path: fileName, selected: true }]);
+    expect(service.absolutePathFor(fileName)).toBe(path.join(root, fileName));
+  });
+
   it('enforces Git ignore and .reviewlumeignore for manual files', async () => {
     const { root, repository } = await createRepository();
     await fs.writeFile(path.join(root, '.reviewlumeignore'), '*.tmp\n');
@@ -163,12 +182,14 @@ describe('FileSelectionService', () => {
       path.join(root, 'related.md'),
       path.join(root, 'ignored.log'),
       path.join(root, 'blocked.tmp'),
+      path.join(root, 'related.md'),
     ]);
 
     expect(result.added).toEqual(['related.md']);
     expect(result.skipped).toEqual([
       { path: 'ignored.log', reason: 'gitignore' },
       { path: 'blocked.tmp', reason: 'reviewlumeignore' },
+      { path: 'related.md', reason: 'already-selected' },
     ]);
     expect(service.entries).toMatchObject([
       { path: 'related.md', source: 'manual', selected: true },
