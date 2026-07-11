@@ -8,11 +8,20 @@ on:
 
 jobs:
   ci:
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.os }}
 
     strategy:
+      fail-fast: false
       matrix:
-        node-version: [20, 22]
+        include:
+          - os: ubuntu-latest
+            node-version: 20
+          - os: ubuntu-latest
+            node-version: 22
+          - os: windows-latest
+            node-version: 22
+          - os: macos-latest
+            node-version: 22
 
     steps:
       - uses: actions/checkout@v4
@@ -45,6 +54,6 @@ jobs:
       - name: Upload VSIX artifact
         uses: actions/upload-artifact@v4
         with:
-          name: reviewlume-vscode-${{ matrix.node-version }}
+          name: reviewlume-vscode-${{ matrix.os }}-node-${{ matrix.node-version }}
           path: reviewlume-vscode-*.vsix
           if-no-files-found: error
