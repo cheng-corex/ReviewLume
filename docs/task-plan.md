@@ -91,18 +91,23 @@
 - [x] 所有 Webview 消息使用 Zod 校验。
 - [x] 配置严格 CSP。
 
-## P7：报告历史
+## P7：报告历史（代码完成，等待人工验收）
 
-- [x] 按 `<workspaceId>/<reviewId>` 保存历史。
-- [x] 内部请求快照使用 `request.md`，不与导出的 `REVIEW_REQUEST.md` 混用。
-- [x] 保存 request、response、report、resolution。
-- [x] `reviewId` 创建后保持不可变。
-- [x] 定义 schema 迁移入口，升级时不改变既有 ID 语义。
-- [x] 导入文本回答。
-- [x] 基础标题解析。
-- [ ] 允许人工编辑问题清单。
-- [x] 删除单次历史。
-- [x] 清空全部历史。
+- [x] 成功导出后在 `.reviewlume/history/<reviewId>/` 原子保存 `metadata.json` 和 `request.md`。
+- [x] 内部请求快照固定使用 `request.md`，内容与当次已校验 Review Pack Markdown 完全一致。
+- [x] `metadata.json` 使用严格 Zod schema，并提供旧 P7 元数据的兼容读取入口。
+- [x] `reviewId` 创建后保持不可变，历史始终绑定当前 repository。
+- [x] 历史目录、条目和文件执行 realpath、普通文件及符号链接安全校验。
+- [x] 历史列表按时间倒序，并可按 reviewId、文件路径和导出格式搜索。
+- [x] 损坏或部分缺失的历史会明确展示，不会静默丢弃或导致界面崩溃。
+- [x] 支持打开已有导出、打开导出目录和复制原始审核提示。
+- [x] 支持从 `request.md` 精确恢复缺失的 Markdown；无法可靠重建原 ZIP 时不生成伪 ZIP。
+- [x] 支持删除单条历史及对应的受管导出目录，默认要求用户确认。
+- [x] 支持从文件或剪贴板导入文本回答，保存为 `response.md`。
+- [x] 导入回答时限制大小，日志不记录回答正文或用户控制的标题。
+- [x] `.reviewlume/history/` 自动加入 `.gitignore`，并从后续审核文件选择中排除。
+- [x] 历史和回复导入界面根据 VS Code 语言自动显示中文或英文。
+- [ ] 完成 F5 人工验收：三种导出、历史浏览、复制、回复导入、损坏记录、删除和 Restricted Mode。
 - [ ] 支持导出脱敏诊断信息。
 
 ## P8：二次复核
