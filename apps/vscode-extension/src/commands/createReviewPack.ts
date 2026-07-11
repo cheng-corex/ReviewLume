@@ -3,16 +3,19 @@ import { COMMANDS } from '../constants';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { GitContextService } from '../services/gitContextService';
 import type { DiscoveryResult } from '../../../../packages/git-context/dist/index.js';
+import type { FileSelectionService } from '../services/fileSelectionService';
 import { logInfo, logWarn } from '../services/logService';
 
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
   readonly discoveryResult: DiscoveryResult;
 }
 
-/** Register the P2-aware Create Review Pack entry point. */
+/** Register the P3-aware Create Review Pack entry point. */
 export function registerCreateReviewPack(
   context: vscode.ExtensionContext,
   providedGitContextService?: GitContextService,
+  fileSelectionService?: Pick<FileSelectionService, 'initialize' | 'selectedCount'>,
+  onSelectionChanged: () => void = () => undefined,
 ): void {
   let gitContextService = providedGitContextService;
 
@@ -34,18 +37,28 @@ export function registerCreateReviewPack(
         const inspection = await vscode.window.withProgress(
           {
             location: vscode.ProgressLocation.Notification,
-            title: 'ReviewLume: Inspecting Git context',
+            title: 'ReviewLume: Inspecting Git context and files',
             cancellable: true,
           },
           async (_progress, token) => {
             const controller = new AbortController();
             const cancellation = token.onCancellationRequested(() => controller.abort());
             try {
-              return await gitContextService!.inspect(
+              const result = await gitContextService!.inspect(
                 workspaceFolders,
                 async (repositories) => pickRepository(repositories),
                 controller.signal,
               );
+
+              if (result.kind === 'ready' && fileSelectionService) {
+                await fileSelectionService.initialize(
+                  result.repository,
+                  result.status,
+                  controller.signal,
+                );
+              }
+
+              return result;
             } finally {
               cancellation.dispose();
             }
@@ -68,15 +81,21 @@ export function registerCreateReviewPack(
             return;
           case 'ready': {
             const { repository, status } = inspection;
+            onSelectionChanged();
+            const selectedCount = fileSelectionService?.selectedCount;
             logInfo(
               `Git context ready for ${repository.displayName}: ` +
                 `${status.staged.length} staged, ${status.unstaged.length} unstaged, ` +
-                `${status.untracked.length} untracked`,
+                `${status.untracked.length} untracked` +
+                (selectedCount === undefined ? '' : `, ${selectedCount} file(s) selected`),
             );
             await vscode.window.showInformationMessage(
               `ReviewLume: Repository "${repository.displayName}" selected — ` +
                 `${status.staged.length} staged, ${status.unstaged.length} unstaged, ` +
-                `${status.untracked.length} untracked. File selection will be added in P3.`,
+                `${status.untracked.length} untracked` +
+                (selectedCount === undefined
+                  ? '.'
+                  : `. ${selectedCount} file(s) selected in the ReviewLume tree.`),
             );
           }
         }
@@ -87,9 +106,9 @@ export function registerCreateReviewPack(
         }
 
         const code = getErrorCode(error);
-        logWarn(`Git context inspection failed (${code})`);
+        logWarn(`Review initialization failed (${code})`);
         await vscode.window.showErrorMessage(
-          'ReviewLume: Git context inspection failed. Check the ReviewLume output channel.',
+          'ReviewLume: Review initialization failed. Check the ReviewLume output channel.',
         );
       }
     },
