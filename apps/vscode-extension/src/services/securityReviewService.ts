@@ -21,6 +21,7 @@ interface CollectedReviewContent {
 
 export class SecurityReviewService {
   #lastScan: ScanResult | undefined;
+  #lastBuiltPack: ReviewPackBuildResult | undefined;
 
   constructor(
     private readonly fileSelectionService: FileSelectionService,
@@ -31,12 +32,16 @@ export class SecurityReviewService {
 
   get lastScan(): ScanResult | undefined { return this.#lastScan; }
   get activeRepository(): GitRepository | undefined { return this.fileSelectionService.repository; }
-  invalidate(): void { this.#lastScan = undefined; }
+  invalidate(): void {
+    this.#lastScan = undefined;
+    this.#lastBuiltPack = undefined;
+  }
 
   async scan(signal?: AbortSignal): Promise<ScanResult> {
     const collected = await this.#collectReviewContent(signal);
     const result = this.#getScanner().scan(collected.scanInputs);
     this.#lastScan = result;
+    this.#lastBuiltPack = undefined;
     return result;
   }
 
@@ -45,6 +50,7 @@ export class SecurityReviewService {
     const resolutions: ScanResolutionInput[] = findings.map((item) => ({ findingId: item.id, action: 'confirm', at }));
     const resolved = this.#getScanner().resolve(this.#lastScan, resolutions);
     this.#lastScan = resolved;
+    this.#lastBuiltPack = undefined;
     return resolved;
   }
 
@@ -53,7 +59,10 @@ export class SecurityReviewService {
     const collected = await this.#collectReviewContent(signal);
     const current = this.#getScanner().scan(collected.scanInputs);
     this.#getScanner().assertExportAllowed(this.#lastScan, current.contentFingerprint);
-    return this.#getBuilder().build({
+
+    if (this.#lastBuiltPack) return this.#lastBuiltPack;
+
+    const builtPack = await this.#getBuilder().build({
       repositoryIdentity: collected.repository.remoteUrl ?? collected.repository.root,
       repositoryDisplayName: collected.repository.displayName,
       reviewMode: 'standard', gitBase: 'HEAD', gitTarget: 'WORKTREE', security: this.#lastScan,
@@ -65,6 +74,8 @@ export class SecurityReviewService {
       excluded: this.fileSelectionService.entries.filter((entry) => !entry.selected)
         .map((entry) => ({ path: entry.path, reason: 'not selected for this review' })),
     });
+    this.#lastBuiltPack = builtPack;
+    return builtPack;
   }
 
   async #collectReviewContent(signal?: AbortSignal): Promise<CollectedReviewContent> {
