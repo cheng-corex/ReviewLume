@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { GitContextService } from '../services/gitContextService';
-import type { DiscoveryResult } from '../../../../packages/git-context';
+import type { DiscoveryResult } from '../../../../packages/git-context/dist/index.js';
 import { logInfo, logWarn } from '../services/logService';
 
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
