@@ -24,6 +24,7 @@ const READ_ONLY_COMMANDS = new Set([
   'rev-parse',
   'diff',
   'ls-files',
+  'check-ignore',
   'log',
   'merge-base',
 ]);
