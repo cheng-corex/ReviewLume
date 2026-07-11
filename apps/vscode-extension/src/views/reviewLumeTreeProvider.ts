@@ -2,21 +2,8 @@ import * as vscode from 'vscode';
 import { COMMANDS, VIEWS } from '../constants';
 import { getWorkspaceState, WorkspaceState } from '../services/workspaceService';
 
-// ---------------------------------------------------------------------------
-// Tree item types
-// ---------------------------------------------------------------------------
-
-/**
- * Discriminated union of tree item kinds.
- * - `section`: collapsible header grouping related items.
- * - `status`: read-only state indicator.
- * - `action`: clickable item that triggers a command.
- */
 export type ItemKind = 'section' | 'status' | 'action';
 
-/**
- * A tree item in the ReviewLume sidebar.
- */
 export class ReviewLumeTreeItem extends vscode.TreeItem {
   constructor(
     public readonly itemKind: ItemKind,
@@ -32,46 +19,25 @@ export class ReviewLumeTreeItem extends vscode.TreeItem {
       this.description = description;
       this.tooltip = description;
     }
-
     if (iconName) {
       this.iconPath = new vscode.ThemeIcon(iconName);
     }
-
     if (command) {
       this.command = command;
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Tree data provider
-// ---------------------------------------------------------------------------
-
-/**
- * Provides the tree data for the `reviewlume.mainView` tree view in the
- * Activity Bar.
- *
- * Structure:
- * ```
- * ReviewLume (root, hidden)
- * ├── Status (section)
- * │   └── <current workspace state>
- * └── Actions (section)
- *     ├── Create Review Pack
- *     ├── Open Review History
- *     └── Import Review Response
- * ```
- */
+/** Activity Bar tree for workspace status and ReviewLume entry points. */
 export class ReviewLumeTreeProvider
   implements vscode.TreeDataProvider<ReviewLumeTreeItem>
 {
-  private _onDidChangeTreeData = new vscode.EventEmitter<
+  private readonly _onDidChangeTreeData = new vscode.EventEmitter<
     ReviewLumeTreeItem | undefined | null | void
   >();
 
   readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
 
-  /** Force the tree view to refresh. */
   refresh(): void {
     this._onDidChangeTreeData.fire();
   }
@@ -93,8 +59,6 @@ export class ReviewLumeTreeProvider
 
     return [];
   }
-
-  // ---- private helpers ------------------------------------------------
 
   private getRootItems(): ReviewLumeTreeItem[] {
     return [
@@ -119,18 +83,12 @@ export class ReviewLumeTreeProvider
 
   private getChildrenForSection(sectionLabel: string): ReviewLumeTreeItem[] {
     if (sectionLabel === 'Status') {
-      return this.getStatusItems();
+      return [this.buildStatusItem(getWorkspaceState())];
     }
     if (sectionLabel === 'Actions') {
       return this.getActionItems();
     }
     return [];
-  }
-
-  private getStatusItems(): ReviewLumeTreeItem[] {
-    const state = getWorkspaceState();
-    const item = this.buildStatusItem(state);
-    return [item];
   }
 
   private buildStatusItem(state: WorkspaceState): ReviewLumeTreeItem {
@@ -149,7 +107,7 @@ export class ReviewLumeTreeProvider
           'status',
           'Restricted Mode',
           vscode.TreeItemCollapsibleState.None,
-          'Trust the workspace to enable features',
+          'Trust the workspace to enable Git inspection',
           undefined,
           'shield',
         );
@@ -165,11 +123,11 @@ export class ReviewLumeTreeProvider
       case WorkspaceState.Ready:
         return new ReviewLumeTreeItem(
           'status',
-          'Ready',
+          'Workspace Trusted',
           vscode.TreeItemCollapsibleState.None,
-          'ReviewLume is active',
+          'Run Create Review Pack to inspect Git repositories',
           undefined,
-          'check',
+          'shield',
         );
     }
   }
@@ -180,7 +138,7 @@ export class ReviewLumeTreeProvider
         'action',
         'Create Review Pack',
         vscode.TreeItemCollapsibleState.None,
-        'Build a review pack from current changes',
+        'Inspect Git changes and begin a review task',
         {
           command: COMMANDS.CREATE_REVIEW_PACK,
           title: 'Create Review Pack',
@@ -213,30 +171,20 @@ export class ReviewLumeTreeProvider
   }
 }
 
-// ---- factory function called from extension.ts ------------------------
-
-/**
- * Create and register the tree view and its data provider.
- * Returns the provider for potential external refresh triggers.
- */
 export function registerReviewLumeTreeView(
   context: vscode.ExtensionContext,
 ): ReviewLumeTreeProvider {
   const provider = new ReviewLumeTreeProvider();
-
   const treeView = vscode.window.createTreeView(VIEWS.MAIN_VIEW, {
     treeDataProvider: provider,
     showCollapseAll: false,
   });
 
-  context.subscriptions.push(treeView);
-
-  // Refresh when workspace folders or trust changes
   context.subscriptions.push(
+    treeView,
     vscode.workspace.onDidChangeWorkspaceFolders(() => provider.refresh()),
-  );
-  context.subscriptions.push(
     vscode.workspace.onDidGrantWorkspaceTrust(() => provider.refresh()),
+    provider['_onDidChangeTreeData'],
   );
 
   return provider;
