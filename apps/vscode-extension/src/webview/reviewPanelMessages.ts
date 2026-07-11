@@ -53,11 +53,8 @@ export type ReviewPanelOutboundMessage =
   | { readonly type: 'scanComplete'; readonly payload: ReviewPanelStateDto }
   | { readonly type: 'copyComplete' };
 
-const emptyMessage = <T extends string>(type: T) =>
-  z.object({ type: z.literal(type) }).strict();
-
 export const ReviewPanelInboundMessageSchema = z.discriminatedUnion('type', [
-  emptyMessage('createReviewPack'),
+  z.object({ type: z.literal('createReviewPack') }).strict(),
   z
     .object({
       type: z.literal('toggleFile'),
@@ -65,19 +62,19 @@ export const ReviewPanelInboundMessageSchema = z.discriminatedUnion('type', [
       selected: z.boolean(),
     })
     .strict(),
-  emptyMessage('addRelatedFiles'),
-  emptyMessage('recommendTestFiles'),
-  emptyMessage('scan'),
+  z.object({ type: z.literal('addRelatedFiles') }).strict(),
+  z.object({ type: z.literal('recommendTestFiles') }).strict(),
+  z.object({ type: z.literal('scan') }).strict(),
   z
     .object({
       type: z.literal('confirmWarning'),
       findingIds: z.array(z.string().min(1).max(256)).min(1).max(100),
     })
     .strict(),
-  emptyMessage('export'),
-  emptyMessage('copyPrompt'),
-  emptyMessage('updateGitignore'),
-  emptyMessage('refresh'),
+  z.object({ type: z.literal('export') }).strict(),
+  z.object({ type: z.literal('copyPrompt') }).strict(),
+  z.object({ type: z.literal('updateGitignore') }).strict(),
+  z.object({ type: z.literal('refresh') }).strict(),
 ]);
 
 export type ReviewPanelInboundMessage = z.infer<typeof ReviewPanelInboundMessageSchema>;
