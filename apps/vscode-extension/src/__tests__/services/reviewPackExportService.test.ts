@@ -39,17 +39,25 @@ describe('automatic Review Pack export', () => {
     expect(await fs.readFile(result.files[0], 'utf8')).toBe(pack.markdown);
   });
 
-  it('writes ZIP and both formats without a save dialog dependency', async () => {
+  it('writes ZIP without a save dialog dependency', async () => {
     const zipRoot = await fixture();
     const zipRootRealPath = await fs.realpath(zipRoot);
     const zip = await saveAutomaticReviewPack(zipRoot, 'out', 'zip', pack);
     expect(zip.files).toEqual([path.join(zipRootRealPath, 'out', `${pack.directoryName}.zip`)]);
+  });
 
-    const bothRoot = await fixture();
-    const both = await saveAutomaticReviewPack(bothRoot, 'out', 'both', pack);
-    expect(both.files).toHaveLength(2);
-    expect(await fs.readFile(both.files[0], 'utf8')).toBe(pack.markdown);
-    expect(Array.from(await fs.readFile(both.files[1]))).toEqual(Array.from(pack.zip));
+  it('writes Markdown and ZIP into the same review-specific directory', async () => {
+    const root = await fixture();
+    const rootRealPath = await fs.realpath(root);
+    const result = await saveAutomaticReviewPack(root, 'out', 'both', pack);
+    const reviewDirectory = path.join(rootRealPath, 'out', pack.reviewId);
+
+    expect(result.files).toEqual([
+      path.join(reviewDirectory, 'REVIEW_REQUEST.md'),
+      path.join(reviewDirectory, `${pack.directoryName}.zip`),
+    ]);
+    expect(await fs.readFile(result.files[0], 'utf8')).toBe(pack.markdown);
+    expect(Array.from(await fs.readFile(result.files[1]))).toEqual(Array.from(pack.zip));
   });
 
   it('rejects absolute paths, parent traversal, and Windows absolute paths', () => {
@@ -63,6 +71,17 @@ describe('automatic Review Pack export', () => {
     const root = await fixture();
     await saveAutomaticReviewPack(root, 'out', 'markdown', pack);
     await expect(saveAutomaticReviewPack(root, 'out', 'markdown', pack)).rejects.toMatchObject({ code: 'EEXIST' });
+  });
+
+  it('does not leave a partial Markdown file when the combined ZIP write fails', async () => {
+    const root = await fixture();
+    const rootRealPath = await fs.realpath(root);
+    const reviewDirectory = path.join(rootRealPath, 'out', pack.reviewId);
+    await fs.mkdir(reviewDirectory, { recursive: true });
+    await fs.mkdir(path.join(reviewDirectory, `${pack.directoryName}.zip`));
+
+    await expect(saveAutomaticReviewPack(root, 'out', 'both', pack)).rejects.toBeDefined();
+    await expect(fs.access(path.join(reviewDirectory, 'REVIEW_REQUEST.md'))).rejects.toMatchObject({ code: 'ENOENT' });
   });
 
   it.skipIf(process.platform === 'win32')('rejects symbolic-link directory escapes', async () => {
