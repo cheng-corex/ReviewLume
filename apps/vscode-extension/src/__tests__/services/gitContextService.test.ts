@@ -38,15 +38,14 @@ function createService(options?: {
   available?: boolean;
   repositories?: DiscoveryResult[];
   statusError?: Error;
-}): {
-  service: GitContextService;
-  dependencies: {
-    runner: { isAvailable: ReturnType<typeof vi.fn> };
-    discovery: { discover: ReturnType<typeof vi.fn> };
-    statusCollector: { getStatus: ReturnType<typeof vi.fn> };
-  };
-} {
+}) {
   const repositories = options?.repositories ?? [];
+  const getStatus = vi.fn(async (repo: GitRepository) => {
+    if (options?.statusError) {
+      throw options.statusError;
+    }
+    return status(repo);
+  });
   const dependencies = {
     runner: {
       isAvailable: vi.fn().mockResolvedValue(options?.available ?? true),
@@ -54,11 +53,7 @@ function createService(options?: {
     discovery: {
       discover: vi.fn().mockResolvedValue(repositories),
     },
-    statusCollector: {
-      getStatus: options?.statusError
-        ? vi.fn().mockRejectedValue(options.statusError)
-        : vi.fn(async (repo: GitRepository) => status(repo)),
-    },
+    statusCollector: { getStatus },
   };
 
   return {
