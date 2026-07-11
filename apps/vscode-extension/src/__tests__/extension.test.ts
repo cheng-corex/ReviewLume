@@ -73,6 +73,8 @@ describe('reviewlume-vscode manifest', () => {
     const expectedCommands = [
       { command: 'reviewlume.hello', title: 'Hello' },
       { command: 'reviewlume.createReviewPack', title: 'Create Review Pack' },
+      { command: 'reviewlume.addRelatedFiles', title: 'Add Related Files' },
+      { command: 'reviewlume.recommendTestFiles', title: 'Recommend Test Files' },
       { command: 'reviewlume.openReviewHistory', title: 'Open Review History' },
       { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
     ];
@@ -92,6 +94,8 @@ describe('reviewlume-vscode manifest', () => {
     const requiredEvents: Array<{ key: string; prefix: 'onCommand' | 'onView' }> = [
       { key: 'reviewlume.hello', prefix: 'onCommand' },
       { key: 'reviewlume.createReviewPack', prefix: 'onCommand' },
+      { key: 'reviewlume.addRelatedFiles', prefix: 'onCommand' },
+      { key: 'reviewlume.recommendTestFiles', prefix: 'onCommand' },
       { key: 'reviewlume.openReviewHistory', prefix: 'onCommand' },
       { key: 'reviewlume.importReviewResponse', prefix: 'onCommand' },
       { key: 'reviewlume.mainView', prefix: 'onView' },
@@ -120,19 +124,18 @@ describe('reviewlume-vscode manifest', () => {
 
   it('packages a self-contained CommonJS Git context runtime', () => {
     const extensionRoot = path.resolve(__dirname, '../..');
-    const vendorEntry = path.join(
-      extensionRoot,
-      'dist',
-      'vendor',
-      'git-context',
-      'index.js',
-    );
+    const vendorRoot = path.join(extensionRoot, 'dist', 'vendor', 'git-context');
+    const vendorEntry = path.join(vendorRoot, 'index.js');
+    const commandRunnerModule = path.join(vendorRoot, 'commandRunner.js');
     expect(fs.existsSync(vendorEntry)).toBe(true);
+    expect(fs.existsSync(commandRunnerModule)).toBe(true);
 
-    const source = fs.readFileSync(vendorEntry, 'utf-8');
-    expect(source).toContain('GitCommandRunner');
-    expect(source).not.toContain("require('@reviewlume/");
-    expect(source).not.toContain('require("@reviewlume/');
+    const entrySource = fs.readFileSync(vendorEntry, 'utf-8');
+    const commandRunnerSource = fs.readFileSync(commandRunnerModule, 'utf-8');
+    expect(entrySource).toContain('GitCommandRunner');
+    expect(commandRunnerSource).toContain('check-ignore');
+    expect(entrySource).not.toContain("require('@reviewlume/");
+    expect(entrySource).not.toContain('require("@reviewlume/');
   });
 
   it('keeps every packaged runtime module free of bare workspace imports', () => {
@@ -162,17 +165,19 @@ describe('extension activation', () => {
     testing.reset();
   });
 
-  it('registers P2 entry points without spawning Git during activation', () => {
+  it('registers P3 entry points without spawning Git during activation', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
 
     expect(testing.getRegisteredCommand(COMMANDS.HELLO)).toBeDefined();
     expect(testing.getRegisteredCommand(COMMANDS.CREATE_REVIEW_PACK)).toBeDefined();
+    expect(testing.getRegisteredCommand(COMMANDS.ADD_RELATED_FILES)).toBeDefined();
+    expect(testing.getRegisteredCommand(COMMANDS.RECOMMEND_TEST_FILES)).toBeDefined();
     expect(testing.getRegisteredCommand(COMMANDS.OPEN_REVIEW_HISTORY)).toBeDefined();
     expect(testing.getRegisteredCommand(COMMANDS.IMPORT_REVIEW_RESPONSE)).toBeDefined();
     expect(vscode.window.createTreeView).toHaveBeenCalledWith(
       VIEWS.MAIN_VIEW,
-      expect.objectContaining({ showCollapseAll: false }),
+      expect.objectContaining({ showCollapseAll: true }),
     );
   });
 

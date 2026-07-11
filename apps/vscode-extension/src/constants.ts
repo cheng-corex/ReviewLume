@@ -7,6 +7,10 @@ export const COMMANDS = {
   HELLO: 'reviewlume.hello',
   /** Create a new review pack from the current workspace */
   CREATE_REVIEW_PACK: 'reviewlume.createReviewPack',
+  /** Add repository-local related files to the active review */
+  ADD_RELATED_FILES: 'reviewlume.addRelatedFiles',
+  /** Discover likely test files for the active selection */
+  RECOMMEND_TEST_FILES: 'reviewlume.recommendTestFiles',
   /** Open review history for the current workspace */
   OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
   /** Import an AI review response */

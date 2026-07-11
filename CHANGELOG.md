@@ -15,6 +15,13 @@
   - Staged, unstaged, and untracked status snapshots.
   - Canonicalized commit-range validation and read-only diff/log retrieval.
   - Cancellable Git inspection from `ReviewLume: Create Review Pack`.
+- P3 repository-bound file selection:
+  - Hierarchical changed-file tree with per-file checkbox state.
+  - Manual related-file selection limited to the active repository.
+  - Related test-file recommendations added as unchecked candidates.
+  - `.gitignore` and repository-root `.reviewlumeignore` enforcement.
+  - Real-path validation that rejects cross-repository paths, Git metadata, directories,
+    and symbolic-link escapes.
 
 ### Fixed
 
@@ -29,6 +36,7 @@
   and stopped retaining credential-bearing remote URLs.
 - Preserved exact NUL-delimited Git paths and propagated Git status failures instead of
   silently presenting a failed inspection as a clean repository.
+- Preserved legal POSIX filenames containing backslashes when building the P3 file tree.
 
 ## [0.1.0] - 2026-07-10
 
