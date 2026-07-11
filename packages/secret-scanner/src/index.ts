@@ -84,7 +84,7 @@ const CONTENT_RULES: readonly Rule[] = [
   { id: 'internal-address', level: 'INFO', pattern: /\b(?:10(?:\.\d{1,3}){3}|192\.168(?:\.\d{1,3}){2}|172\.(?:1[6-9]|2\d|3[01])(?:\.\d{1,3}){2})\b/g, message: 'Private network address detected.' },
 ];
 
-const FILE_RULES: readonly Array<{ id: string; level: SecretLevel; pattern: RegExp; message: string }> = [
+const FILE_RULES: ReadonlyArray<{ id: string; level: SecretLevel; pattern: RegExp; message: string }> = [
   { id: 'private-key-file', level: 'HARD_BLOCK', pattern: /(?:^|\/)(?:id_(?:rsa|dsa|ecdsa|ed25519)|.*\.(?:pem|key|pfx|p12|keystore))$/i, message: 'Private key or certificate container filename detected.' },
   { id: 'environment-file', level: 'BLOCK', pattern: /(?:^|\/)\.env(?:\..+)?$/i, message: 'Environment file detected.' },
   { id: 'credential-file', level: 'BLOCK', pattern: /(?:^|\/)(?:credentials?|secrets?)(?:\.[^/]*)?$/i, message: 'Credential-bearing filename detected.' },
