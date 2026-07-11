@@ -128,16 +128,18 @@ export function registerCreateReviewPack(
 }
 
 /**
- * Generated packs are local output, never review input. Keeping this guard at
- * the Git-status boundary also removes exports that were already untracked
- * before a new file-selection session is created.
+ * Generated exports and internal history are local output, never review input.
+ * Keeping this guard at the Git-status boundary also removes data that was
+ * already untracked before a new file-selection session is created.
  */
 export function excludeGeneratedReviewLumeExports(
   status: GitStatusSnapshot,
 ): GitStatusSnapshot {
+  const generatedRoots = ['.reviewlume/exports', '.reviewlume/history'];
   const keep = <T extends { readonly path: string }>(entry: T): boolean =>
-    entry.path !== '.reviewlume/exports' &&
-    !entry.path.startsWith('.reviewlume/exports/');
+    !generatedRoots.some(
+      (root) => entry.path === root || entry.path.startsWith(`${root}/`),
+    );
 
   const staged = status.staged.filter(keep);
   const unstaged = status.unstaged.filter(keep);
