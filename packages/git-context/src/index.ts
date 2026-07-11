@@ -3,67 +3,67 @@
  *
  * Git context retrieval for ReviewLume.
  * Handles staged, unstaged, and commit range diffs with security constraints.
+ *
+ * # Architecture
+ *
+ * ```
+ *                     ┌─────────────────────┐
+ *                     │   GitCommandRunner   │  ← Safe git subprocess via execFile
+ *                     ├─────────────────────┤
+ *                     │   GitRepository      │  ← Immutable repo model with path boundary
+ *                     ├─────────────────────┤
+ *                     │ GitRepositoryDiscovery│ ← Discover repos in workspace folders
+ *                     ├─────────────────────┤
+ *                     │ GitStatusCollector   │  ← Staged / unstaged / untracked
+ *                     ├─────────────────────┤
+ *                     │ GitCommitRangeService│ ← Commit range validation & diff
+ *                     └─────────────────────┘
+ * ```
+ *
+ * # Security
+ *
+ * - All git commands use `child_process.execFile` with parameter arrays.
+ * - No `shell: true` or string concatenation.
+ * - Repository boundaries are enforced for all file and commit operations.
+ * - Remote URLs are sanitized before exposure (credentials stripped).
+ * - Write operations (checkout, reset, commit, etc.) are never executed.
+ * - Workspace Trust must be verified before running any git command.
+ *
+ * @packageDocumentation
  */
 
 // Re-export core types for convenience.
 export type { ReviewMode } from '@reviewlume/core';
 
-/** Represents a single changed file entry. */
-export interface ChangedFile {
-  path: string;
-  status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
-  oldPath?: string;
-}
+// Error types
+export {
+  GitNotAvailableError,
+  GitCommandError,
+  GitTimeoutError,
+  GitCancelledError,
+  NotInGitRepositoryError,
+  CrossRepositoryError,
+  InvalidCommitError,
+  WorkspaceUntrustedError,
+  MultipleRepositoriesError,
+} from './errors.js';
 
-/** Diff content for a repository. */
-export interface DiffResult {
-  files: ChangedFile[];
-  diffContent: string;
-}
+// Command runner
+export { GitCommandRunner } from './commandRunner.js';
+export type { GitResult, GitCommandOptions } from './commandRunner.js';
 
-/** Git repository information. */
-export interface RepositoryInfo {
-  root: string;
-  displayName: string;
-  hasRemote: boolean;
-  remoteUrl?: string;
-}
+// Repository model
+export { GitRepository, deriveDisplayName, sanitizeRemoteUrl, resolveSafePath, verifyCommitInRepository } from './repository.js';
+export type { GitRepositoryData } from './repository.js';
 
-/** Service for interacting with Git repositories. */
-export class GitContextService {
-  /**
-   * Get the repository info for the given workspace folder.
-   * P0: Returns a placeholder until the full implementation.
-   */
-  async getRepositoryInfo(_workspaceFolder: string): Promise<RepositoryInfo | null> {
-    // TODO: P2 — implement actual Git detection
-    return null;
-  }
+// Repository discovery
+export { GitRepositoryDiscovery, discoverRepositoryRoots } from './discovery.js';
+export type { DiscoveryResult } from './discovery.js';
 
-  /**
-   * Get the diff for staged changes.
-   * P0: Returns a placeholder until the full implementation.
-   */
-  async getStagedDiff(_repoRoot: string): Promise<DiffResult | null> {
-    // TODO: P2 — implement staged diff retrieval
-    return null;
-  }
+// Status snapshot
+export { GitStatusCollector } from './statusSnapshot.js';
+export type { GitChangeEntry, GitStatusSnapshot } from './statusSnapshot.js';
 
-  /**
-   * Get the diff for unstaged changes.
-   * P0: Returns a placeholder until the full implementation.
-   */
-  async getUnstagedDiff(_repoRoot: string): Promise<DiffResult | null> {
-    // TODO: P2 — implement unstaged diff retrieval
-    return null;
-  }
-
-  /**
-   * Get the diff for a commit range.
-   * P0: Returns a placeholder until the full implementation.
-   */
-  async getCommitRangeDiff(_repoRoot: string, _base: string, _target: string): Promise<DiffResult | null> {
-    // TODO: P2 — implement commit range diff retrieval
-    return null;
-  }
-}
+// Commit range
+export { GitCommitRangeService } from './commitRange.js';
+export type { CommitRange } from './commitRange.js';

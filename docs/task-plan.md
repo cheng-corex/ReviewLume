@@ -21,17 +21,17 @@
 
 ## P2：Git 上下文
 
-- [ ] 检测 Git 可用性。
-- [ ] 获取 repository root。
-- [ ] 枚举多根工作区中的 Git repositories。
-- [ ] 多个 repository 存在时要求用户明确选择一个。
-- [ ] 保证一次审核任务只绑定一个 repository。
-- [ ] 获取 staged/unstaged/untracked 状态。
-- [ ] 支持 commit range，且 base/target 必须属于当前 repository。
-- [ ] 拒绝跨 repository 合并 diff 或文件。
-- [ ] 使用参数数组调用 Git。
-- [ ] 增加超时、取消和错误提示。
-- [ ] 覆盖路径包含空格和中文的测试。
+- [x] 检测 Git 可用性。
+- [x] 获取 repository root。
+- [x] 枚举多根工作区中的 Git repositories。
+- [x] 多个 repository 存在时要求用户明确选择一个。
+- [x] 保证一次审核任务只绑定一个 repository。
+- [x] 获取 staged/unstaged/untracked 状态。
+- [x] 支持 commit range，且 base/target 必须属于当前 repository。
+- [x] 拒绝跨 repository 合并 diff 或文件。
+- [x] 使用参数数组调用 Git。
+- [x] 增加超时、取消和错误提示。
+- [x] 覆盖路径包含空格和中文的测试。
 
 ## P3：文件选择
 
