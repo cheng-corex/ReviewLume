@@ -36,17 +36,6 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
-      - name: Capture typecheck diagnostics
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == 22
-        run: pnpm typecheck > typecheck.log 2>&1 || true
-
-      - name: Upload typecheck diagnostics
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == 22
-        uses: actions/upload-artifact@v4
-        with:
-          name: typecheck-diagnostics
-          path: typecheck.log
-
       - name: Lint
         run: pnpm lint
 
