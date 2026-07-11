@@ -1,60 +1,42 @@
 /**
- * P6 — ReviewPanelController
- *
- * Owns the ReviewLume review panel Webview panel. It is the single bridge
- * between the Webview (untrusted) and VS Code services (trusted).
- *
- * ═══════════════════════════════════════════════════════════════════
- * SECURITY:
- * - Every inbound Webview message is validated with Zod before dispatch.
- * - The controller calls existing services for all real work; the
- *   Webview never touches Git, the file system, or the Review Pack builder.
- * - State DTOs are constructed explicitly — no raw service objects are
- *   passed through.
- * - CSP is configured to block remote resources and eval.
- * ═══════════════════════════════════════════════════════════════════
+ * P6 — ReviewPanelController.
+ * The Webview is untrusted. It receives explicit DTOs only and all inbound
+ * messages are validated before dispatch to fixed extension operations.
  */
 import * as crypto from 'node:crypto';
 import * as vscode from 'vscode';
-import { ReviewPanelInboundMessageSchema } from './reviewPanelMessages';
-import { buildReviewPanelHtml } from './reviewPanelHtml';
-import type {
-  ReviewPanelStateDto,
-  ReviewPanelFileDto,
-  ReviewPanelFindingDto,
-} from './reviewPanelMessages';
+import { COMMANDS } from '../constants';
 import type { FileSelectionService } from '../services/fileSelectionService';
-import type { SecurityReviewService } from '../services/securityReviewService';
 import { logInfo, logWarn } from '../services/logService';
+import type { SecurityReviewService } from '../services/securityReviewService';
+import { getWorkspaceWarning } from '../services/workspaceService';
+import { buildReviewPanelHtml } from './reviewPanelHtml';
+import {
+  ReviewPanelInboundMessageSchema,
+  type ReviewPanelFileDto,
+  type ReviewPanelFindingDto,
+  type ReviewPanelStateDto,
+} from './reviewPanelMessages';
 
-/**
- * Mapping from panel view type to the internal label used for multiplexing.
- * Only one review panel is allowed at a time — re-focusing an existing panel
- * is preferred over creating a second one.
- */
 const REVIEW_PANEL_VIEW_TYPE = 'reviewlume.reviewPanel';
+const GENERIC_OPERATION_ERROR =
+  'ReviewLume: The panel operation failed. Check the ReviewLume output channel.';
 
-/**
- * Closed panel sentinel used to detect whether a panel was explicitly
- * disposed by the user.
- */
 let existingPanel: vscode.WebviewPanel | undefined;
+let existingController: ReviewPanelController | undefined;
 
-/**
- * Create or reveal the single review panel Webview.
- */
 export function createOrShowReviewPanel(
   extensionUri: vscode.Uri,
   fileSelectionService: FileSelectionService,
   securityReviewService: SecurityReviewService,
 ): vscode.WebviewPanel {
-  if (existingPanel) {
+  if (existingPanel && existingController) {
     existingPanel.reveal(vscode.ViewColumn.Beside);
+    void existingController.postState();
     return existingPanel;
   }
 
   const nonce = crypto.randomBytes(16).toString('base64url');
-
   const panel = vscode.window.createWebviewPanel(
     REVIEW_PANEL_VIEW_TYPE,
     'ReviewLume Review Panel',
@@ -69,29 +51,28 @@ export function createOrShowReviewPanel(
   );
 
   panel.webview.html = buildReviewPanelHtml(panel.webview, nonce);
-
   const controller = new ReviewPanelController(
     panel,
     fileSelectionService,
     securityReviewService,
   );
-
-  panel.onDidDispose(
-    () => {
-      controller.dispose();
-      existingPanel = undefined;
-    },
-    undefined,
-    controller.disposables,
-  );
-
   existingPanel = panel;
+  existingController = controller;
+
+  const disposeListener = panel.onDidDispose(() => {
+    controller.dispose();
+    existingPanel = undefined;
+    existingController = undefined;
+  });
+  controller.disposables.push(disposeListener);
   return panel;
 }
 
-/**
- * Manages the life cycle of a single review panel Webview.
- */
+/** Refresh the currently open panel after tree/command state changes. */
+export function refreshReviewPanel(): void {
+  void existingController?.postState();
+}
+
 export class ReviewPanelController {
   readonly disposables: vscode.Disposable[] = [];
   readonly #panel: vscode.WebviewPanel;
@@ -107,252 +88,201 @@ export class ReviewPanelController {
     this.#panel = panel;
     this.#fileSelectionService = fileSelectionService;
     this.#securityReviewService = securityReviewService;
-
     this.disposables.push(
-      panel.webview.onDidReceiveMessage(
-        (rawMessage: unknown) => this.#handleMessage(rawMessage),
-        undefined,
-        this.disposables,
+      panel.webview.onDidReceiveMessage((rawMessage: unknown) =>
+        this.#handleMessage(rawMessage),
       ),
     );
   }
 
-  /** Send a state snapshot to the Webview. */
   async postState(): Promise<void> {
     if (this.#disposed) return;
-    const state = await this.#buildStateDto();
-    this.#panel.webview.postMessage({ type: 'state', payload: state });
+    const payload = await this.#buildStateDto();
+    await this.#panel.webview.postMessage({ type: 'state', payload });
   }
 
-  /** Send an error message to the Webview. */
   postError(message: string): void {
     if (this.#disposed) return;
-    this.#panel.webview.postMessage({ type: 'error', message });
-  }
-
-  /** Send scan-complete state to the Webview (includes Review Pack preview). */
-  async postScanComplete(): Promise<void> {
-    if (this.#disposed) return;
-    const state = await this.#buildStateDtoWithPreview();
-    this.#panel.webview.postMessage({ type: 'scanComplete', payload: state });
-  }
-
-  /** Notify the Webview that a Review Pack export succeeded. */
-  postExportComplete(reviewId: string): void {
-    if (this.#disposed) return;
-    this.#panel.webview.postMessage({ type: 'exportComplete', reviewId });
-  }
-
-  /** Notify the Webview that a Review Pack export failed. */
-  postExportError(message: string): void {
-    if (this.#disposed) return;
-    this.#panel.webview.postMessage({ type: 'exportError', message });
-  }
-
-  /** Notify the Webview that a prompt copy succeeded. */
-  postCopyComplete(): void {
-    if (this.#disposed) return;
-    this.#panel.webview.postMessage({ type: 'copyComplete' });
+    void this.#panel.webview.postMessage({ type: 'error', message });
   }
 
   dispose(): void {
+    if (this.#disposed) return;
     this.#disposed = true;
-    for (const disposable of this.disposables) {
+    for (const disposable of this.disposables.splice(0)) {
       disposable.dispose();
     }
-    this.disposables.length = 0;
   }
 
-  // ─── Private ─────────────────────────────────────────────────────
-
-  /** Validate and dispatch an inbound Webview message. */
   async #handleMessage(rawMessage: unknown): Promise<void> {
-    // SECURITY: Every inbound message MUST pass Zod validation.
     const parsed = ReviewPanelInboundMessageSchema.safeParse(rawMessage);
     if (!parsed.success) {
-      logWarn('ReviewPanel received an invalid message from the Webview');
+      logWarn('ReviewPanel received an invalid message');
       this.postError('Invalid message received from the Webview.');
       return;
     }
 
     const message = parsed.data;
-
     try {
       switch (message.type) {
         case 'createReviewPack':
-          await vscode.commands.executeCommand('reviewlume.createReviewPack');
-          await this.postState();
+          await vscode.commands.executeCommand(COMMANDS.CREATE_REVIEW_PACK);
           break;
-
         case 'toggleFile':
-          this.#handleToggleFile(message.filePath, message.selected);
-          await this.postState();
+          this.#toggleFile(message.filePath, message.selected);
           break;
-
         case 'addRelatedFiles':
-          await vscode.commands.executeCommand('reviewlume.addRelatedFiles');
-          await this.postState();
+          await vscode.commands.executeCommand(COMMANDS.ADD_RELATED_FILES);
           break;
-
         case 'recommendTestFiles':
-          await vscode.commands.executeCommand('reviewlume.recommendTestFiles');
-          await this.postState();
+          await vscode.commands.executeCommand(COMMANDS.RECOMMEND_TEST_FILES);
           break;
-
         case 'scan':
-          await this.#handleScan();
-          await this.postScanComplete();
+          await this.#scan();
           break;
-
         case 'confirmWarning':
-          await this.#handleConfirmWarnings(message.findingIds);
-          await this.postScanComplete();
+          this.#confirmWarnings(message.findingIds);
           break;
-
         case 'export':
-          await vscode.commands.executeCommand('reviewlume.exportReviewPack');
-          await this.postState();
+          await vscode.commands.executeCommand(COMMANDS.EXPORT_REVIEW_PACK);
           break;
-
         case 'copyPrompt':
-          await this.#handleCopyPrompt();
+          await this.#copyPrompt();
           break;
-
         case 'updateGitignore':
           await vscode.commands.executeCommand(
-            'reviewlume.addExportDirectoryToGitignore',
+            COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE,
           );
-          await this.postState();
           break;
-
         case 'refresh':
-          await this.postState();
-          break;
-
-        default:
           break;
       }
+      await this.postState();
     } catch (error) {
-      const messageText =
-        error instanceof Error ? error.message : 'An unknown error occurred.';
-      logWarn(`ReviewPanel command failed (${message.type}): ${messageText}`);
-      this.postError(messageText);
+      const code = getErrorCode(error);
+      logWarn(`ReviewPanel operation failed (${message.type}, ${code})`);
+      this.postError(GENERIC_OPERATION_ERROR);
     }
   }
 
-  #handleToggleFile(filePath: string, selected: boolean): void {
-    // SECURITY: Verify the file path belongs to the current session.
-    const service = this.#fileSelectionService;
-    if (!service.hasSession) return;
-
-    // Verify the path exists in the current session.
-    const entry = service.entries.find(
-      (e) => e.path === filePath.replace(/\\/g, '/'),
+  #toggleFile(filePath: string, selected: boolean): void {
+    if (!this.#fileSelectionService.hasSession) {
+      throw Object.assign(new Error('No active review session.'), {
+        code: 'NO_ACTIVE_SESSION',
+      });
+    }
+    const normalizedPath = filePath.replace(/\\/g, '/');
+    const entry = this.#fileSelectionService.entries.find(
+      (candidate) => candidate.path === normalizedPath,
     );
     if (!entry) {
-      logWarn(
-        `ReviewPanel: Webview tried to toggle an unknown path: ${filePath}`,
-      );
-      return;
+      logWarn('ReviewPanel rejected a file outside the active selection');
+      throw Object.assign(new Error('Unknown review file.'), {
+        code: 'UNKNOWN_REVIEW_FILE',
+      });
     }
-
-    service.setSelected(entry.path, selected);
+    this.#fileSelectionService.setSelected(entry.path, selected);
     this.#securityReviewService.invalidate();
   }
 
-  async #handleScan(): Promise<void> {
-    const warning = this.#getWorkspaceWarning();
+  async #scan(): Promise<void> {
+    const warning = getWorkspaceWarning();
     if (warning) {
-      this.postError(warning);
-      return;
+      throw Object.assign(new Error(warning), { code: 'WORKSPACE_BLOCKED' });
     }
-
     await this.#securityReviewService.scan();
   }
 
-  async #handleConfirmWarnings(findingIds: readonly string[]): Promise<void> {
+  #confirmWarnings(findingIds: readonly string[]): void {
     const lastScan = this.#securityReviewService.lastScan;
     if (!lastScan) {
-      this.postError('No scan results available. Run a scan first.');
-      return;
+      throw Object.assign(new Error('No scan available.'), {
+        code: 'NO_SCAN_RESULT',
+      });
     }
-
+    const uniqueIds = new Set(findingIds);
+    if (uniqueIds.size !== findingIds.length) {
+      throw Object.assign(new Error('Duplicate finding IDs.'), {
+        code: 'INVALID_FINDING_IDS',
+      });
+    }
     const findings = lastScan.findings.filter(
-      (f) =>
-        findingIds.includes(f.id) &&
-        f.level === 'WARN' &&
-        f.resolution.kind === 'unresolved',
+      (finding) =>
+        uniqueIds.has(finding.id) &&
+        finding.level === 'WARN' &&
+        finding.resolution.kind === 'unresolved',
     );
-
-    if (findings.length === 0) {
-      this.postError('No matching unresolved WARN findings found.');
-      return;
+    if (findings.length !== uniqueIds.size) {
+      throw Object.assign(new Error('Unknown or resolved finding ID.'), {
+        code: 'INVALID_FINDING_IDS',
+      });
     }
-
     this.#securityReviewService.confirmWarnings(findings);
   }
 
-  async #handleCopyPrompt(): Promise<void> {
-    const lastScan = this.#securityReviewService.lastScan;
-    if (!lastScan) {
-      this.postError(
-        'Run the sensitive-content scan and build a Review Pack first.',
-      );
-      return;
-    }
+  async #copyPrompt(): Promise<void> {
+    const pack = await this.#securityReviewService.buildReviewPack();
+    await vscode.env.clipboard.writeText(pack.markdown);
+    await this.#panel.webview.postMessage({ type: 'copyComplete' });
+    logInfo('Review prompt copied to clipboard from the review panel');
+  }
+
+  async #buildStateDto(): Promise<ReviewPanelStateDto> {
+    const base = this.#buildBaseState();
+    if (!base) return emptyState();
+
+    if (!base.canExport || base.selectedCount === 0) return base;
 
     try {
       const pack = await this.#securityReviewService.buildReviewPack();
-      await vscode.env.clipboard.writeText(pack.markdown);
-      this.postCopyComplete();
-      logInfo('Review prompt copied to clipboard from the review panel.');
+      return {
+        ...base,
+        // Full preview: Copy and Export reuse the same cached, validated pack.
+        reviewPackPreview: pack.markdown,
+        reviewPackByteLength: pack.byteLength,
+        reviewPackCharLength: pack.markdown.length,
+        reviewPackTruncated: pack.manifest.truncations.length > 0,
+        truncationMessages: [...pack.manifest.truncations],
+        estimatedTokens: Math.ceil(pack.markdown.length / 4),
+      };
     } catch (error) {
-      const messageText =
-        error instanceof Error ? error.message : 'Failed to build Review Pack.';
-      logWarn(`Review prompt copy failed: ${messageText}`);
-      this.postError(messageText);
+      logWarn(`ReviewPanel preview unavailable (${getErrorCode(error)})`);
+      return { ...base, canExport: false };
     }
   }
 
-  /** Build a basic state DTO without Review Pack preview (synchronous portion). */
-  #buildBaseState(): ReviewPanelStateDto | null {
-    const service = this.#fileSelectionService;
-    const scanService = this.#securityReviewService;
-    const lastScan = scanService.lastScan;
+  #buildBaseState(): ReviewPanelStateDto | undefined {
+    const selection = this.#fileSelectionService;
+    const lastScan = this.#securityReviewService.lastScan;
+    if (!selection.hasSession || !selection.repository) return undefined;
 
-    if (!service.hasSession || !service.repository) {
-      return null;
-    }
-
-    const files: ReviewPanelFileDto[] = service.entries.map((entry) => ({
+    const files: ReviewPanelFileDto[] = selection.entries.map((entry) => ({
       path: entry.path,
       source: entry.source,
       changeKinds: [...entry.changeKinds],
       exists: entry.exists,
       selected: entry.selected,
     }));
-
     const findings: ReviewPanelFindingDto[] = lastScan
-      ? lastScan.findings.map((f) => ({
-          id: f.id,
-          level: f.level,
-          file: f.file,
-          line: f.line,
-          column: f.column,
-          rule: f.rule,
-          message: f.message,
-          preview: f.preview,
-          confirmed: f.resolution.kind === 'confirmed',
+      ? lastScan.findings.map((finding) => ({
+          id: finding.id,
+          level: finding.level,
+          file: finding.file,
+          line: finding.line,
+          column: finding.column,
+          rule: finding.rule,
+          message: finding.message,
+          preview: finding.preview,
+          confirmed: finding.resolution.kind === 'confirmed',
         }))
       : [];
 
     return {
       hasSession: true,
-      repositoryDisplayName: service.repository.displayName,
-      repositoryRoot: service.repository.root,
+      repositoryDisplayName: selection.repository.displayName,
       files,
-      selectedCount: service.selectedCount,
-      totalCount: service.entries.length,
+      selectedCount: selection.selectedCount,
+      totalCount: selection.entries.length,
       findings,
       hardBlockCount: lastScan?.hardBlockCount ?? 0,
       blockCount: lastScan?.blockCount ?? 0,
@@ -369,107 +299,34 @@ export class ReviewPanelController {
       estimatedTokens: 0,
     };
   }
+}
 
-  /** Build a lightweight state DTO (no Review Pack preview). */
-  async #buildStateDto(): Promise<ReviewPanelStateDto> {
-    const base = this.#buildBaseState();
-    if (!base) {
-      return {
-        hasSession: false,
-        repositoryDisplayName: '',
-        repositoryRoot: '',
-        files: [],
-        selectedCount: 0,
-        totalCount: 0,
-        findings: [],
-        hardBlockCount: 0,
-        blockCount: 0,
-        warnCount: 0,
-        infoCount: 0,
-        confirmedWarnCount: 0,
-        canExport: false,
-        hasScanResult: false,
-        reviewPackPreview: '',
-        reviewPackByteLength: 0,
-        reviewPackCharLength: 0,
-        reviewPackTruncated: false,
-        truncationMessages: [],
-        estimatedTokens: 0,
-      };
-    }
-    return base;
-  }
+function emptyState(): ReviewPanelStateDto {
+  return {
+    hasSession: false,
+    repositoryDisplayName: '',
+    files: [],
+    selectedCount: 0,
+    totalCount: 0,
+    findings: [],
+    hardBlockCount: 0,
+    blockCount: 0,
+    warnCount: 0,
+    infoCount: 0,
+    confirmedWarnCount: 0,
+    canExport: false,
+    hasScanResult: false,
+    reviewPackPreview: '',
+    reviewPackByteLength: 0,
+    reviewPackCharLength: 0,
+    reviewPackTruncated: false,
+    truncationMessages: [],
+    estimatedTokens: 0,
+  };
+}
 
-  /** Build a full state DTO including the Review Pack preview. */
-  async #buildStateDtoWithPreview(): Promise<ReviewPanelStateDto> {
-    const base = this.#buildBaseState();
-    if (!base) {
-      return {
-        hasSession: false,
-        repositoryDisplayName: '',
-        repositoryRoot: '',
-        files: [],
-        selectedCount: 0,
-        totalCount: 0,
-        findings: [],
-        hardBlockCount: 0,
-        blockCount: 0,
-        warnCount: 0,
-        infoCount: 0,
-        confirmedWarnCount: 0,
-        canExport: false,
-        hasScanResult: false,
-        reviewPackPreview: '',
-        reviewPackByteLength: 0,
-        reviewPackCharLength: 0,
-        reviewPackTruncated: false,
-        truncationMessages: [],
-        estimatedTokens: 0,
-      };
-    }
-
-    // Attempt to build a preview pack — silently fail if not possible
-    const lastScan = this.#securityReviewService.lastScan;
-    let reviewPackPreview = '';
-    let reviewPackByteLength = 0;
-    let reviewPackCharLength = 0;
-    let reviewPackTruncated = false;
-    let truncationMessages: string[] = [];
-
-    if (lastScan && base.selectedCount > 0 && lastScan.canExport) {
-      try {
-        const pack = await this.#securityReviewService.buildReviewPack();
-        reviewPackPreview = pack.markdown.slice(0, 8000);
-        reviewPackByteLength = pack.byteLength;
-        reviewPackCharLength = pack.markdown.length;
-        reviewPackTruncated = pack.manifest.truncations.length > 0;
-        truncationMessages = [...pack.manifest.truncations];
-      } catch {
-        // Preview building is best-effort
-      }
-    }
-
-    const charCount = reviewPackPreview.length;
-    const estimatedTokens = Math.ceil((charCount || reviewPackCharLength) / 4);
-
-    return {
-      ...base,
-      reviewPackPreview,
-      reviewPackByteLength,
-      reviewPackCharLength,
-      reviewPackTruncated,
-      truncationMessages,
-      estimatedTokens,
-    };
-  }
-
-  #getWorkspaceWarning(): string | undefined {
-    try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
-      const ws = require('../services/workspaceService') as typeof import('../services/workspaceService');
-      return ws.getWorkspaceWarning() ?? undefined;
-    } catch {
-      return undefined;
-    }
-  }
+function getErrorCode(error: unknown): string {
+  return typeof error === 'object' && error !== null && 'code' in error
+    ? String((error as { code: unknown }).code)
+    : 'UNKNOWN';
 }
