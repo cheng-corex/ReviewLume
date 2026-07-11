@@ -27,7 +27,7 @@
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && pnpm --filter @reviewlume/git-context build && tsc && tsc -p tsconfig.git-context-vendor.json",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
