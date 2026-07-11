@@ -4,6 +4,7 @@ import { registerCreateReviewPack } from '../../commands/createReviewPack';
 import { COMMANDS } from '../../constants';
 import { initLogService } from '../../services/logService';
 import type { GitContextService } from '../../services/gitContextService';
+import type { FileSelectionService } from '../../services/fileSelectionService';
 
 interface VscodeTesting {
   setWorkspaceState(folders: unknown[], trusted: boolean): void;
@@ -99,6 +100,31 @@ describe('createReviewPack command', () => {
     );
   });
 
+  it('initializes the P3 file tree before reporting success', async () => {
+    testing.setWorkspaceState([{ uri: { fsPath: '/workspace' } }], true);
+    const repository = { displayName: 'ReviewLume', root: '/repo' };
+    const status = { staged: [], unstaged: [], untracked: [] };
+    const inspect = vi.fn().mockResolvedValue({ kind: 'ready', repository, status });
+    const initialize = vi.fn().mockResolvedValue(undefined);
+    const refresh = vi.fn();
+    const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
+
+    registerCreateReviewPack(
+      context,
+      { inspect } as unknown as GitContextService,
+      { initialize, selectedCount: 3 } as unknown as FileSelectionService,
+      refresh,
+    );
+
+    await testing.getRegisteredCommand(COMMANDS.CREATE_REVIEW_PACK)!();
+
+    expect(initialize).toHaveBeenCalledWith(repository, status, expect.any(AbortSignal));
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(vscode.window.showInformationMessage).toHaveBeenCalledWith(
+      expect.stringContaining('3 file(s) selected'),
+    );
+  });
+
   it('uses an explicit Quick Pick when the service requests repository selection', async () => {
     testing.setWorkspaceState([{ uri: { fsPath: '/workspace' } }], true);
     const first = {
@@ -140,7 +166,7 @@ describe('createReviewPack command', () => {
     await testing.getRegisteredCommand(COMMANDS.CREATE_REVIEW_PACK)!();
 
     expect(vscode.window.showErrorMessage).toHaveBeenCalledWith(
-      'ReviewLume: Git context inspection failed. Check the ReviewLume output channel.',
+      'ReviewLume: Review initialization failed. Check the ReviewLume output channel.',
     );
     expect(vscode.window.showErrorMessage).not.toHaveBeenCalledWith(
       expect.stringContaining('secret'),
