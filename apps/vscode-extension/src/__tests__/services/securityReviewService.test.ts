@@ -2,6 +2,8 @@ import * as fs from 'node:fs/promises';
 import * as os from 'node:os';
 import * as path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { SecretScanner } from '../../../../../packages/secret-scanner/dist/index.js';
+import { ReviewPackBuilder } from '../../../../../packages/review-pack/dist/index.js';
 import { SecurityReviewService } from '../../services/securityReviewService';
 import type { FileSelectionService } from '../../services/fileSelectionService';
 import type { LazyFileSelectionGitRunner } from '../../services/lazyFileSelectionGitRunner';
@@ -23,10 +25,11 @@ async function fixture(diff: { value: string }) {
     entries,
     absolutePathFor: vi.fn(() => path.join(root, 'src', 'app.ts')),
   } as unknown as FileSelectionService;
-  const runner = {
-    run: vi.fn(async () => ({ stdout: diff.value })),
-  } as unknown as LazyFileSelectionGitRunner;
-  return { service: new SecurityReviewService(fileSelection, runner), runner };
+  const runner = { run: vi.fn(async () => ({ stdout: diff.value })) } as unknown as LazyFileSelectionGitRunner;
+  return {
+    service: new SecurityReviewService(fileSelection, runner, new SecretScanner(), new ReviewPackBuilder()),
+    runner,
+  };
 }
 
 describe('SecurityReviewService', () => {
@@ -40,8 +43,7 @@ describe('SecurityReviewService', () => {
   it('rejects export when Git diff changes after the successful scan', async () => {
     const diff = { value: '+ export const safe = true;\n' };
     const { service } = await fixture(diff);
-    const scan = await service.scan();
-    expect(scan.canExport).toBe(true);
+    expect((await service.scan()).canExport).toBe(true);
     diff.value = '+ token=abcdefghijklmnopqrstuvwxyz123456\n';
     await expect(service.buildReviewPack()).rejects.toThrow(/changed after scanning/i);
   });
