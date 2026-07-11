@@ -48,6 +48,14 @@
   - Localized extension command and settings titles through VS Code NLS resources.
   - In-panel Markdown, ZIP, or combined export-format selection that updates workspace settings.
   - Theme-aware primary, hover, focus, and disabled button states using VS Code color variables.
+- P7 review history:
+  - Atomic `metadata.json` and exact `request.md` snapshots under
+    `.reviewlume/history/<reviewId>/` after successful exports.
+  - Strict Zod metadata validation with repository-relative paths only.
+  - QuickPick history browsing, search, integrity status, prompt copying, export opening,
+    exact Markdown recovery, and confirmed deletion.
+  - Response import from a user-selected file or clipboard with a 5 MB limit.
+  - Automatic Chinese history UI for Chinese VS Code locales and English otherwise.
 
 ### Fixed
 
@@ -72,13 +80,13 @@
 - Unified ZIP export to the same review-specific directory as Markdown and both formats:
   all three formats now save under `.reviewlume/exports/<reviewId>/` instead of placing
   ZIP archives directly in the export root.
-- P7 review history storage and browsing:
-  - Automatic history record (`metadata.json` + `request.md`) saved to `.reviewlume/history/<reviewId>/`
-    after every successful export.
-  - QuickPick-based history browser with per-entry actions (open, copy prompt, re-export, delete).
-  - Full history import for AI review responses (`response.md`) with basic title parsing.
-  - Single-entry and clear-all deletion.
-  - Repository-bound: history is scoped to the current Git repository.
+- Hardened P7 history handling:
+  - Reject symbolic-link escapes and non-regular history files.
+  - Surface corrupt or incomplete records instead of silently hiding them.
+  - Remove the incomplete fake ZIP reconstruction path; only exact historical content may be restored.
+  - Delete the matching managed export directory with a confirmed history deletion.
+  - Keep `.reviewlume/history/**` out of Git and future Review Pack selection.
+  - Avoid logging imported response content or user-controlled titles.
 
 ## [0.1.0] - 2026-07-10
 
