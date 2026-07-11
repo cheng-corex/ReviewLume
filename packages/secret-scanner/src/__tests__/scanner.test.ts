@@ -21,15 +21,15 @@ describe('SecretScanner', () => {
     expect(JSON.stringify(result)).not.toContain('postgres://user:pass@example/db');
   });
 
-  it('never permits HARD_BLOCK override and never permits BLOCK confirmation', () => {
+  it('permits only WARN confirmation; BLOCK and HARD_BLOCK require a fresh scan', () => {
     const hard = scanner.scan([{ path: 'private.key', content: '-----BEGIN PRIVATE KEY-----' }]);
-    expect(() => scanner.resolve(hard, [{ findingId: hard.findings[0].id, action: 'exclude' }]))
+    expect(() => scanner.resolve(hard, [{ findingId: hard.findings[0].id, action: 'confirm' }]))
       .toThrow(SecretScanPolicyError);
 
     const block = scanner.scan([{ path: 'src/a.ts', content: 'apiKey=abcdefghijklmnop' }]);
     const finding = block.findings.find((item) => item.level === 'BLOCK')!;
     expect(() => scanner.resolve(block, [{ findingId: finding.id, action: 'confirm' }]))
-      .toThrow(/cannot be confirmed/i);
+      .toThrow(/fresh scan/i);
   });
 
   it('allows export only after WARN confirmation and detects stale scans', () => {
@@ -43,9 +43,11 @@ describe('SecretScanner', () => {
     expect(() => scanner.assertExportAllowed(resolved, 'different')).toThrow(/changed after scanning/i);
   });
 
-  it('requires repository-relative paths', () => {
+  it('requires repository-relative paths while preserving legal POSIX backslashes', () => {
     expect(() => scanner.scan([{ path: '../outside.txt', content: 'x' }])).toThrow(/repository-relative/);
     expect(() => scanner.scan([{ path: '/absolute.txt', content: 'x' }])).toThrow(/repository-relative/);
+    const result = scanner.scan([{ path: 'src/name\\with-backslash.ts', content: 'plain' }]);
+    expect(result.findings).toHaveLength(0);
   });
 
   it('redacts without returning the original value', () => {
