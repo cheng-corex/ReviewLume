@@ -8,6 +8,7 @@
  */
 
 import { execFile } from 'node:child_process';
+import { existsSync } from 'node:fs';
 import {
   GitNotAvailableError,
   GitUnsafeCommandError,
@@ -30,18 +31,15 @@ const READ_ONLY_COMMANDS = new Set([
   'merge-base',
 ]);
 
-/** Result of a successful git command execution. */
 export interface GitResult {
   readonly stdout: string;
   readonly stderr: string;
   readonly exitCode: number;
 }
 
-/** Options for running a git command. */
 export interface GitCommandOptions {
   readonly cwd: string;
   readonly args: readonly string[];
-  /** Timeout in milliseconds (default: 30000, 0 = no timeout). */
   readonly timeout?: number;
   readonly signal?: AbortSignal;
 }
@@ -65,8 +63,6 @@ export function assertReadOnlyGitCommand(args: readonly string[]): void {
     return;
   }
 
-  // `cat-file --batch*` is read-only and is also useful for cancellable,
-  // long-running object inspection without a shell.
   if (
     command === 'cat-file' &&
     (args[1] === '--batch' || args[1] === '--batch-check') &&
@@ -79,14 +75,10 @@ export function assertReadOnlyGitCommand(args: readonly string[]): void {
     throw new GitUnsafeCommandError(command);
   }
 
-  // Several otherwise read-only porcelain commands support writing output to
-  // an arbitrary path. ReviewLume never permits those options.
   if (args.some((arg) => arg === '--output' || arg.startsWith('--output='))) {
     throw new GitUnsafeCommandError(`${command} --output`);
   }
 
-  // Repository-controlled external diff and textconv drivers can execute
-  // arbitrary programs. Every diff invocation must explicitly disable both.
   if (
     command === 'diff' &&
     (!args.includes('--no-ext-diff') || !args.includes('--no-textconv'))
@@ -99,7 +91,6 @@ export function assertReadOnlyGitCommand(args: readonly string[]): void {
 export class GitCommandRunner {
   constructor(private readonly gitPath: string = 'git') {}
 
-  /** Check whether the git executable is available. */
   async isAvailable(signal?: AbortSignal): Promise<boolean> {
     try {
       await this.run({ cwd: process.cwd(), args: ['--version'], signal });
@@ -112,21 +103,11 @@ export class GitCommandRunner {
     }
   }
 
-  /** Get the git version string. */
   async getVersion(signal?: AbortSignal): Promise<string> {
     const result = await this.run({ cwd: process.cwd(), args: ['--version'], signal });
     return result.stdout.trim();
   }
 
-  /**
-   * Execute an allowed read-only Git command.
-   *
-   * @throws {GitUnsafeCommandError} Command is outside the allowlist.
-   * @throws {GitNotAvailableError} Git executable is unavailable.
-   * @throws {GitCommandError} Git returned a non-zero exit code.
-   * @throws {GitTimeoutError} Command exceeded the time limit.
-   * @throws {GitCancelledError} Operation was cancelled.
-   */
   async run(options: GitCommandOptions): Promise<GitResult> {
     const { cwd, args, signal } = options;
     const timeout = options.timeout ?? DEFAULT_TIMEOUT;
@@ -135,6 +116,12 @@ export class GitCommandRunner {
 
     if (signal?.aborted) {
       throw new GitCancelledError();
+    }
+
+    // Node reports ENOENT for both a missing executable and a missing cwd.
+    // Validate cwd first so the latter is not misreported as "Git missing".
+    if (!existsSync(cwd)) {
+      throw new GitCommandError('Git working directory is unavailable.', -1, '');
     }
 
     return new Promise<GitResult>((resolve, reject) => {
@@ -188,7 +175,7 @@ export class GitCommandRunner {
               typeof nodeError.code === 'number'
                 ? nodeError.code
                 : typeof (error as { status?: unknown }).status === 'number'
-                  ? ((error as { status: number }).status)
+                  ? (error as { status: number }).status
                   : 1;
             const safeStderr = redactGitDiagnostic(stderr || error.message);
             finish(() =>
@@ -223,8 +210,6 @@ export class GitCommandRunner {
         );
       });
 
-      // Once the process has exited, it cannot time out while its buffered
-      // callback is being delivered.
       child.once('exit', () => {
         if (timer) {
           clearTimeout(timer);
