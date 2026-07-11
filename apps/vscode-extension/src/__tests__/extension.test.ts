@@ -48,9 +48,6 @@ function listPackagedJavaScriptFiles(directory: string): string[] {
   });
 }
 
-// Extension Host behavior is covered further by manual verification. These tests
-// validate manifest contracts, activation wiring, and the packaged JS boundary.
-
 describe('reviewlume-vscode manifest', () => {
   const pkgPath = path.resolve(__dirname, '../../package.json');
 
@@ -58,7 +55,7 @@ describe('reviewlume-vscode manifest', () => {
     return JSON.parse(fs.readFileSync(pkgPath, 'utf-8')) as PkgJson;
   }
 
-  it('has a valid package.json structure', () => {
+  it('has valid extension metadata', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
     expect(content.activationEvents).toBeDefined();
@@ -66,7 +63,7 @@ describe('reviewlume-vscode manifest', () => {
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
   });
 
-  it('declares limited Restricted Mode support before using Workspace Trust APIs', () => {
+  it('declares limited Restricted Mode support', () => {
     const capability = readPkg().capabilities?.untrustedWorkspaces;
     expect(capability?.supported).toBe('limited');
     expect(capability?.description).toContain('Workspace Trust');
@@ -82,12 +79,11 @@ describe('reviewlume-vscode manifest', () => {
 
     for (const { command, title } of expectedCommands) {
       it(`registers command "${command}"`, () => {
-        const content = readPkg();
-        const commandContribution = content.contributes.commands.find(
+        const contribution = readPkg().contributes.commands.find(
           (candidate) => candidate.command === command,
         );
-        expect(commandContribution).toBeDefined();
-        expect(commandContribution!.title).toContain(title);
+        expect(contribution).toBeDefined();
+        expect(contribution!.title).toContain(title);
       });
     }
   });
@@ -102,38 +98,47 @@ describe('reviewlume-vscode manifest', () => {
     ];
 
     for (const { key, prefix } of requiredEvents) {
-      const eventKey = `${prefix}:${key}`;
-      it(`has activation event for "${eventKey}"`, () => {
-        expect(readPkg().activationEvents).toContain(eventKey);
+      it(`has activation event for "${prefix}:${key}"`, () => {
+        expect(readPkg().activationEvents).toContain(`${prefix}:${key}`);
       });
     }
   });
 
-  describe('views', () => {
-    it('has a view container in the activity bar', () => {
-      const content = readPkg();
-      const containers = content.contributes.viewsContainers?.activitybar;
-      expect(containers).toBeDefined();
-      const container = containers!.find((candidate) => candidate.id === VIEWS.CONTAINER);
-      expect(container).toBeDefined();
-      expect(container!.title).toBe('ReviewLume');
-      expect(container!.icon).toMatch(/^resources\/icon\.(png|svg)$/);
-    });
+  it('contributes the Activity Bar view', () => {
+    const content = readPkg();
+    const container = content.contributes.viewsContainers?.activitybar.find(
+      (candidate) => candidate.id === VIEWS.CONTAINER,
+    );
+    expect(container?.title).toBe('ReviewLume');
+    expect(container?.icon).toMatch(/^resources\/icon\.(png|svg)$/);
 
-    it('has the main tree view under the ReviewLume container', () => {
-      const views = readPkg().contributes.views?.[VIEWS.CONTAINER];
-      expect(views).toBeDefined();
-      const mainView = views!.find((candidate) => candidate.id === VIEWS.MAIN_VIEW);
-      expect(mainView).toBeDefined();
-      expect(mainView!.type).toBe('tree');
-      expect(mainView!.name).toBe('ReviewLume');
-    });
+    const mainView = content.contributes.views?.[VIEWS.CONTAINER]?.find(
+      (candidate) => candidate.id === VIEWS.MAIN_VIEW,
+    );
+    expect(mainView).toMatchObject({ type: 'tree', name: 'ReviewLume' });
   });
 
-  it('keeps every packaged runtime module free of unpackaged workspace imports', () => {
+  it('packages a self-contained CommonJS Git context runtime', () => {
+    const extensionRoot = path.resolve(__dirname, '../..');
+    const vendorEntry = path.join(
+      extensionRoot,
+      'dist',
+      'vendor',
+      'git-context',
+      'index.js',
+    );
+    expect(fs.existsSync(vendorEntry)).toBe(true);
+
+    const source = fs.readFileSync(vendorEntry, 'utf-8');
+    expect(source).toContain('GitCommandRunner');
+    expect(source).not.toContain("require('@reviewlume/");
+    expect(source).not.toContain('require("@reviewlume/');
+  });
+
+  it('keeps every packaged runtime module free of bare workspace imports', () => {
     const distPath = path.resolve(__dirname, '../../dist');
     const compiledFiles = listPackagedJavaScriptFiles(distPath);
-    expect(compiledFiles.length).toBeGreaterThan(0);
+    expect(compiledFiles.length).toBeGreaterThan(1);
 
     for (const compiledFile of compiledFiles) {
       const compiled = fs.readFileSync(compiledFile, 'utf-8');
@@ -142,9 +147,8 @@ describe('reviewlume-vscode manifest', () => {
     }
   });
 
-  it('has a non-empty icon file at the declared path', () => {
-    const content = readPkg();
-    const iconRelPath = content.contributes.viewsContainers?.activitybar?.[0]?.icon;
+  it('has a non-empty icon file', () => {
+    const iconRelPath = readPkg().contributes.viewsContainers?.activitybar?.[0]?.icon;
     expect(iconRelPath).toBeDefined();
     const iconPath = path.resolve(__dirname, '../..', iconRelPath!);
     expect(fs.existsSync(iconPath)).toBe(true);
@@ -158,7 +162,7 @@ describe('extension activation', () => {
     testing.reset();
   });
 
-  it('registers all P1 commands and the Activity Bar tree view', () => {
+  it('registers P2 entry points without spawning Git during activation', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
 
