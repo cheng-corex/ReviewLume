@@ -22,6 +22,19 @@
   - `.gitignore` and repository-root `.reviewlumeignore` enforcement.
   - Real-path validation that rejects cross-repository paths, Git metadata, directories,
     and symbolic-link escapes.
+- P4 sensitive-content scanning:
+  - Filename, private-key, authorization/session, token, connection-string, JWT,
+    high-entropy, and private-network rules.
+  - HARD_BLOCK, BLOCK, WARN, and INFO policy levels with non-bypassable export gates.
+  - Fully redacted previews, per-WARN confirmation, content fingerprints, and stale-scan rejection.
+  - Exact-content scanning that includes selected files, generated instructions, and Git diff.
+  - `ReviewLume: Scan Selected Files` command.
+- P5 Review Pack schema v1:
+  - Stable `workspaceId`, cryptographically random `reviewId`, and collision-retry helper.
+  - Privacy-safe manifest, Markdown output, exclusions, truncation accounting, and size budget.
+  - Fixed `REVIEW_REQUEST.md` name and optional store-mode ZIP output under
+    `reviewlume-pack-<review-id>`.
+  - `ReviewLume: Export Review Pack` command.
 
 ### Fixed
 
@@ -36,7 +49,10 @@
   and stopped retaining credential-bearing remote URLs.
 - Preserved exact NUL-delimited Git paths and propagated Git status failures instead of
   silently presenting a failed inspection as a clean repository.
-- Preserved legal POSIX filenames containing backslashes when building the P3 file tree.
+- Preserved legal POSIX filenames containing backslashes in file selection, scanning,
+  and Review Pack manifests.
+- Prevented raw matched values and adjacent same-line secrets from entering scan results,
+  previews, logs, or diagnostics.
 
 ## [0.1.0] - 2026-07-10
 

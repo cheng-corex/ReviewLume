@@ -10,6 +10,8 @@
   "include": ["src"],
   "references": [
     { "path": "../../packages/core" },
-    { "path": "../../packages/git-context" }
+    { "path": "../../packages/git-context" },
+    { "path": "../../packages/secret-scanner" },
+    { "path": "../../packages/review-pack" }
   ]
 }

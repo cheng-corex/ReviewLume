@@ -47,37 +47,37 @@
 
 ## P4：敏感扫描
 
-- [ ] 实现文件名规则。
-- [ ] 实现私钥检测。
-- [ ] 实现常见 Token 检测。
-- [ ] 实现连接串检测。
-- [ ] 实现脱敏预览。
-- [ ] 支持 HARD_BLOCK/BLOCK/WARN/INFO。
-- [ ] HARD_BLOCK 永远禁止导出且不能通过设置关闭。
-- [ ] BLOCK 必须排除或脱敏后重新扫描，不能直接确认放行。
-- [ ] WARN 必须逐项确认并记录确认状态。
-- [ ] 允许用户排除命中内容。
-- [ ] 修改范围或脱敏内容后强制重新扫描。
-- [ ] 日志和诊断信息不保存原始命中秘密。
+- [x] 实现文件名规则。
+- [x] 实现私钥检测。
+- [x] 实现常见 Token 检测。
+- [x] 实现连接串检测。
+- [x] 实现脱敏预览。
+- [x] 支持 HARD_BLOCK/BLOCK/WARN/INFO。
+- [x] HARD_BLOCK 永远禁止导出且不能通过设置关闭。
+- [x] BLOCK 必须排除或脱敏后重新扫描，不能直接确认放行。
+- [x] WARN 必须逐项确认并记录确认状态。
+- [x] 允许用户通过文件选择树排除命中内容。
+- [x] 修改范围、文件内容或 diff 后强制重新扫描。
+- [x] 日志和诊断信息不保存原始命中秘密。
 
 ## P5：Review Pack
 
-- [ ] 定义 schema v1。
-- [ ] 定义 `workspaceId`：规范化 repository identity 的 SHA-256 前 16 位。
-- [ ] 定义 `reviewId`：UTC 时间加 12 位密码学安全随机十六进制值。
-- [ ] 创建历史目录前检查 ID 冲突并重试。
-- [ ] 生成元数据。
-- [ ] manifest 记录 `workspaceId`、`reviewId`、repository display name 和安全扫描计数。
-- [ ] manifest 不保存原始绝对路径和带凭据 remote URL。
-- [ ] 生成审核说明。
-- [ ] 嵌入需求和实施报告。
-- [ ] 嵌入 diff。
-- [ ] 嵌入所选文件。
-- [ ] 记录排除和截断。
-- [ ] 实现大小预算。
-- [ ] 导出 Markdown 主文件名固定为 `REVIEW_REQUEST.md`。
-- [ ] 可选导出 ZIP，目录名为 `reviewlume-pack-<review-id>`。
-- [ ] HARD_BLOCK、未处理 BLOCK 或未确认 WARN 存在时禁止最终导出。
+- [x] 定义 schema v1。
+- [x] 定义 `workspaceId`：规范化 repository identity 的 SHA-256 前 16 位。
+- [x] 定义 `reviewId`：UTC 时间加 12 位密码学安全随机十六进制值。
+- [x] 提供创建历史目录前的 ID 冲突检查与重试入口。
+- [x] 生成元数据。
+- [x] manifest 记录 `workspaceId`、`reviewId`、repository display name 和安全扫描计数。
+- [x] manifest 不保存原始绝对路径和带凭据 remote URL。
+- [x] 生成审核说明。
+- [x] 支持嵌入需求和实施报告。
+- [x] 嵌入 diff。
+- [x] 嵌入所选文件。
+- [x] 记录排除和截断。
+- [x] 实现大小预算。
+- [x] 导出 Markdown 主文件名固定为 `REVIEW_REQUEST.md`。
+- [x] 可选导出 ZIP，目录名为 `reviewlume-pack-<review-id>`。
+- [x] HARD_BLOCK、未处理 BLOCK 或未确认 WARN 存在时禁止最终导出。
 
 ## P6：审核面板
 

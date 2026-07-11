@@ -11,6 +11,10 @@ export const COMMANDS = {
   ADD_RELATED_FILES: 'reviewlume.addRelatedFiles',
   /** Discover likely test files for the active selection */
   RECOMMEND_TEST_FILES: 'reviewlume.recommendTestFiles',
+  /** Scan selected files for sensitive content */
+  SCAN_SELECTED_FILES: 'reviewlume.scanSelectedFiles',
+  /** Export a security-gated Review Pack */
+  EXPORT_REVIEW_PACK: 'reviewlume.exportReviewPack',
   /** Open review history for the current workspace */
   OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
   /** Import an AI review response */

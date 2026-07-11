@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../packages/review-pack/src",
+    "outDir": "dist/vendor/review-pack",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "verbatimModuleSyntax": false,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["../../packages/review-pack/src/**/*.ts"],
+  "exclude": ["../../packages/review-pack/src/__tests__/**"]
+}
