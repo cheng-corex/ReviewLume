@@ -1,4 +1,4 @@
-import type * as GitContextModule from '@reviewlume/git-context';
+import type * as GitContextModule from '../../../../packages/git-context';
 
 // The build copies @reviewlume/git-context/dist beside this compiled shim.
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -16,4 +16,4 @@ export type {
   DiscoveryResult,
   GitRepository,
   GitStatusSnapshot,
-} from '@reviewlume/git-context';
+} from '../../../../packages/git-context';
