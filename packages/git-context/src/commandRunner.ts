@@ -17,10 +17,7 @@ import {
   GitCancelledError,
 } from './errors.js';
 
-/** Maximum buffer size for git stdout/stderr (100 MiB). */
 const MAX_BUFFER = 100 * 1024 * 1024;
-
-/** Default timeout for git commands (30 seconds). */
 const DEFAULT_TIMEOUT = 30_000;
 
 const READ_ONLY_COMMANDS = new Set([
@@ -44,14 +41,12 @@ export interface GitCommandOptions {
   readonly signal?: AbortSignal;
 }
 
-/** Remove credential-like user information from diagnostics. */
 export function redactGitDiagnostic(value: string): string {
   return value
     .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?::[^\s/@]*)?@/gi, '$1[REDACTED]@')
     .replace(/(authorization\s*:\s*)\S+/gi, '$1[REDACTED]');
 }
 
-/** Validate the top-level command and options before spawning Git. */
 export function assertReadOnlyGitCommand(args: readonly string[]): void {
   if (args.length === 1 && args[0] === '--version') {
     return;
@@ -87,7 +82,6 @@ export function assertReadOnlyGitCommand(args: readonly string[]): void {
   }
 }
 
-/** Safe, typed Git command runner. */
 export class GitCommandRunner {
   constructor(private readonly gitPath: string = 'git') {}
 
@@ -118,8 +112,6 @@ export class GitCommandRunner {
       throw new GitCancelledError();
     }
 
-    // Node reports ENOENT for both a missing executable and a missing cwd.
-    // Validate cwd first so the latter is not misreported as "Git missing".
     if (!existsSync(cwd)) {
       throw new GitCommandError('Git working directory is unavailable.', -1, '');
     }
@@ -171,12 +163,7 @@ export class GitCommandRunner {
               return;
             }
 
-            const exitCode =
-              typeof nodeError.code === 'number'
-                ? nodeError.code
-                : typeof (error as { status?: unknown }).status === 'number'
-                  ? (error as { status: number }).status
-                  : 1;
+            const exitCode = typeof nodeError.code === 'number' ? nodeError.code : 1;
             const safeStderr = redactGitDiagnostic(stderr || error.message);
             finish(() =>
               reject(
