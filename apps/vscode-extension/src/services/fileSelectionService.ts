@@ -85,14 +85,6 @@ export class ReviewLumeIgnoreMatcher {
   }
 }
 
-function createDefaultRunner(): GitRunnerLike {
-  type GitContextRuntime = typeof import('../../../../packages/git-context/dist/index.js');
-  // The extension build vendors the Git runtime beside this module as CommonJS.
-  // eslint-disable-next-line @typescript-eslint/no-var-requires
-  const runtime = require('../vendor/git-context/index.js') as GitContextRuntime;
-  return new runtime.GitCommandRunner();
-}
-
 /**
  * Owns the active P3 file-selection session. All paths are repository-relative,
  * `.gitignore` and `.reviewlumeignore` are enforced, and real paths are checked
@@ -105,7 +97,7 @@ export class FileSelectionService {
   #repositoryRealPath: string | undefined;
   #ignoreMatcher = new ReviewLumeIgnoreMatcher([]);
 
-  constructor(runner: GitRunnerLike = createDefaultRunner()) {
+  constructor(runner: GitRunnerLike) {
     this.#runner = runner;
   }
 
@@ -199,7 +191,10 @@ export class FileSelectionService {
     const normalized = normalizeRepositoryPath(relativePath);
     const entry = this.#entries.get(normalized);
     if (!entry) {
-      throw new FileSelectionError('INVALID_REPOSITORY_PATH', 'The selected file is not in the active review.');
+      throw new FileSelectionError(
+        'INVALID_REPOSITORY_PATH',
+        'The selected file is not in the active review.',
+      );
     }
     entry.selected = selected;
   }
@@ -219,7 +214,7 @@ export class FileSelectionService {
     signal?: AbortSignal,
   ): Promise<FileAdditionResult> {
     const { repository, repositoryRealPath } = this.#requireSession();
-    const prepared: string[] = [];
+    const prepared = new Set<string>();
     const skipped: Array<{
       path: string;
       reason: 'already-selected' | 'gitignore' | 'reviewlumeignore';
@@ -244,12 +239,12 @@ export class FileSelectionService {
       }
 
       const existing = this.#entries.get(relativePath);
-      if (existing?.selected) {
+      if (existing?.selected || prepared.has(relativePath)) {
         skipped.push({ path: relativePath, reason: 'already-selected' });
         continue;
       }
 
-      prepared.push(relativePath);
+      prepared.add(relativePath);
     }
 
     for (const relativePath of prepared) {
@@ -267,7 +262,7 @@ export class FileSelectionService {
       }
     }
 
-    return { added: prepared, skipped };
+    return { added: Array.from(prepared), skipped };
   }
 
   async recommendTests(signal?: AbortSignal): Promise<readonly string[]> {
@@ -292,14 +287,18 @@ export class FileSelectionService {
       if (!isTestPath(relativePath) || this.#entries.has(relativePath)) continue;
       if (this.#ignoreMatcher.isIgnored(relativePath)) continue;
 
-      const score = Math.max(...targets.map((target) => testRelationshipScore(target.path, relativePath)));
+      const score = Math.max(
+        ...targets.map((target) => testRelationshipScore(target.path, relativePath)),
+      );
       if (score < 80) continue;
 
       await this.#validateExistingRelativePath(repository, repositoryRealPath, relativePath);
       recommendations.push({ path: relativePath, score });
     }
 
-    recommendations.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
+    recommendations.sort(
+      (left, right) => right.score - left.score || left.path.localeCompare(right.path),
+    );
     const added = recommendations.slice(0, 20).map((recommendation) => recommendation.path);
 
     for (const relativePath of added) {
@@ -505,24 +504,27 @@ function globToRegex(pattern: string): string {
 }
 
 function normalizeRepositoryPath(value: string): string {
-  if (
-    value.includes('\0') ||
-    path.isAbsolute(value) ||
-    /^[A-Za-z]:[\\/]/.test(value) ||
-    value.startsWith('\\\\')
-  ) {
-    throw new FileSelectionError('INVALID_REPOSITORY_PATH', 'Only repository-relative paths are allowed.');
+  const hasWindowsAbsoluteSyntax =
+    path.sep === '\\' && (/^[A-Za-z]:[\\/]/.test(value) || value.startsWith('\\\\'));
+  if (value.includes('\0') || path.isAbsolute(value) || hasWindowsAbsoluteSyntax) {
+    throw new FileSelectionError(
+      'INVALID_REPOSITORY_PATH',
+      'Only repository-relative paths are allowed.',
+    );
   }
 
   const normalized = path.posix.normalize(toPosixPath(value)).replace(/^\.\//, '');
   if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
-    throw new FileSelectionError('INVALID_REPOSITORY_PATH', 'The repository-relative path is invalid.');
+    throw new FileSelectionError(
+      'INVALID_REPOSITORY_PATH',
+      'The repository-relative path is invalid.',
+    );
   }
   return normalized;
 }
 
 function toPosixPath(value: string): string {
-  return value.replace(/\\/g, '/');
+  return path.sep === '\\' ? value.replace(/\\/g, '/') : value;
 }
 
 function isOutsidePath(relativePath: string): boolean {
@@ -586,7 +588,9 @@ function testRelationshipScore(sourcePath: string, testPath: string): number {
 
 function sourceFileStem(relativePath: string): string {
   const fileName = path.posix.basename(relativePath);
-  return fileName.replace(/\.[^.]+$/, '').replace(/^index$/i, path.posix.basename(path.posix.dirname(relativePath)));
+  return fileName
+    .replace(/\.[^.]+$/, '')
+    .replace(/^index$/i, path.posix.basename(path.posix.dirname(relativePath)));
 }
 
 function testFileStem(relativePath: string): string {
