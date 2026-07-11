@@ -193,7 +193,12 @@ describe('HistoryService', () => {
     const entries = await service.list(repoRoot);
     expect(entries[0].integrity).toBe('valid');
     expect(entries[0].markdownPath).toBe(
-      path.join(repoRoot, EXPORTS_DIRECTORY, pack.reviewId, 'REVIEW_REQUEST.md'),
+      path.join(
+        await fs.realpath(repoRoot),
+        EXPORTS_DIRECTORY,
+        pack.reviewId,
+        'REVIEW_REQUEST.md',
+      ),
     );
   });
 
