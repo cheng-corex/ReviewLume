@@ -1,8 +1,8 @@
 {
   "name": "reviewlume-vscode",
-  "displayName": "ReviewLume – AI Code Review Pack",
+  "displayName": "%extension.displayName%",
   "version": "0.1.0",
-  "description": "Build focused, privacy-aware code review packs for browser-based AI reviewers",
+  "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
   "publisher": "reviewlume",
@@ -13,20 +13,11 @@
   "capabilities": {
     "untrustedWorkspaces": {
       "supported": "limited",
-      "description": "ReviewLume can show workspace status in Restricted Mode, but commands that inspect repository content require Workspace Trust."
+      "description": "%capabilities.untrustedWorkspaces%"
     }
   },
-  "categories": [
-    "Other",
-    "Visualization"
-  ],
-  "keywords": [
-    "code review",
-    "git diff",
-    "ai review",
-    "review pack",
-    "privacy"
-  ],
+  "categories": ["Other", "Visualization"],
+  "keywords": ["code review", "git diff", "ai review", "review pack", "privacy"],
   "activationEvents": [
     "onCommand:reviewlume.hello",
     "onCommand:reviewlume.createReviewPack",
@@ -42,7 +33,7 @@
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/webview/media',{recursive:true});for(const f of ['reviewPanel.js','reviewPanel.css'])fs.copyFileSync('src/webview/media/'+f,'dist/webview/media/'+f)\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && node -e \"const fs=require('node:fs');fs.mkdirSync('dist/webview/media',{recursive:true});for(const f of ['reviewPanel.js','reviewPanel.css','reviewPanelTheme.css'])fs.copyFileSync('src/webview/media/'+f,'dist/webview/media/'+f)\"",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
@@ -53,97 +44,54 @@
   },
   "contributes": {
     "commands": [
-      {
-        "command": "reviewlume.hello",
-        "title": "ReviewLume: Hello (Verify Extension)"
-      },
-      {
-        "command": "reviewlume.createReviewPack",
-        "title": "ReviewLume: Create Review Pack"
-      },
-      {
-        "command": "reviewlume.addRelatedFiles",
-        "title": "ReviewLume: Add Related Files"
-      },
-      {
-        "command": "reviewlume.recommendTestFiles",
-        "title": "ReviewLume: Recommend Test Files"
-      },
-      {
-        "command": "reviewlume.scanSelectedFiles",
-        "title": "ReviewLume: Scan Selected Files"
-      },
-      {
-        "command": "reviewlume.exportReviewPack",
-        "title": "ReviewLume: Export Review Pack"
-      },
-      {
-        "command": "reviewlume.addExportDirectoryToGitignore",
-        "title": "ReviewLume: Add Export Directory to .gitignore"
-      },
-      {
-        "command": "reviewlume.openReviewHistory",
-        "title": "ReviewLume: Open Review History"
-      },
-      {
-        "command": "reviewlume.importReviewResponse",
-        "title": "ReviewLume: Import Review Response"
-      },
-      {
-        "command": "reviewlume.openReviewPanel",
-        "title": "ReviewLume: Open Review Panel"
-      }
+      { "command": "reviewlume.hello", "title": "%command.hello%" },
+      { "command": "reviewlume.createReviewPack", "title": "%command.createReviewPack%" },
+      { "command": "reviewlume.addRelatedFiles", "title": "%command.addRelatedFiles%" },
+      { "command": "reviewlume.recommendTestFiles", "title": "%command.recommendTestFiles%" },
+      { "command": "reviewlume.scanSelectedFiles", "title": "%command.scanSelectedFiles%" },
+      { "command": "reviewlume.exportReviewPack", "title": "%command.exportReviewPack%" },
+      { "command": "reviewlume.addExportDirectoryToGitignore", "title": "%command.addExportDirectoryToGitignore%" },
+      { "command": "reviewlume.openReviewHistory", "title": "%command.openReviewHistory%" },
+      { "command": "reviewlume.importReviewResponse", "title": "%command.importReviewResponse%" },
+      { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" }
     ],
     "configuration": {
       "title": "ReviewLume",
       "properties": {
         "reviewlume.export.mode": {
           "type": "string",
-          "enum": [
-            "automatic",
-            "askEveryTime"
-          ],
+          "enum": ["automatic", "askEveryTime"],
+          "enumDescriptions": ["%config.export.mode.automatic%", "%config.export.mode.askEveryTime%"],
           "default": "automatic",
-          "description": "Automatically save Review Packs inside the active repository or ask for a destination every time."
+          "description": "%config.export.mode.description%"
         },
         "reviewlume.export.directory": {
           "type": "string",
           "default": ".reviewlume/exports",
-          "description": "Repository-relative directory used by automatic Review Pack export. Absolute paths and parent traversal are rejected."
+          "description": "%config.export.directory.description%"
         },
         "reviewlume.export.format": {
           "type": "string",
-          "enum": [
-            "markdown",
-            "zip",
-            "both"
-          ],
+          "enum": ["markdown", "zip", "both"],
+          "enumDescriptions": ["Markdown", "ZIP", "Markdown + ZIP"],
           "default": "markdown",
-          "description": "Output format used by automatic Review Pack export."
+          "description": "%config.export.format.description%"
         },
         "reviewlume.export.autoUpdateGitignore": {
           "type": "boolean",
           "default": true,
-          "description": "Silently add the repository-local automatic export directory to the active repository root .gitignore after a successful automatic export."
+          "description": "%config.export.autoUpdateGitignore.description%"
         }
       }
     },
     "viewsContainers": {
       "activitybar": [
-        {
-          "id": "reviewlume",
-          "title": "ReviewLume",
-          "icon": "resources/icon.png"
-        }
+        { "id": "reviewlume", "title": "ReviewLume", "icon": "resources/icon.png" }
       ]
     },
     "views": {
       "reviewlume": [
-        {
-          "type": "tree",
-          "id": "reviewlume.mainView",
-          "name": "ReviewLume"
-        }
+        { "type": "tree", "id": "reviewlume.mainView", "name": "ReviewLume" }
       ]
     }
   },
