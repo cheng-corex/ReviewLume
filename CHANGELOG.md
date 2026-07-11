@@ -69,6 +69,9 @@
 - Added the scan and export commands to the clickable Activity Bar action list.
 - Excluded generated `.reviewlume/exports/**` files from new review-selection sessions to
   prevent Review Packs from recursively including earlier Review Packs.
+- Unified ZIP export to the same review-specific directory as Markdown and both formats:
+  all three formats now save under `.reviewlume/exports/<reviewId>/` instead of placing
+  ZIP archives directly in the export root.
 
 ## [0.1.0] - 2026-07-10
 

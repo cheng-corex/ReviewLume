@@ -104,7 +104,8 @@ export async function saveAutomaticReviewPack(
   }
 
   if (format === 'zip') {
-    const zipPath = path.join(exportRoot, `${pack.directoryName}.zip`);
+    const reviewDirectory = await ensureReviewDirectory(exportRoot, pack.reviewId);
+    const zipPath = path.join(reviewDirectory, `${pack.directoryName}.zip`);
     await fs.writeFile(zipPath, Buffer.from(pack.zip), { flag: 'wx' });
     files.push(zipPath);
   }

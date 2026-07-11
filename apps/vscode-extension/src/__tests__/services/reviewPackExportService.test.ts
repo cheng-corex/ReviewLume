@@ -39,11 +39,11 @@ describe('automatic Review Pack export', () => {
     expect(await fs.readFile(result.files[0], 'utf8')).toBe(pack.markdown);
   });
 
-  it('writes ZIP without a save dialog dependency', async () => {
+  it('writes ZIP to the review-specific directory', async () => {
     const zipRoot = await fixture();
     const zipRootRealPath = await fs.realpath(zipRoot);
     const zip = await saveAutomaticReviewPack(zipRoot, 'out', 'zip', pack);
-    expect(zip.files).toEqual([path.join(zipRootRealPath, 'out', `${pack.directoryName}.zip`)]);
+    expect(zip.files).toEqual([path.join(zipRootRealPath, 'out', pack.reviewId, `${pack.directoryName}.zip`)]);
   });
 
   it('writes Markdown and ZIP into the same review-specific directory', async () => {
