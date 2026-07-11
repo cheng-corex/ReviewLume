@@ -93,16 +93,16 @@
 
 ## P7：报告历史
 
-- [ ] 按 `<workspaceId>/<reviewId>` 保存历史。
-- [ ] 内部请求快照使用 `request.md`，不与导出的 `REVIEW_REQUEST.md` 混用。
-- [ ] 保存 request、response、report、resolution。
-- [ ] `reviewId` 创建后保持不可变。
-- [ ] 定义 schema 迁移入口，升级时不改变既有 ID 语义。
-- [ ] 导入文本回答。
-- [ ] 基础标题解析。
+- [x] 按 `<workspaceId>/<reviewId>` 保存历史。
+- [x] 内部请求快照使用 `request.md`，不与导出的 `REVIEW_REQUEST.md` 混用。
+- [x] 保存 request、response、report、resolution。
+- [x] `reviewId` 创建后保持不可变。
+- [x] 定义 schema 迁移入口，升级时不改变既有 ID 语义。
+- [x] 导入文本回答。
+- [x] 基础标题解析。
 - [ ] 允许人工编辑问题清单。
-- [ ] 删除单次历史。
-- [ ] 清空全部历史。
+- [x] 删除单次历史。
+- [x] 清空全部历史。
 - [ ] 支持导出脱敏诊断信息。
 
 ## P8：二次复核

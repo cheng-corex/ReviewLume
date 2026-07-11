@@ -42,9 +42,9 @@ export function activate(context: vscode.ExtensionContext): void {
   registerCreateReviewPack(context, undefined, fileSelectionService, selectionChanged);
   registerFileSelectionCommands(context, fileSelectionService, selectionChanged);
   registerSecurityReviewCommands(context, securityReviewService, refreshViews);
-  registerOpenReviewHistory(context);
+  registerOpenReviewHistory(context, fileSelectionService);
   registerOpenReviewPanel(context, fileSelectionService, securityReviewService);
-  registerImportReviewResponse(context);
+  registerImportReviewResponse(context, fileSelectionService);
 
   logInfo('ReviewLume extension activated');
 }

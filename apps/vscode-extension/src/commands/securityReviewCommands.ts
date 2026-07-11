@@ -8,6 +8,7 @@ import {
   type ReviewPackExportFormat,
   type ReviewPackExportMode,
 } from '../services/reviewPackExportService';
+import { HistoryService } from '../services/historyService';
 import { ensureExportDirectoryIgnored } from '../services/gitignoreService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { logInfo, logWarn } from '../services/logService';
@@ -99,6 +100,14 @@ export function registerSecurityReviewCommands(
             pack,
           );
 
+          // Save history after successful automatic export
+          try {
+            const historyService = new HistoryService();
+            await historyService.save(activeRepository.root, pack, configuredFormat as string);
+          } catch (saveError) {
+            logWarn(`Failed to save review history (${getErrorCode(saveError)})`);
+          }
+
           if (configuration.get<boolean>('autoUpdateGitignore', true)) {
             try {
               const ignoreResult = await ensureExportDirectoryIgnored(
@@ -157,6 +166,16 @@ export function registerSecurityReviewCommands(
         await vscode.window.showInformationMessage(
           `ReviewLume: Review Pack ${pack.reviewId} saved (${pack.byteLength} Markdown bytes).`,
         );
+
+        // Save history after manual export
+        try {
+          const historyService = new HistoryService();
+          const effectiveFormat = format === 'ZIP' ? 'zip' : 'markdown';
+          await historyService.save(activeRepository.root, pack, effectiveFormat);
+        } catch (saveError) {
+          logWarn(`Failed to save review history (${getErrorCode(saveError)})`);
+        }
+
         logInfo(`Review Pack exported (${pack.reviewId}, ${format})`);
       } catch (error) {
         const code = getErrorCode(error);

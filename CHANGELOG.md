@@ -72,6 +72,13 @@
 - Unified ZIP export to the same review-specific directory as Markdown and both formats:
   all three formats now save under `.reviewlume/exports/<reviewId>/` instead of placing
   ZIP archives directly in the export root.
+- P7 review history storage and browsing:
+  - Automatic history record (`metadata.json` + `request.md`) saved to `.reviewlume/history/<reviewId>/`
+    after every successful export.
+  - QuickPick-based history browser with per-entry actions (open, copy prompt, re-export, delete).
+  - Full history import for AI review responses (`response.md`) with basic title parsing.
+  - Single-entry and clear-all deletion.
+  - Repository-bound: history is scoped to the current Git repository.
 
 ## [0.1.0] - 2026-07-10
 
