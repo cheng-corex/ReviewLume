@@ -1,3 +1,4 @@
+import { writeFileSync } from 'node:fs';
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import {
   GitCommandRunner,
@@ -44,6 +45,20 @@ describe('GitCommandRunner', () => {
 
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('reviewlume-git-test-');
+  });
+
+  it('allows read-only Git ignore checks', async () => {
+    fixture = createTempDir();
+    initRepo(fixture.root);
+    createAndCommitFile(fixture.root, '.gitignore', '*.log\n', 'ignore logs');
+    writeFileSync(`${fixture.root}/ignored.log`, 'ignored');
+
+    const result = await runner.run({
+      cwd: fixture.root,
+      args: ['check-ignore', '-q', '--', 'ignored.log'],
+    });
+
+    expect(result.exitCode).toBe(0);
   });
 
   it('rejects write commands before spawning Git', async () => {
