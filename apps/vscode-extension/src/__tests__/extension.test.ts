@@ -124,20 +124,18 @@ describe('reviewlume-vscode manifest', () => {
 
   it('packages a self-contained CommonJS Git context runtime', () => {
     const extensionRoot = path.resolve(__dirname, '../..');
-    const vendorEntry = path.join(
-      extensionRoot,
-      'dist',
-      'vendor',
-      'git-context',
-      'index.js',
-    );
+    const vendorRoot = path.join(extensionRoot, 'dist', 'vendor', 'git-context');
+    const vendorEntry = path.join(vendorRoot, 'index.js');
+    const commandRunnerModule = path.join(vendorRoot, 'commandRunner.js');
     expect(fs.existsSync(vendorEntry)).toBe(true);
+    expect(fs.existsSync(commandRunnerModule)).toBe(true);
 
-    const source = fs.readFileSync(vendorEntry, 'utf-8');
-    expect(source).toContain('GitCommandRunner');
-    expect(source).toContain('check-ignore');
-    expect(source).not.toContain("require('@reviewlume/");
-    expect(source).not.toContain('require("@reviewlume/');
+    const entrySource = fs.readFileSync(vendorEntry, 'utf-8');
+    const commandRunnerSource = fs.readFileSync(commandRunnerModule, 'utf-8');
+    expect(entrySource).toContain('GitCommandRunner');
+    expect(commandRunnerSource).toContain('check-ignore');
+    expect(entrySource).not.toContain("require('@reviewlume/");
+    expect(entrySource).not.toContain('require("@reviewlume/');
   });
 
   it('keeps every packaged runtime module free of bare workspace imports', () => {
