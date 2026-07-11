@@ -256,7 +256,8 @@ export class ReviewLumeTreeProvider
     return new ReviewLumeTreeItem('file', label, vscode.TreeItemCollapsibleState.None, {
       relativePath: entry.path,
       description,
-      iconName: entry.source === 'recommended' ? 'beaker' : entry.source === 'manual' ? 'link' : 'diff',
+      iconName:
+        entry.source === 'recommended' ? 'beaker' : entry.source === 'manual' ? 'link' : 'diff',
       selected: entry.selected,
       tooltip: `${entry.path} — ${description}`,
     });
@@ -293,6 +294,12 @@ export class ReviewLumeTreeProvider
         'Build and save the privacy-checked Review Pack',
         COMMANDS.EXPORT_REVIEW_PACK,
         'export',
+      ),
+      actionItem(
+        'Add Export Directory to .gitignore',
+        'Exclude generated Review Packs from Git status',
+        COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE,
+        'exclude',
       ),
       actionItem(
         'Open Review History',
