@@ -1,0 +1,35 @@
+name: Lint Diagnostics
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  lint-diagnostics:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Capture lint output
+        shell: bash
+        run: |
+          set +e
+          pnpm lint > lint-output.txt 2>&1
+          echo "$?" > lint-exit.txt
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lint-diagnostics
+          path: |
+            lint-output.txt
+            lint-exit.txt
+          if-no-files-found: error
