@@ -1,14 +1,14 @@
 /**
- * P6 — Review Panel Webview message types, DTOs, and inbound schema.
+ * Review Panel Webview message types, DTOs, and inbound schema.
  * The Webview is an untrusted boundary. Every inbound message is validated
  * before dispatch and outbound DTOs intentionally exclude absolute paths.
  */
 import { z } from 'zod';
-import type { ExportFormat } from '../localization';
+import type { ExportFormat, ReviewScope } from '../localization';
 
 export interface ReviewPanelFileDto {
   readonly path: string;
-  readonly source: 'changed' | 'manual' | 'recommended';
+  readonly source: 'changed' | 'manual' | 'recommended' | 'context';
   readonly changeKinds: readonly string[];
   readonly exists: boolean;
   readonly selected: boolean;
@@ -47,15 +47,21 @@ export interface ReviewPanelStateDto {
   readonly truncationMessages: readonly string[];
   readonly estimatedTokens: number;
   readonly exportFormat: ExportFormat;
+  readonly reviewScope: ReviewScope;
+  readonly scopeContextCount: number;
+  readonly scopeEligibleFileCount: number;
+  readonly scopeEstimatedSourceBytes: number;
 }
 
 export type ReviewPanelOutboundMessage =
   | { readonly type: 'state'; readonly payload: ReviewPanelStateDto }
   | { readonly type: 'error'; readonly message: string }
   | { readonly type: 'copyComplete' }
-  | { readonly type: 'formatUpdated'; readonly format: ExportFormat };
+  | { readonly type: 'formatUpdated'; readonly format: ExportFormat }
+  | { readonly type: 'scopeUpdated'; readonly scope: ReviewScope };
 
 const exportFormatSchema = z.enum(['markdown', 'zip', 'both']);
+const reviewScopeSchema = z.enum(['changes', 'smart', 'full']);
 
 export const ReviewPanelInboundMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('createReviewPack') }).strict(),
@@ -68,6 +74,7 @@ export const ReviewPanelInboundMessageSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('copyPrompt') }).strict(),
   z.object({ type: z.literal('updateGitignore') }).strict(),
   z.object({ type: z.literal('setExportFormat'), format: exportFormatSchema }).strict(),
+  z.object({ type: z.literal('setReviewScope'), scope: reviewScopeSchema }).strict(),
   z.object({ type: z.literal('refresh') }).strict(),
 ]);
 
