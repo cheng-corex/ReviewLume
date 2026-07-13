@@ -178,7 +178,7 @@ export class FileSelectionService {
       this.#throwIfCancelled(signal);
       const relativePath = normalizeRepositoryPath(change.path);
       this.#assertNotGitMetadata(relativePath);
-      if (isBuiltInExcluded(relativePath) || ignoreMatcher.isIgnored(relativePath)) continue;
+      if (ignoreMatcher.isIgnored(relativePath)) continue;
 
       const existing = nextEntries.get(relativePath);
       if (existing) {
@@ -286,7 +286,7 @@ export class FileSelectionService {
     }
   }
 
-  /** Enumerate safe text files already admitted by Git and ReviewLume ignore rules. */
+  /** Enumerate safe text files admitted by Git and automatic-context exclusions. */
   async listEligibleRepositoryFiles(signal?: AbortSignal): Promise<readonly EligibleRepositoryFile[]> {
     const { repository, repositoryRealPath } = this.#requireSession();
     const result = await this.#runner.run({
@@ -315,14 +315,19 @@ export class FileSelectionService {
         try {
           const probe = Buffer.alloc(Math.min(TEXT_PROBE_BYTES, stat.size));
           if (probe.length > 0) await handle.read(probe, 0, probe.length, 0);
-          if (!isUtf8Text(probe)) continue;
+          if (!isUtf8Probe(probe)) continue;
         } finally {
           await handle.close();
         }
         files.push({ path: relativePath, size: stat.size });
       } catch (error) {
         if (isNodeError(error, 'ENOENT')) continue;
-        if (error instanceof FileSelectionError && error.code === 'SYMLINK_ESCAPE') throw error;
+        if (
+          error instanceof FileSelectionError &&
+          (error.code === 'SYMLINK_ESCAPE' || error.code === 'NOT_A_FILE')
+        ) {
+          continue;
+        }
         throw error;
       }
     }
@@ -339,7 +344,7 @@ export class FileSelectionService {
     const { repository, repositoryRealPath } = this.#requireSession();
     const relativePath = normalizeRepositoryPath(relativePathInput);
     this.#assertNotGitMetadata(relativePath);
-    if (isBuiltInExcluded(relativePath) || this.#ignoreMatcher.isIgnored(relativePath)) {
+    if (this.#ignoreMatcher.isIgnored(relativePath)) {
       throw new FileSelectionError('INVALID_REPOSITORY_PATH', 'The requested file is excluded.');
     }
     const absolutePath = this.#resolveInsideRepository(repository, relativePath);
@@ -373,7 +378,7 @@ export class FileSelectionService {
         repositoryRealPath,
         absolutePath,
       );
-      if (isBuiltInExcluded(relativePath) || this.#ignoreMatcher.isIgnored(relativePath)) {
+      if (this.#ignoreMatcher.isIgnored(relativePath)) {
         skipped.push({ path: relativePath, reason: 'reviewlumeignore' });
         continue;
       }
@@ -427,7 +432,7 @@ export class FileSelectionService {
       if (!rawPath) continue;
       const relativePath = normalizeRepositoryPath(rawPath);
       if (!isTestPath(relativePath) || this.#entries.has(relativePath)) continue;
-      if (isBuiltInExcluded(relativePath) || this.#ignoreMatcher.isIgnored(relativePath)) continue;
+      if (this.#ignoreMatcher.isIgnored(relativePath)) continue;
       const score = Math.max(
         ...targets.map((target) => testRelationshipScore(target.path, relativePath)),
       );
@@ -666,6 +671,16 @@ function isOutsidePath(relativePath: string): boolean {
 function isBuiltInExcluded(relativePath: string): boolean {
   const root = relativePath.split('/')[0]?.toLowerCase();
   return root ? BUILT_IN_EXCLUDED_ROOTS.has(root) : true;
+}
+
+function isUtf8Probe(bytes: Uint8Array): boolean {
+  if (bytes.includes(0)) return false;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: true });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function isUtf8Text(bytes: Uint8Array): boolean {
