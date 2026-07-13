@@ -96,6 +96,26 @@ describe('ReviewScopeService', () => {
     expect(selected.some((entry) => entry.path === 'assets/image.png')).toBe(false);
   });
 
+  it('recomputes smart context after an explicit seed is deselected', async () => {
+    const { service } = await createRepository({
+      'src/app.ts': "import './helper';\n",
+      'src/helper.ts': 'export const helper = true;\n',
+      'package.json': '{"name":"fixture"}\n',
+    });
+    const scope = new ReviewScopeService(service);
+
+    await scope.apply('smart');
+    expect(service.entries.some((entry) => entry.source === 'context')).toBe(true);
+
+    service.setSelected('src/app.ts', false);
+    const summary = await scope.refreshSmartContext();
+
+    expect(summary.contextFileCount).toBe(0);
+    expect(service.entries).toEqual([
+      expect.objectContaining({ path: 'src/app.ts', source: 'changed', selected: false }),
+    ]);
+  });
+
   it('removes automatic context when switching back to changes only', async () => {
     const { service } = await createRepository({
       'src/app.ts': "import './helper';\n",
