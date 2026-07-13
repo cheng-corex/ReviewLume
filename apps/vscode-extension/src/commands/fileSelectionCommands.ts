@@ -139,6 +139,10 @@ function userFacingSelectionError(code: FileSelectionError['code']): string {
       return 'ReviewLume: Create a Review Pack before selecting related files.';
     case 'INVALID_REPOSITORY_PATH':
       return 'ReviewLume: One of the selected repository paths is invalid.';
+    case 'FILE_TOO_LARGE':
+      return 'ReviewLume: A selected context file exceeds the safe size limit.';
+    case 'BINARY_FILE':
+      return 'ReviewLume: Binary files cannot be added as review context.';
   }
 }
 
