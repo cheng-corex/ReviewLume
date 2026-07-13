@@ -333,6 +333,7 @@ export class ReviewLumeTreeProvider
 export function registerReviewLumeTreeView(
   context: vscode.ExtensionContext,
   fileSelectionService: FileSelectionService,
+  onSelectionChanged?: (refreshSmartContext: boolean) => void | Promise<void>,
 ): ReviewLumeTreeProvider {
   const provider = new ReviewLumeTreeProvider(fileSelectionService);
   const treeView = vscode.window.createTreeView(VIEWS.MAIN_VIEW, {
@@ -343,15 +344,22 @@ export function registerReviewLumeTreeView(
   context.subscriptions.push(
     treeView,
     provider,
-    treeView.onDidChangeCheckboxState((event) => {
+    treeView.onDidChangeCheckboxState(async (event) => {
+      let refreshSmartContext = false;
       for (const [item, state] of event.items) {
         if (item.itemKind === 'file' && item.relativePath) {
+          const entry = fileSelectionService.entries.find(
+            (candidate) => candidate.path === item.relativePath,
+          );
+          if (!entry) continue;
           fileSelectionService.setSelected(
             item.relativePath,
             state === vscode.TreeItemCheckboxState.Checked,
           );
+          if (entry.source !== 'context') refreshSmartContext = true;
         }
       }
+      await onSelectionChanged?.(refreshSmartContext);
       provider.refresh();
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(() => {
