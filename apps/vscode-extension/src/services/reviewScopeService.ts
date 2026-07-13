@@ -123,13 +123,18 @@ export class ReviewScopeService {
       );
     }
 
+    const explicitPaths = new Set(
+      this.fileSelectionService.entries
+        .filter((entry) => entry.source !== 'context')
+        .map((entry) => entry.path),
+    );
     const paths = eligible.map((file) => file.path);
     await this.fileSelectionService.replaceContextFiles(paths, signal);
     this.#mode = 'full';
     this.#summary = {
       mode: 'full',
       eligibleFileCount: eligible.length,
-      contextFileCount: paths.length,
+      contextFileCount: paths.filter((filePath) => !explicitPaths.has(filePath)).length,
       estimatedSourceBytes: totalBytes,
     };
     return this.#summary;
@@ -143,6 +148,18 @@ export class ReviewScopeService {
     const seeds = this.fileSelectionService.entries
       .filter((entry) => entry.selected && entry.source !== 'context')
       .map((entry) => entry.path);
+    if (seeds.length === 0) {
+      await this.fileSelectionService.replaceContextFiles([], signal);
+      this.#mode = 'smart';
+      this.#summary = {
+        mode: 'smart',
+        eligibleFileCount: eligible.length,
+        contextFileCount: 0,
+        estimatedSourceBytes: 0,
+      };
+      return this.#summary;
+    }
+
     const seedSet = new Set(seeds);
     const scores = new Map<string, number>();
     const score = (filePath: string, value: number): void => {
