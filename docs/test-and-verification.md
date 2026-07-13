@@ -18,6 +18,30 @@
 - 报告解析。
 - schema 校验。
 
+### P8A 单元测试（新增 36 个）
+
+**解析器（20 个）：**
+- JSON 问题清单解析、issues wrapper、findings wrapper。
+- Markdown 严重度标题和列表解析。
+- 编号列表解析。
+- 空输入和非问题文本返回 unstructured。
+- 严重度映射（包括别名和 unknown）。
+- 路径规范化、拒绝绝对路径。
+- 行号校验。
+- 超多问题 MAX_ISSUES 限制。
+- 稳定 ID 生成、重复解析 ID 不变、重复问题 ID 不冲突。
+- 指纹大小写和路径分隔符规范化。
+
+**ReportService（16 个）：**
+- 创建合法 report.json、unstructured 报告。
+- 原子写入无临时文件残留。
+- 读取：valid / missing / corrupt / unsupported-version / id-mismatch / stale-hash。
+- 重新解析替换现有报告。
+- 状态转换：合法转换成功、非法转换拒绝、issue 不存在拒绝。
+- 写入失败不损坏现有报告。
+
+**前值测试 +16 个（reportService.test.ts）**
+
 ### 集成测试
 
 覆盖：

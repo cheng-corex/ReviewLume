@@ -114,12 +114,16 @@ describe('reviewlume-vscode manifest', () => {
     expect(chinese['command.openReviewPanel']).toContain('打开审核面板');
   });
 
-  it('packages self-contained Git, scanner, Review Pack, and Webview runtimes', () => {
+  it('packages self-contained Git, scanner, Review Pack, report parser, and Webview runtimes', () => {
     const root = path.resolve(__dirname, '../../dist/vendor');
     const required = [
       path.join(root, 'git-context', 'index.js'),
       path.join(root, 'secret-scanner', 'index.js'),
       path.join(root, 'review-pack', 'index.js'),
+      path.resolve(
+        __dirname,
+        '../../dist/node_modules/@reviewlume/report-parser/index.js',
+      ),
     ];
     for (const file of required) expect(fs.existsSync(file), file).toBe(true);
     expect(fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8')).toContain('check-ignore');
@@ -131,13 +135,25 @@ describe('reviewlume-vscode manifest', () => {
     }
   });
 
-  it('keeps every packaged runtime module free of bare workspace imports', () => {
+  it('keeps every packaged runtime module free of unresolved workspace imports', () => {
     const compiledFiles = listPackagedJavaScriptFiles(path.resolve(__dirname, '../../dist'));
     expect(compiledFiles.length).toBeGreaterThan(3);
     for (const compiledFile of compiledFiles) {
       const compiled = fs.readFileSync(compiledFile, 'utf-8');
-      expect(compiled, compiledFile).not.toContain("require('@reviewlume/");
-      expect(compiled, compiledFile).not.toContain('require("@reviewlume/');
+      if (compiledFile.includes(path.join('node_modules', '@reviewlume', 'report-parser'))) {
+        continue;
+      }
+      const workspaceImports = [
+        ...compiled.matchAll(/require\(["'](@reviewlume\/[^"']+)["']\)/g),
+      ].map((match) => match[1]);
+      for (const dependency of workspaceImports) {
+        expect(
+          fs.existsSync(
+            path.resolve(__dirname, '../../dist/node_modules', dependency, 'index.js'),
+          ),
+          `${compiledFile} requires packaged runtime ${dependency}`,
+        ).toBe(true);
+      }
     }
   });
 

@@ -2,6 +2,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import { HistoryService, type HistoryEntry } from '../services/historyService';
+import { ReportService } from '../services/reportService';
+import type { ReviewReport } from '@reviewlume/report-parser';
 import { GitContextService } from '../services/gitContextService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { historyText as t } from '../services/historyI18n';
@@ -202,6 +204,9 @@ async function showHistoryActions(
       | 'open-directory'
       | 'copy-prompt'
       | 're-export-markdown'
+      | 'view-report'
+      | 'reparse-report'
+      | 'view-response'
       | 'delete';
   }
 
@@ -252,6 +257,80 @@ async function showHistoryActions(
     ),
     action: 'delete',
   });
+
+  // P8A: Check for report/response availability and add actions
+  const reportService = new ReportService();
+  const reviewDir = await historyService
+    .getReviewDirectory(repositoryRoot, metadata.reviewId)
+    .catch(() => undefined);
+
+  let reportResult:
+    | { status: string; report?: ReviewReport }
+    | undefined;
+  let hasResponse = false;
+
+  if (reviewDir) {
+    try {
+      hasResponse = await historyService.hasResponse(
+        repositoryRoot,
+        metadata.reviewId,
+      );
+    } catch {
+      // ignore
+    }
+
+    if (hasResponse) {
+      // Show view raw response option
+      items.unshift({
+        label: t('$(comment) View Raw Response', '$(comment) 查看原始回复'),
+        description: t('Open the saved AI review response', '打开已保存的 AI 审核回复'),
+        action: 'view-response',
+      });
+
+      // Try to read report
+      try {
+        const responseText = await historyService.loadResponse(
+          repositoryRoot,
+          metadata.reviewId,
+        );
+        reportResult = await reportService.readReport(
+          reviewDir,
+          metadata.reviewId,
+          responseText,
+        );
+      } catch {
+        reportResult = { status: 'missing' };
+      }
+
+      const reportLabel = reportResult?.report
+        ? t(
+            `$(checklist) View Report (${reportResult.report.issues.length} issues)`,
+            `$(checklist) 查看报告（${reportResult.report.issues.length} 个问题）`,
+          )
+        : t(
+            '$(checklist) View Report',
+            '$(checklist) 查看报告',
+          );
+
+      items.unshift({
+        label: reportLabel,
+        description: reportResult?.report
+          ? `${reportResult.report.parseStatus} · ${reportResult.status}`
+          : t('Not yet parsed', '尚未解析'),
+        action: 'view-report',
+      });
+
+      // Add re-parse option
+      items.push({
+        label: t('$(refresh) Re-parse Response', '$(refresh) 重新解析回复'),
+        description: t(
+          'Re-run the structured parser on the existing response',
+          '对现有回复重新运行结构化解析',
+        ),
+        action: 'reparse-report',
+      });
+    }
+  }
 
   const picked = await vscode.window.showQuickPick(items, {
     title: `ReviewLume: ${metadata.repositoryDisplayName} — ${formatDate(metadata.createdAt)}`,
@@ -316,6 +395,53 @@ async function showHistoryActions(
         logInfo(`Review Pack Markdown restored from history (${metadata.reviewId})`);
         break;
       }
+      case 'view-report': {
+        await showReportQuickPick(
+          repositoryRoot,
+          metadata.reviewId,
+          historyService,
+        );
+        break;
+      }
+      case 'view-response': {
+        const responseContent = await historyService.loadResponse(
+          repositoryRoot,
+          metadata.reviewId,
+        );
+        // Show in a new untitled document
+        const doc = await vscode.workspace.openTextDocument({
+          content: responseContent,
+          language: 'markdown',
+        });
+        await vscode.window.showTextDocument(doc);
+        logInfo(`Response viewed (${metadata.reviewId})`);
+        break;
+      }
+      case 'reparse-report': {
+        const responseText = await historyService.loadResponse(
+          repositoryRoot,
+          metadata.reviewId,
+        );
+        const reviewDir = await historyService.getReviewDirectory(
+          repositoryRoot,
+          metadata.reviewId,
+        );
+        const report = await reportService.reparseReport(
+          reviewDir,
+          metadata.reviewId,
+          responseText,
+        );
+        await vscode.window.showInformationMessage(
+          t(
+            `ReviewLume: Report re-parsed — ${report.issues.length} issue(s) (${report.parseStatus}).`,
+            `ReviewLume：报告已重新解析 — ${report.issues.length} 个问题（${report.parseStatus}）。`,
+          ),
+        );
+        logInfo(
+          `Report re-parsed (${metadata.reviewId}): ${report.issues.length} issues, status=${report.parseStatus}`,
+        );
+        break;
+      }
       case 'delete': {
         const confirm = await vscode.window.showWarningMessage(
           t(
@@ -363,4 +489,157 @@ function formatBytes(bytes: number): string {
     Math.floor(Math.log(bytes) / Math.log(1024)),
   );
   return `${(bytes / 1024 ** index).toFixed(index === 0 ? 0 : 1)} ${units[index]}`;
+}
+
+/**
+ * P8A: Show a QuickPick list of structured issues from the report.
+ */
+async function showReportQuickPick(
+  repositoryRoot: string,
+  reviewId: string,
+  historyService: HistoryService,
+): Promise<void> {
+  const reportService = new ReportService();
+
+  let responseText: string;
+  try {
+    responseText = await historyService.loadResponse(repositoryRoot, reviewId);
+  } catch {
+    await vscode.window.showErrorMessage(
+      t(
+        'ReviewLume: Cannot read the response file.',
+        'ReviewLume：无法读取回复文件。',
+      ),
+    );
+    return;
+  }
+
+  const reviewDir = await historyService.getReviewDirectory(
+    repositoryRoot,
+    reviewId,
+  );
+
+  const readResult = await reportService.readReport(
+    reviewDir,
+    reviewId,
+    responseText,
+  );
+
+  if (readResult.status === 'missing') {
+    await vscode.window.showInformationMessage(
+      t(
+        'ReviewLume: Report has not been parsed yet. Import a response first.',
+        'ReviewLume：报告尚未解析，请先导入审核回复。',
+      ),
+    );
+    return;
+  }
+
+  if (readResult.status === 'corrupt' || readResult.status === 'unsupported-version') {
+    await vscode.window.showErrorMessage(
+      t(
+        `ReviewLume: Report is ${readResult.status}. ${readResult.error ?? ''}`,
+        `ReviewLume：报告${readResult.status === 'corrupt' ? '已损坏' : '版本不支持'}。${readResult.error ?? ''}`,
+      ),
+    );
+    return;
+  }
+
+  if (readResult.status === 'id-mismatch') {
+    await vscode.window.showErrorMessage(
+      t(
+        'ReviewLume: Report reviewId does not match.',
+        'ReviewLume：报告 reviewId 不匹配。',
+      ),
+    );
+    return;
+  }
+
+  const report = readResult.report;
+  if (!report) {
+    await vscode.window.showErrorMessage(
+      t('ReviewLume: Report is empty.', 'ReviewLume：报告为空。'),
+    );
+    return;
+  }
+
+  const statusText = readResult.status === 'stale-hash'
+    ? t(' (outdated)', '（已过期）')
+    : '';
+
+  // Show report summary first
+  const items: vscode.QuickPickItem[] = [];
+
+  // Header item
+  items.push({
+    label: t(
+      `=== Report: ${report.parseStatus} | ${report.issues.length} issues | ${report.warnings.length} warnings${statusText} ===`,
+      `=== 报告：${report.parseStatus} | ${report.issues.length} 个问题 | ${report.warnings.length} 条警告${statusText} ===`,
+    ),
+    description: '',
+    detail: t(
+      `Parsed: ${report.parsedAt} | Parser: ${report.parserVersion}`,
+      `解析时间：${report.parsedAt} | 解析器版本：${report.parserVersion}`,
+    ),
+  });
+
+  // Issues
+  for (const issue of report.issues) {
+    const sevIcon =
+      issue.severity === 'critical' ? '$(error)' :
+      issue.severity === 'high' ? '$(warning)' :
+      issue.severity === 'medium' ? '$(info)' :
+      '$(circle-outline)';
+
+    const location = [
+      issue.filePath,
+      issue.lineStart ? `:${issue.lineStart}` : '',
+      issue.lineEnd && issue.lineEnd !== issue.lineStart ? `-${issue.lineEnd}` : '',
+    ]
+      .filter(Boolean)
+      .join('') || t('(no location)', '（无位置）');
+
+    items.push({
+      label: `${sevIcon} [${issue.severity}] ${issue.issueId}: ${issue.title.slice(0, 80)}`,
+      description: `${issue.status} · ${location}`,
+      detail: issue.description.slice(0, 200),
+    });
+  }
+
+  // Warnings
+  if (report.warnings.length > 0) {
+    items.push({
+      label: `---`,
+      description: '',
+      detail: '',
+    });
+    for (const warning of report.warnings) {
+      items.push({
+        label: `$(warning) Warning: ${warning.slice(0, 100)}`,
+        description: '',
+        detail: '',
+      });
+    }
+  }
+
+  if (items.length <= 1) {
+    items.push({
+      label: t('(No issues found)', '（未找到问题）'),
+      description: '',
+      detail: '',
+    });
+  }
+
+  await vscode.window.showQuickPick(items, {
+    title: t(
+      `ReviewLume Report: ${reviewId}`,
+      `ReviewLume 报告：${reviewId}`,
+    ),
+    placeHolder: t(
+      'Review issues — select to view details',
+      '审核问题列表 — 选择查看详情',
+    ),
+    matchOnDescription: true,
+    matchOnDetail: true,
+  });
 }

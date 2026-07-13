@@ -314,6 +314,53 @@ export class HistoryService {
     });
   }
 
+  /**
+   * Check whether a response.md exists for the given review.
+   */
+  async hasResponse(repositoryRoot: string, reviewIdInput: string): Promise<boolean> {
+    try {
+      const { reviewDirectory } = await this.#resolveExistingHistoryDirectory(
+        repositoryRoot,
+        reviewIdInput,
+      );
+      const responsePath = path.join(reviewDirectory, 'response.md');
+      await assertRegularFile(responsePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  /**
+   * Load the raw response.md content for the given review.
+   */
+  async loadResponse(repositoryRoot: string, reviewIdInput: string): Promise<string> {
+    const { reviewDirectory } = await this.#resolveExistingHistoryDirectory(
+      repositoryRoot,
+      reviewIdInput,
+    );
+    const responsePath = path.join(reviewDirectory, 'response.md');
+    await assertRegularFile(responsePath);
+    return fs.readFile(responsePath, 'utf8');
+  }
+
+  /**
+   * Get the validated, realpath-resolved review directory for a given reviewId.
+   *
+   * This is the controlled entry point for ReportService — it receives an
+   * already-validated directory path and handles report.json I/O internally.
+   */
+  async getReviewDirectory(
+    repositoryRoot: string,
+    reviewIdInput: string,
+  ): Promise<string> {
+    const { reviewDirectory } = await this.#resolveExistingHistoryDirectory(
+      repositoryRoot,
+      reviewIdInput,
+    );
+    return reviewDirectory;
+  }
+
   async reexportMarkdown(
     repositoryRoot: string,
     reviewIdInput: string,

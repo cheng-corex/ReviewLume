@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import { HistoryService } from '../services/historyService';
+import { ReportService } from '../services/reportService';
 import { GitContextService } from '../services/gitContextService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { historyText as t } from '../services/historyI18n';
@@ -102,15 +103,47 @@ export function registerImportReviewResponse(
         }
 
         const title = extractSafeTitle(responseText);
+
+        // P8A: Auto-parse the response into a structured report
+        let parseMessage = '';
+        try {
+          const reportService = new ReportService();
+          const reviewDir = await historyService.getReviewDirectory(
+            repositoryRoot,
+            reviewId,
+          );
+          const report = await reportService.createReport(
+            reviewDir,
+            reviewId,
+            responseText,
+          );
+          parseMessage = t(
+            ` — ${report.issues.length} issue(s) identified (${report.parseStatus}).`,
+            ` — 识别到 ${report.issues.length} 个问题（${report.parseStatus}）。`,
+          );
+          logInfo(
+            `Report auto-parsed for review ${reviewId}: ${report.issues.length} issues, status=${report.parseStatus}`,
+          );
+        } catch (parseError) {
+          // Parsing failure must not roll back the saved response
+          parseMessage = t(
+            ' — Response saved but structured parse failed.',
+            ' — 原始回复已保存，但结构化解析失败。',
+          );
+          logWarn(
+            `Report parse failed for review ${reviewId} (response still saved): ${getErrorCode(parseError)}`,
+          );
+        }
+
         await vscode.window.showInformationMessage(
           title
             ? t(
-                `ReviewLume: Response imported — “${title}”.`,
-                `ReviewLume：审核回复已导入——“${title}”。`,
+                `ReviewLume: Response imported — "${title}"${parseMessage}`,
+                `ReviewLume：审核回复已导入——"${title}"${parseMessage}`,
               )
             : t(
-                'ReviewLume: Response imported.',
-                'ReviewLume：审核回复已导入。',
+                `ReviewLume: Response imported.${parseMessage}`,
+                `ReviewLume：审核回复已导入。${parseMessage}`,
               ),
         );
         // Never log response content or a user-controlled title.

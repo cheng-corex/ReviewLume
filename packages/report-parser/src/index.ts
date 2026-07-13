@@ -1,40 +1,61 @@
 /**
  * @reviewlume/report-parser
  *
- * AI review report parser for ReviewLume.
- * Parses AI responses into structured review reports and issue tracking.
+ * P8A: Structured review report parser for AI review responses.
+ *
+ * Provides:
+ * - Data model types for ReviewReport, ReviewIssue, etc.
+ * - Stable issue ID generation
+ * - Status state machine validation
+ * - Conservative AI response parser (JSON, Markdown, tables, lists)
+ *
+ * All parsing functions are pure — no file system, no VS Code API, no network.
  */
 
-/** A single review issue found in an AI response. */
-export interface ReviewIssue {
-  id: string;
-  file: string;
-  line?: number;
-  severity: 'critical' | 'major' | 'minor' | 'suggestion';
-  title: string;
-  description: string;
-  status: 'open' | 'fixed' | 'rejected' | 'needs-review';
-}
+// Data model
+export {
+  REPORT_SCHEMA_VERSION,
+  MAX_ISSUES,
+  MAX_TITLE_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_EVIDENCE_LENGTH,
+  MAX_SUGGESTION_LENGTH,
+  MAX_FILE_PATH_LENGTH,
+  MAX_WARNING_LENGTH,
+  PARSE_STATUSES,
+  ISSUE_STATUSES,
+  ISSUE_SEVERITIES,
+  STATUS_TRANSITIONS,
+  type ParseStatus,
+  type ReviewIssueStatus,
+  type ReviewIssueSeverity,
+  type ReviewIssue,
+  type ReviewReport,
+  type ReportReadStatus,
+  type ReportReadResult,
+  type ParseContext,
+} from './types.js';
 
-/** A parsed review report. */
-export interface ReviewReport {
-  reviewId: string;
-  summary: string;
-  issues: ReviewIssue[];
-}
+// Issue ID generation
+export {
+  normalizePathForId,
+  normalizeTextForId,
+  computeFingerprint,
+  generateIssueIds,
+  type IssueIdInput,
+} from './issueId.js';
 
-/** Service for parsing AI review responses. */
-export class ReportParser {
-  /**
-   * Parse an AI response text into a structured report.
-   * P0: Returns an empty report until the full implementation.
-   */
-  async parse(_reviewId: string, _responseText: string): Promise<ReviewReport> {
-    // TODO: P7 — implement full report parsing
-    return {
-      reviewId: _reviewId,
-      summary: '',
-      issues: [],
-    };
-  }
-}
+// State machine
+export {
+  isValidStatus,
+  canTransition,
+  validateTransition,
+  defaultStatus,
+  allowedTransitions,
+} from './stateMachine.js';
+
+// Parser
+export {
+  parseReviewResponse,
+  type ParseResult,
+} from './parser.js';
