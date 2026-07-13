@@ -1,4 +1,5 @@
 export type ExportFormat = 'markdown' | 'zip' | 'both';
+export type ReviewScope = 'changes' | 'smart' | 'full';
 
 export function isChineseLanguage(language: string): boolean {
   return language.trim().toLowerCase().startsWith('zh');
@@ -14,6 +15,8 @@ export interface ReviewPanelStrings {
   readonly exportStatus: string;
   readonly estimatedSize: string;
   readonly estimatedTokens: string;
+  readonly reviewScopeSummary: string;
+  readonly contextFiles: string;
   readonly notScanned: string;
   readonly ready: string;
   readonly blocked: string;
@@ -31,6 +34,15 @@ export interface ReviewPanelStrings {
   readonly copyReviewPrompt: string;
   readonly addToGitignore: string;
   readonly refresh: string;
+  readonly reviewScope: string;
+  readonly reviewScopeHelp: string;
+  readonly changesOnly: string;
+  readonly smartContext: string;
+  readonly fullRepository: string;
+  readonly fullRepositoryConfirm: string;
+  readonly continueAction: string;
+  readonly cancelAction: string;
+  readonly fullRepositoryTooLarge: string;
   readonly exportFormat: string;
   readonly exportFormatHelp: string;
   readonly markdown: string;
@@ -48,8 +60,10 @@ export interface ReviewPanelStrings {
   readonly invalidMessage: string;
   readonly genericOperationError: string;
   readonly formatUpdated: string;
+  readonly scopeUpdated: string;
   readonly related: string;
   readonly recommendedTest: string;
+  readonly context: string;
   readonly changed: string;
   readonly unchanged: string;
   readonly deleted: string;
@@ -59,40 +73,52 @@ export interface ReviewPanelStrings {
 const EN: ReviewPanelStrings = {
   htmlLang: 'en', panelTitle: 'ReviewLume Review Panel', loading: 'Loading ReviewLume session…',
   repository: 'Repository', selectedFiles: 'Selected Files', scanStatus: 'Scan Status', exportStatus: 'Export',
-  estimatedSize: 'Est. Size', estimatedTokens: 'Est. Tokens', notScanned: 'Not scanned', ready: 'Ready', blocked: 'Blocked', passed: 'Passed',
+  estimatedSize: 'Est. Size', estimatedTokens: 'Est. Tokens', reviewScopeSummary: 'Review Scope', contextFiles: 'context files',
+  notScanned: 'Not scanned', ready: 'Ready', blocked: 'Blocked', passed: 'Passed',
   files: 'Files', scanResults: 'Scan Results', preview: 'Review Prompt Preview', noActiveReview: 'No Active Review Session',
   noActiveReviewHelp: 'Create a Review Pack from the sidebar or Command Palette to start a review session.',
   createReviewPack: 'Create Review Pack', addRelatedFiles: 'Add Related Files', recommendTestFiles: 'Recommend Test Files',
   scanSelectedFiles: 'Scan Selected Files', exportReviewPack: 'Export Review Pack', copyReviewPrompt: 'Copy Review Prompt',
-  addToGitignore: 'Add to .gitignore', refresh: 'Refresh', exportFormat: 'Export format',
-  exportFormatHelp: 'Applies to automatic export. Ask Every Time still prompts for a destination.',
+  addToGitignore: 'Add to .gitignore', refresh: 'Refresh', reviewScope: 'Review scope',
+  reviewScopeHelp: 'Smart Context is the default. Full Repository includes every eligible text file only when it fits without truncation.',
+  changesOnly: 'Changes Only', smartContext: 'Smart Context', fullRepository: 'Full Repository',
+  fullRepositoryConfirm: 'Full Repository may include a large amount of source code. Eligible files are still filtered and scanned for sensitive content. Continue?',
+  continueAction: 'Continue', cancelAction: 'Cancel',
+  fullRepositoryTooLarge: 'The eligible repository is too large for one non-truncated Review Pack. Use Smart Context or reduce the repository scope.',
+  exportFormat: 'Export format', exportFormatHelp: 'Applies to automatic export. Ask Every Time still prompts for a destination.',
   markdown: 'Markdown', zip: 'ZIP', both: 'Markdown + ZIP', noFiles: 'No files in the current review.',
   noScanResults: 'No scan results yet. Run “Scan Selected Files” to check for sensitive content.',
   confirmed: 'confirmed', confirmWarn: 'Confirm WARN', chars: 'chars', tokens: 'tokens',
   noPreview: 'No preview available. Scan the selected files to generate one.', truncated: 'Truncated',
   copied: 'Review prompt copied to clipboard', invalidMessage: 'Invalid message received from the Webview.',
   genericOperationError: 'ReviewLume: The panel operation failed. Check the ReviewLume output channel.',
-  formatUpdated: 'Export format updated', related: 'related', recommendedTest: 'test', changed: 'changed',
+  formatUpdated: 'Export format updated', scopeUpdated: 'Review scope updated', related: 'related', recommendedTest: 'test', context: 'context', changed: 'changed',
   unchanged: 'unchanged', deleted: 'deleted', unconfirmedWarn: 'unconfirmed WARN',
 };
 
 const ZH: ReviewPanelStrings = {
   htmlLang: 'zh-CN', panelTitle: 'ReviewLume 审核面板', loading: '正在加载 ReviewLume 审核会话…',
   repository: '仓库', selectedFiles: '已选文件', scanStatus: '扫描状态', exportStatus: '导出状态',
-  estimatedSize: '估算大小', estimatedTokens: '估算 Tokens', notScanned: '未扫描', ready: '可导出', blocked: '已阻止', passed: '已通过',
+  estimatedSize: '估算大小', estimatedTokens: '估算 Tokens', reviewScopeSummary: '审核范围', contextFiles: '个上下文文件',
+  notScanned: '未扫描', ready: '可导出', blocked: '已阻止', passed: '已通过',
   files: '文件', scanResults: '扫描结果', preview: '审核提示预览', noActiveReview: '没有活动审核会话',
   noActiveReviewHelp: '请从侧边栏或命令面板创建审核包以开始审核。',
   createReviewPack: '创建审核包', addRelatedFiles: '添加关联文件', recommendTestFiles: '推荐测试文件',
   scanSelectedFiles: '扫描所选文件', exportReviewPack: '导出审核包', copyReviewPrompt: '复制审核提示',
-  addToGitignore: '加入 .gitignore', refresh: '刷新', exportFormat: '导出格式',
-  exportFormatHelp: '用于自动导出；“每次询问”模式仍会弹出保存位置选择。',
+  addToGitignore: '加入 .gitignore', refresh: '刷新', reviewScope: '审核范围',
+  reviewScopeHelp: '默认使用智能上下文；完整仓库仅在所有合规文本文件无需截断即可装入时启用。',
+  changesOnly: '仅变更', smartContext: '智能上下文', fullRepository: '完整仓库',
+  fullRepositoryConfirm: '完整仓库可能包含大量源码。ReviewLume 仍会排除不合规文件并执行敏感信息扫描。确认继续吗？',
+  continueAction: '继续', cancelAction: '取消',
+  fullRepositoryTooLarge: '合规仓库内容过大，无法生成一个不截断的审核包。请改用智能上下文或缩小仓库范围。',
+  exportFormat: '导出格式', exportFormatHelp: '用于自动导出；“每次询问”模式仍会弹出保存位置选择。',
   markdown: 'Markdown', zip: 'ZIP', both: 'Markdown + ZIP', noFiles: '当前审核中没有文件。',
   noScanResults: '尚无扫描结果。请运行“扫描所选文件”检查敏感内容。',
   confirmed: '已确认', confirmWarn: '确认警告', chars: '字符', tokens: 'Tokens',
   noPreview: '暂无预览。请先扫描所选文件。', truncated: '已截断',
   copied: '审核提示已复制到剪贴板', invalidMessage: 'Webview 消息无效。',
   genericOperationError: 'ReviewLume：面板操作失败，请查看 ReviewLume 输出通道。',
-  formatUpdated: '导出格式已更新', related: '关联', recommendedTest: '测试', changed: '变更',
+  formatUpdated: '导出格式已更新', scopeUpdated: '审核范围已更新', related: '关联', recommendedTest: '测试', context: '上下文', changed: '变更',
   unchanged: '未变更', deleted: '已删除', unconfirmedWarn: '个未确认警告',
 };
 

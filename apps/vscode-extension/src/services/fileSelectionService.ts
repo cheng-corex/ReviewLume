@@ -1,5 +1,6 @@
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
+import { TextDecoder } from 'node:util';
 import type {
   GitChangeEntry,
   GitRepository,
@@ -14,7 +15,7 @@ interface GitRunnerLike {
   }): Promise<{ readonly stdout: string }>;
 }
 
-export type ReviewFileSource = 'changed' | 'manual' | 'recommended';
+export type ReviewFileSource = 'changed' | 'manual' | 'recommended' | 'context';
 
 export interface ReviewFileSelectionEntry {
   readonly path: string;
@@ -32,6 +33,11 @@ interface MutableReviewFileSelectionEntry {
   selected: boolean;
 }
 
+export interface EligibleRepositoryFile {
+  readonly path: string;
+  readonly size: number;
+}
+
 export interface FileAdditionResult {
   readonly added: readonly string[];
   readonly skipped: readonly {
@@ -46,7 +52,9 @@ export type FileSelectionErrorCode =
   | 'SYMLINK_ESCAPE'
   | 'NOT_A_FILE'
   | 'GIT_METADATA'
-  | 'INVALID_REPOSITORY_PATH';
+  | 'INVALID_REPOSITORY_PATH'
+  | 'FILE_TOO_LARGE'
+  | 'BINARY_FILE';
 
 export class FileSelectionError extends Error {
   constructor(
@@ -63,6 +71,26 @@ interface IgnoreRule {
   readonly regex: RegExp;
 }
 
+const MAX_CONTEXT_FILE_BYTES = 2 * 1024 * 1024;
+const TEXT_PROBE_BYTES = 8192;
+const UTF8_DECODER = new TextDecoder('utf-8', { fatal: true });
+const BUILT_IN_EXCLUDED_ROOTS = new Set([
+  '.git',
+  '.reviewlume',
+  'node_modules',
+  'dist',
+  'build',
+  'coverage',
+  '_appdata',
+  '_db',
+]);
+const BINARY_OR_DATABASE_EXTENSIONS = new Set([
+  '.7z', '.a', '.avi', '.bin', '.bmp', '.class', '.db', '.dll', '.dylib', '.exe',
+  '.gif', '.gz', '.ico', '.jar', '.jpeg', '.jpg', '.keystore', '.lockb', '.mov',
+  '.mp3', '.mp4', '.o', '.obj', '.pdf', '.pfx', '.p12', '.png', '.pyc', '.so',
+  '.sqlite', '.sqlite3', '.tar', '.ttf', '.wasm', '.webp', '.woff', '.woff2', '.zip',
+]);
+
 /** Minimal gitignore-style matcher for the repository-root `.reviewlumeignore`. */
 export class ReviewLumeIgnoreMatcher {
   readonly #rules: IgnoreRule[];
@@ -76,9 +104,7 @@ export class ReviewLumeIgnoreMatcher {
     let ignored = false;
 
     for (const rule of this.#rules) {
-      if (rule.regex.test(normalized)) {
-        ignored = !rule.negated;
-      }
+      if (rule.regex.test(normalized)) ignored = !rule.negated;
     }
 
     return ignored;
@@ -86,13 +112,15 @@ export class ReviewLumeIgnoreMatcher {
 }
 
 /**
- * Owns the active P3 file-selection session. All paths are repository-relative,
- * `.gitignore` and `.reviewlumeignore` are enforced, and real paths are checked
- * before an existing file can enter the selection.
+ * Owns the active file-selection session. All paths are repository-relative,
+ * ignore rules are enforced, and real paths are checked before a file enters
+ * the review. P7.5 context files use a reversible overlay so changing review
+ * scope never silently changes the user's explicit selections.
  */
 export class FileSelectionService {
   readonly #runner: GitRunnerLike;
   readonly #entries = new Map<string, MutableReviewFileSelectionEntry>();
+  readonly #contextSelectionOriginals = new Map<string, boolean>();
   #repository: GitRepository | undefined;
   #repositoryRealPath: string | undefined;
   #ignoreMatcher = new ReviewLumeIgnoreMatcher([]);
@@ -131,6 +159,7 @@ export class FileSelectionService {
 
   clear(): void {
     this.#entries.clear();
+    this.#contextSelectionOriginals.clear();
     this.#repository = undefined;
     this.#repositoryRealPath = undefined;
     this.#ignoreMatcher = new ReviewLumeIgnoreMatcher([]);
@@ -149,16 +178,11 @@ export class FileSelectionService {
       this.#throwIfCancelled(signal);
       const relativePath = normalizeRepositoryPath(change.path);
       this.#assertNotGitMetadata(relativePath);
-
-      if (ignoreMatcher.isIgnored(relativePath)) {
-        continue;
-      }
+      if (ignoreMatcher.isIgnored(relativePath)) continue;
 
       const existing = nextEntries.get(relativePath);
       if (existing) {
-        if (!existing.changeKinds.includes(change.status)) {
-          existing.changeKinds.push(change.status);
-        }
+        if (!existing.changeKinds.includes(change.status)) existing.changeKinds.push(change.status);
         continue;
       }
 
@@ -168,7 +192,6 @@ export class FileSelectionService {
         relativePath,
         change.status,
       );
-
       nextEntries.set(relativePath, {
         path: relativePath,
         source: 'changed',
@@ -179,9 +202,8 @@ export class FileSelectionService {
     }
 
     this.#entries.clear();
-    for (const [key, value] of nextEntries) {
-      this.#entries.set(key, value);
-    }
+    this.#contextSelectionOriginals.clear();
+    for (const [key, value] of nextEntries) this.#entries.set(key, value);
     this.#repository = repository;
     this.#repositoryRealPath = repositoryRealPath;
     this.#ignoreMatcher = ignoreMatcher;
@@ -196,6 +218,8 @@ export class FileSelectionService {
         'The selected file is not in the active review.',
       );
     }
+    // A direct user toggle takes ownership from the automatic scope overlay.
+    this.#contextSelectionOriginals.delete(normalized);
     entry.selected = selected;
   }
 
@@ -204,9 +228,136 @@ export class FileSelectionService {
     const prefixWithSlash = `${normalizedPrefix}/`;
     for (const entry of this.#entries.values()) {
       if (entry.path === normalizedPrefix || entry.path.startsWith(prefixWithSlash)) {
+        this.#contextSelectionOriginals.delete(entry.path);
         entry.selected = selected;
       }
     }
+  }
+
+  /** Replace the automatic context overlay atomically after validating every path. */
+  async replaceContextFiles(
+    relativePaths: readonly string[],
+    signal?: AbortSignal,
+  ): Promise<readonly string[]> {
+    const { repository, repositoryRealPath } = this.#requireSession();
+    const prepared: string[] = [];
+    const seen = new Set<string>();
+
+    for (const candidate of relativePaths) {
+      this.#throwIfCancelled(signal);
+      const relativePath = normalizeRepositoryPath(candidate);
+      if (seen.has(relativePath)) continue;
+      seen.add(relativePath);
+      this.#assertNotGitMetadata(relativePath);
+      if (isBuiltInExcluded(relativePath) || this.#ignoreMatcher.isIgnored(relativePath)) continue;
+      await this.#validateExistingRelativePath(repository, repositoryRealPath, relativePath);
+      prepared.push(relativePath);
+    }
+
+    this.clearContextFiles();
+    for (const relativePath of prepared) {
+      const existing = this.#entries.get(relativePath);
+      if (existing) {
+        if (!existing.selected) {
+          this.#contextSelectionOriginals.set(relativePath, false);
+          existing.selected = true;
+        }
+      } else {
+        this.#entries.set(relativePath, {
+          path: relativePath,
+          source: 'context',
+          changeKinds: [],
+          exists: true,
+          selected: true,
+        });
+      }
+    }
+    return prepared;
+  }
+
+  clearContextFiles(): void {
+    for (const [relativePath, originalSelected] of this.#contextSelectionOriginals) {
+      const entry = this.#entries.get(relativePath);
+      if (entry && entry.source !== 'context') entry.selected = originalSelected;
+    }
+    this.#contextSelectionOriginals.clear();
+    for (const [relativePath, entry] of this.#entries) {
+      if (entry.source === 'context') this.#entries.delete(relativePath);
+    }
+  }
+
+  /** Enumerate safe text files admitted by Git and automatic-context exclusions. */
+  async listEligibleRepositoryFiles(signal?: AbortSignal): Promise<readonly EligibleRepositoryFile[]> {
+    const { repository, repositoryRealPath } = this.#requireSession();
+    const result = await this.#runner.run({
+      cwd: repository.root,
+      args: ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--'],
+      signal,
+    });
+    const files: EligibleRepositoryFile[] = [];
+    const seen = new Set<string>();
+
+    for (const rawPath of result.stdout.split('\0')) {
+      this.#throwIfCancelled(signal);
+      if (!rawPath) continue;
+      const relativePath = normalizeRepositoryPath(rawPath);
+      if (seen.has(relativePath)) continue;
+      seen.add(relativePath);
+      if (isBuiltInExcluded(relativePath) || this.#ignoreMatcher.isIgnored(relativePath)) continue;
+      if (BINARY_OR_DATABASE_EXTENSIONS.has(path.posix.extname(relativePath).toLowerCase())) continue;
+
+      try {
+        const absolutePath = this.#resolveInsideRepository(repository, relativePath);
+        await this.#assertRealFileInside(repositoryRealPath, absolutePath);
+        const stat = await fs.stat(absolutePath);
+        if (stat.size > MAX_CONTEXT_FILE_BYTES) continue;
+        const handle = await fs.open(absolutePath, 'r');
+        try {
+          const probe = Buffer.alloc(Math.min(TEXT_PROBE_BYTES, stat.size));
+          if (probe.length > 0) await handle.read(probe, 0, probe.length, 0);
+          if (!isUtf8Probe(probe)) continue;
+        } finally {
+          await handle.close();
+        }
+        files.push({ path: relativePath, size: stat.size });
+      } catch (error) {
+        if (isNodeError(error, 'ENOENT')) continue;
+        if (
+          error instanceof FileSelectionError &&
+          (error.code === 'SYMLINK_ESCAPE' || error.code === 'NOT_A_FILE')
+        ) {
+          continue;
+        }
+        throw error;
+      }
+    }
+
+    return files.sort((left, right) => left.path.localeCompare(right.path));
+  }
+
+  async readRepositoryText(
+    relativePathInput: string,
+    maxBytes = MAX_CONTEXT_FILE_BYTES,
+    signal?: AbortSignal,
+  ): Promise<string> {
+    this.#throwIfCancelled(signal);
+    const { repository, repositoryRealPath } = this.#requireSession();
+    const relativePath = normalizeRepositoryPath(relativePathInput);
+    this.#assertNotGitMetadata(relativePath);
+    if (this.#ignoreMatcher.isIgnored(relativePath)) {
+      throw new FileSelectionError('INVALID_REPOSITORY_PATH', 'The requested file is excluded.');
+    }
+    const absolutePath = this.#resolveInsideRepository(repository, relativePath);
+    await this.#assertRealFileInside(repositoryRealPath, absolutePath);
+    const stat = await fs.stat(absolutePath);
+    if (stat.size > maxBytes) {
+      throw new FileSelectionError('FILE_TOO_LARGE', 'The requested file exceeds the context limit.');
+    }
+    const bytes = await fs.readFile(absolutePath);
+    if (!isUtf8Text(bytes)) {
+      throw new FileSelectionError('BINARY_FILE', 'Binary files cannot be used as review context.');
+    }
+    return UTF8_DECODER.decode(bytes);
   }
 
   async addManualFiles(
@@ -227,30 +378,28 @@ export class FileSelectionService {
         repositoryRealPath,
         absolutePath,
       );
-
       if (this.#ignoreMatcher.isIgnored(relativePath)) {
         skipped.push({ path: relativePath, reason: 'reviewlumeignore' });
         continue;
       }
-
       if (await this.#isIgnoredByGit(repository, relativePath, signal)) {
         skipped.push({ path: relativePath, reason: 'gitignore' });
         continue;
       }
-
       const existing = this.#entries.get(relativePath);
       if (existing?.selected || prepared.has(relativePath)) {
         skipped.push({ path: relativePath, reason: 'already-selected' });
         continue;
       }
-
       prepared.add(relativePath);
     }
 
     for (const relativePath of prepared) {
       const existing = this.#entries.get(relativePath);
+      this.#contextSelectionOriginals.delete(relativePath);
       if (existing) {
         existing.selected = true;
+        if (existing.source === 'context') existing.source = 'manual';
       } else {
         this.#entries.set(relativePath, {
           path: relativePath,
@@ -277,21 +426,17 @@ export class FileSelectionService {
       args: ['ls-files', '--cached', '--others', '--exclude-standard', '-z', '--'],
       signal,
     });
-
     const recommendations: Array<{ path: string; score: number }> = [];
     for (const rawPath of result.stdout.split('\0')) {
       this.#throwIfCancelled(signal);
       if (!rawPath) continue;
-
       const relativePath = normalizeRepositoryPath(rawPath);
       if (!isTestPath(relativePath) || this.#entries.has(relativePath)) continue;
       if (this.#ignoreMatcher.isIgnored(relativePath)) continue;
-
       const score = Math.max(
         ...targets.map((target) => testRelationshipScore(target.path, relativePath)),
       );
       if (score < 80) continue;
-
       await this.#validateExistingRelativePath(repository, repositoryRealPath, relativePath);
       recommendations.push({ path: relativePath, score });
     }
@@ -299,8 +444,7 @@ export class FileSelectionService {
     recommendations.sort(
       (left, right) => right.score - left.score || left.path.localeCompare(right.path),
     );
-    const added = recommendations.slice(0, 20).map((recommendation) => recommendation.path);
-
+    const added = recommendations.slice(0, 20).map((item) => item.path);
     for (const relativePath of added) {
       this.#entries.set(relativePath, {
         path: relativePath,
@@ -310,7 +454,6 @@ export class FileSelectionService {
         selected: false,
       });
     }
-
     return added;
   }
 
@@ -332,9 +475,7 @@ export class FileSelectionService {
       const content = await fs.readFile(ignorePath, 'utf8');
       return new ReviewLumeIgnoreMatcher(content.split(/\r?\n/));
     } catch (error) {
-      if (isNodeError(error, 'ENOENT')) {
-        return new ReviewLumeIgnoreMatcher([]);
-      }
+      if (isNodeError(error, 'ENOENT')) return new ReviewLumeIgnoreMatcher([]);
       throw error;
     }
   }
@@ -350,9 +491,7 @@ export class FileSelectionService {
       await this.#assertRealFileInside(repositoryRealPath, absolutePath);
       return true;
     } catch (error) {
-      if (isNodeError(error, 'ENOENT') && status === 'deleted') {
-        return false;
-      }
+      if (isNodeError(error, 'ENOENT') && status === 'deleted') return false;
       throw error;
     }
   }
@@ -370,7 +509,6 @@ export class FileSelectionService {
         'A related file must belong to the repository selected for this review.',
       );
     }
-
     const relativePath = normalizeRepositoryPath(relative);
     this.#assertNotGitMetadata(relativePath);
     await this.#assertRealFileInside(repositoryRealPath, resolved);
@@ -396,7 +534,6 @@ export class FileSelectionService {
         'A symbolic link resolves outside the repository selected for this review.',
       );
     }
-
     const targetStat = await fs.stat(realPath);
     if (!targetStat.isFile()) {
       throw new FileSelectionError('NOT_A_FILE', 'Only regular files can be added to a review.');
@@ -461,7 +598,6 @@ export class FileSelectionService {
 function compileIgnoreRule(rawLine: string): IgnoreRule[] {
   const line = rawLine.replace(/\r$/, '');
   if (line === '' || /^\s*#/.test(line)) return [];
-
   let pattern = line;
   let negated = false;
   if (pattern.startsWith('!')) {
@@ -469,12 +605,10 @@ function compileIgnoreRule(rawLine: string): IgnoreRule[] {
     pattern = pattern.slice(1);
   }
   if (!pattern) return [];
-
   const directoryOnly = pattern.endsWith('/');
   const anchored = pattern.startsWith('/');
   pattern = pattern.replace(/^\//, '').replace(/\/$/, '');
   if (!pattern) return [];
-
   const hasSlash = pattern.includes('/');
   const body = globToRegex(pattern);
   const prefix = anchored || hasSlash ? '^' : '(?:^|/)';
@@ -512,7 +646,6 @@ function normalizeRepositoryPath(value: string): string {
       'Only repository-relative paths are allowed.',
     );
   }
-
   const normalized = path.posix.normalize(toPosixPath(value)).replace(/^\.\//, '');
   if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../')) {
     throw new FileSelectionError(
@@ -535,6 +668,31 @@ function isOutsidePath(relativePath: string): boolean {
   );
 }
 
+function isBuiltInExcluded(relativePath: string): boolean {
+  const root = relativePath.split('/')[0]?.toLowerCase();
+  return root ? BUILT_IN_EXCLUDED_ROOTS.has(root) : true;
+}
+
+function isUtf8Probe(bytes: Uint8Array): boolean {
+  if (bytes.includes(0)) return false;
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(bytes, { stream: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function isUtf8Text(bytes: Uint8Array): boolean {
+  if (bytes.includes(0)) return false;
+  try {
+    UTF8_DECODER.decode(bytes);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function isNodeError(error: unknown, code: string): boolean {
   return (
     typeof error === 'object' &&
@@ -555,7 +713,7 @@ function isGitCommandExit(error: unknown, exitCode: number): boolean {
   );
 }
 
-function isTestPath(relativePath: string): boolean {
+export function isTestPath(relativePath: string): boolean {
   const normalized = toPosixPath(relativePath);
   const fileName = path.posix.basename(normalized);
   return (
@@ -566,23 +724,19 @@ function isTestPath(relativePath: string): boolean {
   );
 }
 
-function testRelationshipScore(sourcePath: string, testPath: string): number {
+export function testRelationshipScore(sourcePath: string, testPath: string): number {
   const sourceStem = sourceFileStem(sourcePath);
   const testStem = testFileStem(testPath);
   let score = 0;
-
   if (sourceStem === testStem) score += 100;
   else if (testStem.includes(sourceStem) || sourceStem.includes(testStem)) score += 45;
-
   const sourceDirectory = path.posix.dirname(sourcePath);
   const testDirectory = path.posix.dirname(testPath);
   if (sourceDirectory === testDirectory) score += 30;
   if (testDirectory === `${sourceDirectory}/__tests__`) score += 35;
-
   const sourceTopLevel = sourcePath.split('/')[0];
   const testTopLevel = testPath.split('/')[0];
   if (sourceTopLevel && sourceTopLevel === testTopLevel) score += 10;
-
   return score;
 }
 

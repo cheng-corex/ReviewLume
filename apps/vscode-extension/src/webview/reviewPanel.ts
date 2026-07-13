@@ -1,5 +1,5 @@
 /**
- * P6 — ReviewPanelController.
+ * ReviewPanelController.
  * The Webview is untrusted. It receives explicit DTOs only and all inbound
  * messages are validated before dispatch to fixed extension operations.
  */
@@ -10,9 +10,11 @@ import {
   getReviewPanelStrings,
   type ExportFormat,
   type ReviewPanelStrings,
+  type ReviewScope,
 } from '../localization';
 import type { FileSelectionService } from '../services/fileSelectionService';
 import { logInfo, logWarn } from '../services/logService';
+import type { ReviewScopeService } from '../services/reviewScopeService';
 import type { SecurityReviewService } from '../services/securityReviewService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { buildReviewPanelHtml } from './reviewPanelHtml';
@@ -31,6 +33,7 @@ export function createOrShowReviewPanel(
   extensionUri: vscode.Uri,
   fileSelectionService: FileSelectionService,
   securityReviewService: SecurityReviewService,
+  reviewScopeService: ReviewScopeService,
 ): vscode.WebviewPanel {
   if (existingPanel && existingController) {
     existingPanel.reveal(vscode.ViewColumn.Beside);
@@ -58,6 +61,7 @@ export function createOrShowReviewPanel(
     panel,
     fileSelectionService,
     securityReviewService,
+    reviewScopeService,
     strings,
   );
   existingPanel = panel;
@@ -81,6 +85,7 @@ export class ReviewPanelController {
   readonly #panel: vscode.WebviewPanel;
   readonly #fileSelectionService: FileSelectionService;
   readonly #securityReviewService: SecurityReviewService;
+  readonly #reviewScopeService: ReviewScopeService;
   readonly #strings: ReviewPanelStrings;
   #disposed = false;
 
@@ -88,11 +93,13 @@ export class ReviewPanelController {
     panel: vscode.WebviewPanel,
     fileSelectionService: FileSelectionService,
     securityReviewService: SecurityReviewService,
+    reviewScopeService: ReviewScopeService,
     strings = getReviewPanelStrings(vscode.env.language),
   ) {
     this.#panel = panel;
     this.#fileSelectionService = fileSelectionService;
     this.#securityReviewService = securityReviewService;
+    this.#reviewScopeService = reviewScopeService;
     this.#strings = strings;
     this.disposables.push(
       panel.webview.onDidReceiveMessage((rawMessage: unknown) =>
@@ -133,7 +140,7 @@ export class ReviewPanelController {
           await vscode.commands.executeCommand(COMMANDS.CREATE_REVIEW_PACK);
           break;
         case 'toggleFile':
-          this.#toggleFile(message.filePath, message.selected);
+          await this.#toggleFile(message.filePath, message.selected);
           break;
         case 'addRelatedFiles':
           await vscode.commands.executeCommand(COMMANDS.ADD_RELATED_FILES);
@@ -161,6 +168,9 @@ export class ReviewPanelController {
         case 'setExportFormat':
           await this.#setExportFormat(message.format);
           break;
+        case 'setReviewScope':
+          await this.#setReviewScope(message.scope);
+          break;
         case 'refresh':
           break;
       }
@@ -168,7 +178,12 @@ export class ReviewPanelController {
     } catch (error) {
       const code = getErrorCode(error);
       logWarn(`ReviewPanel operation failed (${message.type}, ${code})`);
-      this.postError(this.#strings.genericOperationError);
+      this.postError(
+        code === 'FULL_REPOSITORY_TOO_LARGE' || code === 'FULL_REPOSITORY_TOO_MANY_FILES'
+          ? this.#strings.fullRepositoryTooLarge
+          : this.#strings.genericOperationError,
+      );
+      void this.postState();
     }
   }
 
@@ -183,7 +198,45 @@ export class ReviewPanelController {
     logInfo(`Review Panel export format updated to ${format}`);
   }
 
-  #toggleFile(filePath: string, selected: boolean): void {
+  async #setReviewScope(scope: ReviewScope): Promise<void> {
+    if (!this.#fileSelectionService.hasSession) {
+      throw Object.assign(new Error('No active review session.'), {
+        code: 'NO_ACTIVE_SESSION',
+      });
+    }
+    if (scope === this.#reviewScopeService.mode) return;
+    if (scope === 'full') {
+      const choice = await vscode.window.showWarningMessage(
+        this.#strings.fullRepositoryConfirm,
+        { modal: true },
+        this.#strings.continueAction,
+        this.#strings.cancelAction,
+      );
+      if (choice !== this.#strings.continueAction) return;
+    }
+
+    await vscode.window.withProgress(
+      {
+        location: vscode.ProgressLocation.Notification,
+        title: `ReviewLume: ${this.#strings.reviewScope}`,
+        cancellable: true,
+      },
+      async (_progress, token) => {
+        const controller = new AbortController();
+        const cancellation = token.onCancellationRequested(() => controller.abort());
+        try {
+          await this.#reviewScopeService.apply(scope, controller.signal);
+        } finally {
+          cancellation.dispose();
+        }
+      },
+    );
+    this.#securityReviewService.invalidate();
+    await this.#panel.webview.postMessage({ type: 'scopeUpdated', scope });
+    logInfo(`Review Panel scope updated to ${scope}`);
+  }
+
+  async #toggleFile(filePath: string, selected: boolean): Promise<void> {
     if (!this.#fileSelectionService.hasSession) {
       throw Object.assign(new Error('No active review session.'), {
         code: 'NO_ACTIVE_SESSION',
@@ -200,6 +253,9 @@ export class ReviewPanelController {
       });
     }
     this.#fileSelectionService.setSelected(entry.path, selected);
+    if (entry.source !== 'context') {
+      await this.#reviewScopeService.refreshSmartContext();
+    }
     this.#securityReviewService.invalidate();
   }
 
@@ -247,7 +303,7 @@ export class ReviewPanelController {
 
   async #buildStateDto(): Promise<ReviewPanelStateDto> {
     const base = this.#buildBaseState();
-    if (!base) return emptyState(this.#getExportFormat());
+    if (!base) return emptyState(this.#getExportFormat(), this.#reviewScopeService);
     if (!base.canExport || base.selectedCount === 0) return base;
 
     try {
@@ -298,6 +354,7 @@ export class ReviewPanelController {
           confirmed: finding.resolution.kind === 'confirmed',
         }))
       : [];
+    const scope = this.#reviewScopeService.summary;
 
     return {
       hasSession: true,
@@ -320,11 +377,19 @@ export class ReviewPanelController {
       truncationMessages: [],
       estimatedTokens: 0,
       exportFormat: this.#getExportFormat(),
+      reviewScope: scope.mode,
+      scopeContextCount: scope.contextFileCount,
+      scopeEligibleFileCount: scope.eligibleFileCount,
+      scopeEstimatedSourceBytes: scope.estimatedSourceBytes,
     };
   }
 }
 
-function emptyState(exportFormat: ExportFormat): ReviewPanelStateDto {
+function emptyState(
+  exportFormat: ExportFormat,
+  reviewScopeService: Pick<ReviewScopeService, 'summary'>,
+): ReviewPanelStateDto {
+  const scope = reviewScopeService.summary;
   return {
     hasSession: false,
     repositoryDisplayName: '',
@@ -346,6 +411,10 @@ function emptyState(exportFormat: ExportFormat): ReviewPanelStateDto {
     truncationMessages: [],
     estimatedTokens: 0,
     exportFormat,
+    reviewScope: scope.mode,
+    scopeContextCount: 0,
+    scopeEligibleFileCount: 0,
+    scopeEstimatedSourceBytes: 0,
   };
 }
 

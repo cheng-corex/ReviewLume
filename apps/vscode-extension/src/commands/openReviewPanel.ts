@@ -1,11 +1,10 @@
-/**
- * P6 — "ReviewLume: Open Review Panel" command.
- */
+/** ReviewLume: Open Review Panel command. */
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import { getWorkspaceWarning } from '../services/workspaceService';
 import { createOrShowReviewPanel } from '../webview/reviewPanel';
 import type { FileSelectionService } from '../services/fileSelectionService';
+import type { ReviewScopeService } from '../services/reviewScopeService';
 import type { SecurityReviewService } from '../services/securityReviewService';
 import { logInfo, logWarn } from '../services/logService';
 
@@ -13,6 +12,7 @@ export function registerOpenReviewPanel(
   context: vscode.ExtensionContext,
   fileSelectionService: FileSelectionService,
   securityReviewService: SecurityReviewService,
+  reviewScopeService: ReviewScopeService,
 ): void {
   const disposable = vscode.commands.registerCommand(
     COMMANDS.OPEN_REVIEW_PANEL,
@@ -29,6 +29,7 @@ export function registerOpenReviewPanel(
           context.extensionUri,
           fileSelectionService,
           securityReviewService,
+          reviewScopeService,
         );
         logInfo('Review panel opened');
       } catch (error) {

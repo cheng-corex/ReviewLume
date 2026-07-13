@@ -34,7 +34,7 @@
 }
 
 .btn:focus-visible,
-.export-format-select:focus-visible {
+.review-option-select:focus-visible {
   outline: 1px solid var(--vscode-focusBorder, var(--accent));
   outline-offset: 2px;
 }
@@ -75,7 +75,7 @@
   filter: none;
 }
 
-.export-format-control {
+.review-option-control {
   display: flex;
   align-items: center;
   gap: var(--space-md);
@@ -86,7 +86,7 @@
   background: var(--bg-secondary);
 }
 
-.export-format-text {
+.review-option-text {
   display: flex;
   flex: 1;
   min-width: 0;
@@ -94,17 +94,17 @@
   gap: 2px;
 }
 
-.export-format-label {
+.review-option-label {
   font-weight: 600;
 }
 
-.export-format-help {
+.review-option-help {
   color: var(--text-secondary);
   font-size: 11px;
 }
 
-.export-format-select {
-  min-width: 160px;
+.review-option-select {
+  min-width: 180px;
   height: 30px;
   padding: 0 28px 0 8px;
   border: 1px solid var(--rl-input-border);
@@ -125,12 +125,12 @@
     grid-template-columns: 1fr;
   }
 
-  .export-format-control {
+  .review-option-control {
     align-items: stretch;
     flex-direction: column;
   }
 
-  .export-format-select {
+  .review-option-select {
     width: 100%;
   }
 }

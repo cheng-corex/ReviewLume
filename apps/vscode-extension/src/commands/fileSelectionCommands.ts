@@ -2,12 +2,14 @@ import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
 import { FileSelectionError, FileSelectionService } from '../services/fileSelectionService';
 import { logInfo, logWarn } from '../services/logService';
+import type { ReviewScopeService } from '../services/reviewScopeService';
 import { getWorkspaceWarning } from '../services/workspaceService';
 
 export function registerFileSelectionCommands(
   context: vscode.ExtensionContext,
   fileSelectionService: FileSelectionService,
   onSelectionChanged: () => void,
+  reviewScopeService?: Pick<ReviewScopeService, 'refreshSmartContext'>,
 ): void {
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.ADD_RELATED_FILES, async () => {
@@ -35,10 +37,14 @@ export function registerFileSelectionCommands(
             const controller = new AbortController();
             const cancellation = token.onCancellationRequested(() => controller.abort());
             try {
-              return await fileSelectionService.addManualFiles(
+              const addition = await fileSelectionService.addManualFiles(
                 selected.map((uri) => uri.fsPath),
                 controller.signal,
               );
+              if (addition.added.length > 0) {
+                await reviewScopeService?.refreshSmartContext(controller.signal);
+              }
+              return addition;
             } finally {
               cancellation.dispose();
             }
@@ -139,6 +145,10 @@ function userFacingSelectionError(code: FileSelectionError['code']): string {
       return 'ReviewLume: Create a Review Pack before selecting related files.';
     case 'INVALID_REPOSITORY_PATH':
       return 'ReviewLume: One of the selected repository paths is invalid.';
+    case 'FILE_TOO_LARGE':
+      return 'ReviewLume: A selected context file exceeds the safe size limit.';
+    case 'BINARY_FILE':
+      return 'ReviewLume: Binary files cannot be added as review context.';
   }
 }
 

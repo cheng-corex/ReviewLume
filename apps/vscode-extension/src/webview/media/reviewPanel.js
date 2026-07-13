@@ -74,10 +74,21 @@
     return createElement('span', { className: 'status-badge ' + kind, textContent: label });
   }
 
+  function scopeLabel(scope) {
+    if (scope === 'full') return text('fullRepository', 'Full Repository');
+    if (scope === 'changes') return text('changesOnly', 'Changes Only');
+    return text('smartContext', 'Smart Context');
+  }
+
   function renderSummaryBar(state) {
     var bar = createElement('div', { className: 'summary-bar' });
     bar.appendChild(summaryItem(text('repository', 'Repository'), state.repositoryDisplayName));
     bar.appendChild(summaryItem(text('selectedFiles', 'Selected Files'), state.selectedCount + ' / ' + state.totalCount));
+    var scopeSummary = scopeLabel(state.reviewScope);
+    if (state.reviewScope !== 'changes') {
+      scopeSummary += ' · ' + Number(state.scopeContextCount || 0).toLocaleString() + ' ' + text('contextFiles', 'context files');
+    }
+    bar.appendChild(summaryItem(text('reviewScopeSummary', 'Review Scope'), scopeSummary));
     bar.appendChild(summaryItem(
       text('scanStatus', 'Scan Status'),
       state.hasScanResult ? renderScanBadge(state) : badge(text('notScanned', 'Not scanned'), 'neutral'),
@@ -113,42 +124,71 @@
     return button;
   }
 
-  function renderExportFormatControl(state) {
-    var control = createElement('div', { className: 'export-format-control' });
-    var textContainer = createElement('div', { className: 'export-format-text' });
+  function renderChoiceControl(options) {
+    var control = createElement('div', { className: 'review-option-control' });
+    var textContainer = createElement('div', { className: 'review-option-text' });
     textContainer.appendChild(createElement('label', {
-      className: 'export-format-label',
-      textContent: text('exportFormat', 'Export format'),
+      className: 'review-option-label',
+      textContent: options.label,
     }));
     textContainer.appendChild(createElement('span', {
-      className: 'export-format-help',
-      textContent: text('exportFormatHelp', 'Applies to automatic export.'),
+      className: 'review-option-help',
+      textContent: options.help,
     }));
-
-    var select = createElement('select', { className: 'export-format-select' });
-    select.setAttribute('aria-label', text('exportFormat', 'Export format'));
-    [
-      ['markdown', text('markdown', 'Markdown')],
-      ['zip', text('zip', 'ZIP')],
-      ['both', text('both', 'Markdown + ZIP')],
-    ].forEach(function (entry) {
+    var select = createElement('select', { className: 'review-option-select ' + options.className });
+    select.setAttribute('aria-label', options.label);
+    options.items.forEach(function (entry) {
       var option = createElement('option', { textContent: entry[1] });
       option.value = entry[0];
       select.appendChild(option);
     });
-    select.value = state.exportFormat || 'markdown';
+    select.value = options.value;
     select.addEventListener('change', function () {
-      postMessage({ type: 'setExportFormat', format: select.value });
+      options.onChange(select.value);
     });
-
     control.appendChild(textContainer);
     control.appendChild(select);
     return control;
   }
 
+  function renderReviewScopeControl(state) {
+    return renderChoiceControl({
+      label: text('reviewScope', 'Review scope'),
+      help: text('reviewScopeHelp', 'Smart Context is the default.'),
+      className: 'review-scope-select',
+      value: state.reviewScope || 'smart',
+      items: [
+        ['changes', text('changesOnly', 'Changes Only')],
+        ['smart', text('smartContext', 'Smart Context')],
+        ['full', text('fullRepository', 'Full Repository')],
+      ],
+      onChange: function (value) {
+        postMessage({ type: 'setReviewScope', scope: value });
+      },
+    });
+  }
+
+  function renderExportFormatControl(state) {
+    return renderChoiceControl({
+      label: text('exportFormat', 'Export format'),
+      help: text('exportFormatHelp', 'Applies to automatic export.'),
+      className: 'export-format-select',
+      value: state.exportFormat || 'markdown',
+      items: [
+        ['markdown', text('markdown', 'Markdown')],
+        ['zip', text('zip', 'ZIP')],
+        ['both', text('both', 'Markdown + ZIP')],
+      ],
+      onChange: function (value) {
+        postMessage({ type: 'setExportFormat', format: value });
+      },
+    });
+  }
+
   function renderActionsBar(state) {
     var bar = createElement('div', { className: 'actions-bar' });
     var canExport = state.canExport && state.hasScanResult && state.reviewPackByteLength > 0;
+    bar.appendChild(renderReviewScopeControl(state));
     bar.appendChild(renderExportFormatControl(state));
     bar.appendChild(actionButton(text('createReviewPack', 'Create Review Pack'), 'createReviewPack'));
     bar.appendChild(actionButton(text('addRelatedFiles', 'Add Related Files'), 'addRelatedFiles'));
@@ -222,7 +262,9 @@
           ? text('related', 'related')
           : entry.source === 'recommended'
             ? text('recommendedTest', 'test')
-            : text('changed', 'changed'),
+            : entry.source === 'context'
+              ? text('context', 'context')
+              : text('changed', 'changed'),
       }));
       var changeText = entry.changeKinds && entry.changeKinds.length > 0
         ? entry.changeKinds.join(', ')
@@ -339,6 +381,7 @@
     else if (message.type === 'error') showToast(message.message, false);
     else if (message.type === 'copyComplete') showToast(text('copied', 'Review prompt copied to clipboard'), true);
     else if (message.type === 'formatUpdated') showToast(text('formatUpdated', 'Export format updated'), true);
+    else if (message.type === 'scopeUpdated') showToast(text('scopeUpdated', 'Review scope updated'), true);
   });
 
   postMessage({ type: 'refresh' });
