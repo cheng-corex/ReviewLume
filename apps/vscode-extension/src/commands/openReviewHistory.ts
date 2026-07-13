@@ -486,7 +486,8 @@ async function showReportQuickPick(
     reviewId,
   );
 
-  while (true) {
+  let keepShowingReport = true;
+  while (keepShowingReport) {
     const readResult = await reportService.readReport(
       reviewDirectory,
       reviewId,
@@ -575,18 +576,15 @@ async function showReportQuickPick(
               `Update Issue Status: ${issue.title}`,
               `修改问题状态：${issue.title}`,
             ),
-            placeHolder: t(
-              'Choose the new status',
-              '选择新的问题状态',
-            ),
+            placeHolder: t('Choose the new status', '选择新的问题状态'),
           }) as Promise<ReportIssueStatusItem | undefined>,
       },
     });
 
     if (!updated) return;
 
-    const updatedIssue = updated.issues.find(
-      (issue) => report.issues.some(
+    const updatedIssue = updated.issues.find((issue) =>
+      report.issues.some(
         (previous) => previous.issueId === issue.issueId && previous.status !== issue.status,
       ),
     );
@@ -602,6 +600,7 @@ async function showReportQuickPick(
           ),
     );
     logInfo(`Report issue status updated (${reviewId})`);
+    keepShowingReport = updated.issues.length > 0;
   }
 }
 
