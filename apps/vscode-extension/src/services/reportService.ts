@@ -1,23 +1,9 @@
-/**
- * P8A ReportService: Manages `report.json` lifecycle.
- *
- * Handles:
- * - Creating report.json from parsed AI responses
- * - Reading report.json with hash validation
- * - Re-parsing existing response.md
- * - Atomic writes with temp files
- *
- * Path safety (realpath, symlink checks, repository boundaries) is
- * handled by HistoryService before this service touches any files.
- */
-
+/** P8A report.json lifecycle and integrity checks. */
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
-import { type Stats } from 'node:fs';
 import * as path from 'node:path';
 import {
   parseReviewResponse,
-  REPORT_SCHEMA_VERSION,
   validateTransition,
   type ParseContext,
   type ReviewIssue,
@@ -26,20 +12,10 @@ import {
   type ReportReadResult,
 } from '@reviewlume/report-parser';
 import { logInfo } from './logService';
+import { parseStoredReviewReport } from './reportSchema';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-/** Maximum size of a report.json file (prevents disk abuse). */
-const MAX_REPORT_FILE_BYTES = 10 * 1024 * 1024; // 10 MB
-
-/** Expected report file name. */
+const MAX_REPORT_FILE_BYTES = 10 * 1024 * 1024;
 const REPORT_FILENAME = 'report.json';
-
-// ---------------------------------------------------------------------------
-// Error types
-// ---------------------------------------------------------------------------
 
 export class ReportServiceError extends Error {
   readonly code = 'REPORT_SERVICE_ERROR' as const;
@@ -50,217 +26,129 @@ export class ReportServiceError extends Error {
   }
 }
 
-// ---------------------------------------------------------------------------
-// Hash utilities
-// ---------------------------------------------------------------------------
-
 function sha256(content: string): string {
   return createHash('sha256').update(content).digest('hex');
 }
 
-// ---------------------------------------------------------------------------
-// ReportService
-// ---------------------------------------------------------------------------
-
 export class ReportService {
-  /**
-   * Parse a response and create `report.json` in the review directory.
-   *
-   * @param reviewDirectory - Already-validated review directory path (from HistoryService).
-   * @param reviewId - The review ID matching the directory.
-   * @param responseText - The raw AI response text.
-   * @returns The created report.
-   */
+  static readonly #writeQueues = new Map<string, Promise<void>>();
+
   async createReport(
     reviewDirectory: string,
     reviewId: string,
     responseText: string,
   ): Promise<ReviewReport> {
-    await this.#assertSafeDirectory(reviewDirectory);
+    await this.#assertSafeDirectory(reviewDirectory, reviewId);
 
-    const responseHash = sha256(responseText);
     const context: ParseContext = { reviewId };
-
     const parseResult = parseReviewResponse(responseText, context);
-    const report: ReviewReport = {
+    const report = parseStoredReviewReport({
       ...parseResult.report,
-      sourceResponseHash: responseHash,
-    };
+      sourceResponseHash: sha256(responseText),
+    });
 
-    await this.#atomicWriteReport(reviewDirectory, report);
-    logInfo(`Report created for review ${reviewId} (${parseResult.issueCount} issues, status=${report.parseStatus})`);
-
+    await this.#queueWrite(reviewDirectory, report);
+    logInfo(
+      `Report created for review ${reviewId} (${parseResult.issueCount} issues, status=${report.parseStatus})`,
+    );
     return report;
   }
 
-  /**
-   * Read `report.json` from the review directory.
-   *
-   * Validates:
-   * - File exists and is a regular file
-   * - Valid JSON
-   * - Schema version supported
-   * - reviewId matches
-   * - response hash matches (if response.md exists)
-   *
-   * @param reviewDirectory - Already-validated review directory path.
-   * @param reviewId - Expected review ID.
-   * @param responseText - Optional current response.md content for hash validation.
-   */
   async readReport(
     reviewDirectory: string,
     reviewId: string,
     responseText?: string,
   ): Promise<ReportReadResult> {
-    await this.#assertSafeDirectory(reviewDirectory);
-
+    await this.#assertSafeDirectory(reviewDirectory, reviewId);
     const reportPath = path.join(reviewDirectory, REPORT_FILENAME);
 
-    // Check if file exists
+    let stat;
     try {
-      const stat = await fs.lstat(reportPath);
-      if (stat.isSymbolicLink() || !stat.isFile()) {
-        return { status: 'corrupt', error: 'report.json is not a regular file.' };
-      }
+      stat = await fs.lstat(reportPath);
     } catch (error) {
-      if (isNodeError(error, 'ENOENT')) {
-        return { status: 'missing' };
-      }
-      throw error;
+      if (isNodeError(error, 'ENOENT')) return { status: 'missing' };
+      return { status: 'corrupt', error: 'Cannot inspect report.json.' };
     }
 
-    // Check file size
-    let stat: Stats;
-    try {
-      stat = await fs.stat(reportPath);
-    } catch {
-      return { status: 'corrupt', error: 'Cannot stat report.json.' };
+    if (stat.isSymbolicLink() || !stat.isFile()) {
+      return { status: 'corrupt', error: 'report.json is not a regular file.' };
     }
     if (stat.size > MAX_REPORT_FILE_BYTES) {
       return { status: 'corrupt', error: 'report.json exceeds maximum size.' };
     }
 
-    // Read and parse
-    let raw: string;
-    try {
-      raw = await fs.readFile(reportPath, 'utf8');
-    } catch {
-      return { status: 'corrupt', error: 'Cannot read report.json.' };
-    }
-
     let parsed: unknown;
     try {
-      parsed = JSON.parse(raw);
+      parsed = JSON.parse(await fs.readFile(reportPath, 'utf8'));
     } catch {
-      return { status: 'corrupt', error: 'report.json is not valid JSON.' };
+      return { status: 'corrupt', error: 'report.json is not valid readable JSON.' };
     }
 
-    if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
-      return { status: 'corrupt', error: 'report.json root must be an object.' };
+    if (isRecord(parsed) && parsed.schemaVersion !== 1) {
+      return {
+        status: 'unsupported-version',
+        error: `Unsupported schema version: ${String(parsed.schemaVersion)}`,
+      };
     }
-
-    const obj = parsed as Record<string, unknown>;
-
-    // Validate schema version
-    if (typeof obj.schemaVersion !== 'number' || obj.schemaVersion !== REPORT_SCHEMA_VERSION) {
-      return { status: 'unsupported-version', error: `Unsupported schema version: ${String(obj.schemaVersion)}` };
-    }
-
-    // Validate reviewId
-    if (typeof obj.reviewId !== 'string' || obj.reviewId !== reviewId) {
+    if (isRecord(parsed) && parsed.reviewId !== reviewId) {
       return { status: 'id-mismatch', error: 'report.json reviewId does not match directory.' };
     }
 
-    // Check hash if responseText provided
-    if (responseText !== undefined) {
-      const expectedHash = sha256(responseText);
-      if (
-        typeof obj.sourceResponseHash === 'string' &&
-        obj.sourceResponseHash !== expectedHash
-      ) {
-        return {
-          status: 'stale-hash',
-          error: 'report.json hash does not match current response.md.',
-          report: obj as unknown as ReviewReport, // still return the report so caller can inspect
-        };
-      }
+    let report: ReviewReport;
+    try {
+      report = parseStoredReviewReport(parsed);
+    } catch {
+      return { status: 'corrupt', error: 'report.json failed strict schema validation.' };
     }
 
-    // Basic structural validation
-    if (!Array.isArray(obj.issues)) {
-      return { status: 'corrupt', error: 'report.json issues is not an array.' };
+    if (responseText !== undefined && report.sourceResponseHash !== sha256(responseText)) {
+      return {
+        status: 'stale-hash',
+        error: 'report.json hash does not match current response.md.',
+        report,
+      };
     }
 
-    return { status: 'valid', report: obj as unknown as ReviewReport };
+    return { status: 'valid', report };
   }
 
-  /**
-   * Re-parse an existing `response.md` and atomically replace `report.json`.
-   *
-   * @returns The new report.
-   */
   async reparseReport(
     reviewDirectory: string,
     reviewId: string,
     responseText: string,
   ): Promise<ReviewReport> {
-    // This is essentially the same as createReport but with explicit "reparse" semantics.
-    // The caller (HistoryService) handles the overwrite decision.
     return this.createReport(reviewDirectory, reviewId, responseText);
   }
 
-  /**
-   * Validate and apply a status transition for a single issue.
-   *
-   * @param report - The current report.
-   * @param issueId - The issue to update.
-   * @param newStatus - The target status.
-   * @returns A new report with the updated issue status.
-   * @throws If the issue doesn't exist or the transition is invalid.
-   */
   transitionIssueStatus(
     report: ReviewReport,
     issueId: string,
     newStatus: ReviewIssueStatus,
   ): ReviewReport {
-    const issueIndex = report.issues.findIndex((i) => i.issueId === issueId);
+    const issueIndex = report.issues.findIndex((issue) => issue.issueId === issueId);
     if (issueIndex === -1) {
       throw new ReportServiceError(`Issue not found: ${issueId}`);
     }
 
     const currentIssue = report.issues[issueIndex];
     validateTransition(currentIssue.status, newStatus);
-
-    const updatedIssue: ReviewIssue = {
-      ...currentIssue,
-      status: newStatus,
-    };
-
+    const updatedIssue: ReviewIssue = { ...currentIssue, status: newStatus };
     const updatedIssues = [...report.issues];
     updatedIssues[issueIndex] = updatedIssue;
 
-    return {
-      ...report,
-      issues: updatedIssues,
-    };
+    return parseStoredReviewReport({ ...report, issues: updatedIssues });
   }
 
-  /**
-   * Atomically write a report to the review directory.
-   */
-  async updateReport(
-    reviewDirectory: string,
-    report: ReviewReport,
-  ): Promise<void> {
-    await this.#assertSafeDirectory(reviewDirectory);
-    await this.#atomicWriteReport(reviewDirectory, report);
+  async updateReport(reviewDirectory: string, report: ReviewReport): Promise<void> {
+    await this.#assertSafeDirectory(reviewDirectory, report.reviewId);
+    const validated = parseStoredReviewReport(report);
+    await this.#queueWrite(reviewDirectory, validated);
   }
 
-  // -----------------------------------------------------------------------
-  // Private helpers
-  // -----------------------------------------------------------------------
-
-  async #assertSafeDirectory(reviewDirectory: string): Promise<void> {
+  async #assertSafeDirectory(reviewDirectory: string, reviewId: string): Promise<void> {
+    if (path.basename(reviewDirectory) !== reviewId) {
+      throw new ReportServiceError('Review directory does not match reviewId.');
+    }
     try {
       const stat = await fs.lstat(reviewDirectory);
       if (stat.isSymbolicLink() || !stat.isDirectory()) {
@@ -274,57 +162,76 @@ export class ReportService {
     }
   }
 
-  async #atomicWriteReport(
-    reviewDirectory: string,
-    report: ReviewReport,
-  ): Promise<void> {
-    const reportPath = path.join(reviewDirectory, REPORT_FILENAME);
-    const tempPath = path.join(
-      reviewDirectory,
-      `.report-${randomUUID()}.tmp`,
-    );
+  async #queueWrite(reviewDirectory: string, report: ReviewReport): Promise<void> {
+    const key = path.resolve(reviewDirectory);
+    const previous = ReportService.#writeQueues.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(() => this.#atomicWriteReport(reviewDirectory, report));
+    ReportService.#writeQueues.set(key, next);
+    try {
+      await next;
+    } finally {
+      if (ReportService.#writeQueues.get(key) === next) {
+        ReportService.#writeQueues.delete(key);
+      }
+    }
+  }
 
+  async #atomicWriteReport(reviewDirectory: string, report: ReviewReport): Promise<void> {
+    const reportPath = path.join(reviewDirectory, REPORT_FILENAME);
+    const tempPath = path.join(reviewDirectory, `.report-${randomUUID()}.tmp`);
+    const backupPath = `${tempPath}.bak`;
     const json = `${JSON.stringify(report, null, 2)}\n`;
 
-    // Write to temp file
+    if (Buffer.byteLength(json, 'utf8') > MAX_REPORT_FILE_BYTES) {
+      throw new ReportServiceError('Serialized report exceeds maximum size.');
+    }
+
     await fs.writeFile(tempPath, json, { encoding: 'utf8', flag: 'wx' });
+    let hasBackup = false;
+    let restoreFailed = false;
 
     try {
-      // If existing report exists, back it up
-      let hasBackup = false;
       try {
-        await fs.rename(reportPath, `${tempPath}.bak`);
+        const targetStat = await fs.lstat(reportPath);
+        if (targetStat.isSymbolicLink() || !targetStat.isFile()) {
+          throw new ReportServiceError('Existing report.json is not a regular file.');
+        }
+        await fs.rename(reportPath, backupPath);
         hasBackup = true;
       } catch (error) {
         if (!isNodeError(error, 'ENOENT')) throw error;
-        // No existing file — that's fine, proceed
       }
 
       try {
-        // Atomically replace the target
         await fs.rename(tempPath, reportPath);
-        // Clean up backup
-        if (hasBackup) {
-          await fs.rm(`${tempPath}.bak`, { force: true });
-        }
       } catch (error) {
-        // Restore backup if rename failed
         if (hasBackup) {
-          await fs.rename(`${tempPath}.bak`, reportPath).catch(() => undefined);
+          try {
+            await fs.rename(backupPath, reportPath);
+            hasBackup = false;
+          } catch {
+            restoreFailed = true;
+          }
         }
         throw error;
       }
+
+      if (hasBackup) {
+        await fs.rm(backupPath, { force: true });
+        hasBackup = false;
+      }
     } finally {
-      // Always clean up temp files
       await fs.rm(tempPath, { force: true }).catch(() => undefined);
-      await fs.rm(`${tempPath}.bak`, { force: true }).catch(() => undefined);
+      if (hasBackup && !restoreFailed) {
+        await fs.rm(backupPath, { force: true }).catch(() => undefined);
+      }
     }
   }
 }
 
-// ---------------------------------------------------------------------------
-// Utility
-// ---------------------------------------------------------------------------
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
 
 function isNodeError(error: unknown, code: string): boolean {
   return (
