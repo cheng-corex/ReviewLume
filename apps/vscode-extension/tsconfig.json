@@ -12,6 +12,7 @@
     { "path": "../../packages/core" },
     { "path": "../../packages/git-context" },
     { "path": "../../packages/secret-scanner" },
-    { "path": "../../packages/review-pack" }
+    { "path": "../../packages/review-pack" },
+    { "path": "../../packages/report-parser" }
   ]
 }

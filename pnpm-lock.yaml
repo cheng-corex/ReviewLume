@@ -32,6 +32,9 @@ importers:
       '@reviewlume/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@reviewlume/report-parser':
+        specifier: workspace:*
+        version: link:../../packages/report-parser
       zod:
         specifier: ^4.4.3
         version: 4.4.3

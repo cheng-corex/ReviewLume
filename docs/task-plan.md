@@ -120,16 +120,35 @@
 - [x] 完整仓库超过安全文件数或大小时明确阻止，不静默截断。
 - [x] 三种模式继续经过敏感扫描、内容指纹与导出门控。
 - [x] 范围切换使用严格 Zod Webview 消息，中文环境显示中文，其他语言显示英文。
-- [ ] 完成 F5 人工验收：范围切换、智能推荐、完整仓库确认、超限提示与导出结果。
+- [x] 完成 F5 人工验收：范围切换、智能推荐、完整仓库确认、超限提示与导出结果。
 
-## P8：二次复核
+## P8A：二次复核数据基础与结构化问题解析（代码完成，等待 F5 验收）
 
-- [ ] 问题唯一 ID。
-- [ ] 状态：open/fixed/rejected/needs-review。
+- [x] 定义 `report.json` schema v1（ReviewReport + ReviewIssue）。
+- [x] 稳定唯一的问题 ID 生成（ISSUE-16位hex，基于规范化字段的 SHA-256）。
+- [x] 问题状态定义与校验：open/fixed/rejected/needs-review。
+- [x] 状态转换纯函数校验（开放所有合法转换，拒绝非法转换）。
+- [x] AI 回答保守解析器：JSON fenced block > Markdown 标题 > 编号列表 > 表格 > unstructured。
+- [x] 解析状态：parsed/partial/unstructured。
+- [x] 原始 `response.md` 完整保留，不因解析失败而丢失。
+- [x] `report.json` 原子写入（临时文件 + rename + 备份恢复）。
+- [x] 读取时校验 sourceResponseHash，识别过期/损坏/版本不兼容。
+- [x] 导入回答时自动解析生成 `report.json`（解析失败不回滚已保存的 response.md）。
+- [x] 历史详情 QuickPick 展示解析状态、问题数量、严重度和位置。
+- [x] 支持查看原始回复和重新解析。
+- [x] 兼容 P7 历史：无 response 不解析，有 response 无 report 显示"尚未解析"。
+- [x] 损坏 report.json 不影响查看 request.md 和 response.md。
+- [x] 所有路径操作复用 HistoryService 安全边界。
+- [x] 解析器纯函数，不访问文件系统、VS Code API 或网络。
+- [ ] 完成 F5 人工验收。
+
+## P8：二次复核（P8B/P8C 后续阶段）
+
 - [ ] 生成实施提示。
 - [ ] 导入修复摘要。
-- [ ] 生成复核包。
-- [ ] 展示首次和复核差异。
+- [ ] 批量修改问题状态的完整 UI。
+- [ ] 生成二次复核 Review Pack。
+- [ ] 首次审核与二次复核结果对比。
 - [ ] 同一闭环保持 `reviewId` 不变，使用轮次或子记录区分复核。
 
 ## P9：浏览器桥接
