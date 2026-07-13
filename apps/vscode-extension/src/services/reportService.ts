@@ -1,4 +1,4 @@
-/** P8A report.json lifecycle and integrity checks. */
+/** P8A/P8B report.json lifecycle, integrity checks, and issue resolution. */
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -137,6 +137,40 @@ export class ReportService {
     updatedIssues[issueIndex] = updatedIssue;
 
     return parseStoredReviewReport({ ...report, issues: updatedIssues });
+  }
+
+  /**
+   * P8B: validate and persist one issue status transition as a single queued update.
+   * The report must already be structurally valid; stale/corrupt reports are never overwritten.
+   */
+  async transitionIssueStatusOnDisk(
+    reviewDirectory: string,
+    reviewId: string,
+    issueId: string,
+    newStatus: ReviewIssueStatus,
+    responseText?: string,
+  ): Promise<ReviewReport> {
+    const readResult = await this.readReport(
+      reviewDirectory,
+      reviewId,
+      responseText,
+    );
+    if (readResult.status !== 'valid' || !readResult.report) {
+      throw new ReportServiceError(
+        `Cannot update issue status while report is ${readResult.status}.`,
+      );
+    }
+
+    const updated = this.transitionIssueStatus(
+      readResult.report,
+      issueId,
+      newStatus,
+    );
+    await this.updateReport(reviewDirectory, updated);
+    logInfo(
+      `Issue status updated (${reviewId}/${issueId}): ${newStatus}`,
+    );
+    return updated;
   }
 
   async updateReport(reviewDirectory: string, report: ReviewReport): Promise<void> {
