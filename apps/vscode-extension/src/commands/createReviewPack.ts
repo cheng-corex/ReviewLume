@@ -7,18 +7,20 @@ import type {
   GitStatusSnapshot,
 } from '../../../../packages/git-context/dist/index.js';
 import type { FileSelectionService } from '../services/fileSelectionService';
+import type { ReviewScopeService } from '../services/reviewScopeService';
 import { logInfo, logWarn } from '../services/logService';
 
 interface RepositoryQuickPickItem extends vscode.QuickPickItem {
   readonly discoveryResult: DiscoveryResult;
 }
 
-/** Register the P3-aware Create Review Pack entry point. */
+/** Register the repository-bound Create Review Pack entry point. */
 export function registerCreateReviewPack(
   context: vscode.ExtensionContext,
   providedGitContextService?: GitContextService,
   fileSelectionService?: Pick<FileSelectionService, 'initialize' | 'selectedCount'>,
   onSelectionChanged: () => void = () => undefined,
+  reviewScopeService?: Pick<ReviewScopeService, 'initialize'>,
 ): void {
   let gitContextService = providedGitContextService;
 
@@ -64,6 +66,7 @@ export function registerCreateReviewPack(
                     filteredResult.status,
                     controller.signal,
                   );
+                  await reviewScopeService?.initialize(controller.signal);
                 }
                 return filteredResult;
               }
@@ -105,7 +108,7 @@ export function registerCreateReviewPack(
                 `${status.untracked.length} untracked` +
                 (selectedCount === undefined
                   ? '.'
-                  : `. ${selectedCount} file(s) selected in the ReviewLume tree.`),
+                  : `. ${selectedCount} file(s) selected with smart context enabled.`),
             );
           }
         }
@@ -127,11 +130,7 @@ export function registerCreateReviewPack(
   context.subscriptions.push(disposable);
 }
 
-/**
- * Generated exports and internal history are local output, never review input.
- * Keeping this guard at the Git-status boundary also removes data that was
- * already untracked before a new file-selection session is created.
- */
+/** Generated exports and internal history are local output, never review input. */
 export function excludeGeneratedReviewLumeExports(
   status: GitStatusSnapshot,
 ): GitStatusSnapshot {
