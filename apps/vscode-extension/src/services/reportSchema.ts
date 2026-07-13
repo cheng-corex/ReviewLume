@@ -17,6 +17,7 @@ import {
 const REVIEW_ID_PATTERN = /^\d{8}T\d{6}Z-[0-9a-f]{12}$/;
 const ISSUE_ID_PATTERN = /^ISSUE-[0-9a-f]{16}$/;
 const SHA256_PATTERN = /^[0-9a-f]{64}$/;
+const SOURCE_FINGERPRINT_PATTERN = /^(?:ISSUE-[0-9a-f]{16}|[0-9a-f]{64})$/;
 
 const isoTimestampSchema = z
   .string()
@@ -51,7 +52,7 @@ const reviewIssueSchema = z
     lineEnd: optionalPositiveLineSchema,
     evidence: z.string().max(MAX_EVIDENCE_LENGTH).optional(),
     suggestion: z.string().max(MAX_SUGGESTION_LENGTH).optional(),
-    sourceFingerprint: z.string().regex(SHA256_PATTERN),
+    sourceFingerprint: z.string().regex(SOURCE_FINGERPRINT_PATTERN),
   })
   .strict()
   .superRefine((issue, context) => {
