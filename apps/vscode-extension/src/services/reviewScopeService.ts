@@ -83,6 +83,11 @@ export class ReviewScopeService {
     return this.apply('smart', signal);
   }
 
+  async refreshSmartContext(signal?: AbortSignal): Promise<ReviewScopeSummary> {
+    if (this.#mode !== 'smart') return this.#summary;
+    return this.apply('smart', signal);
+  }
+
   async apply(mode: ReviewScopeMode, signal?: AbortSignal): Promise<ReviewScopeSummary> {
     if (!this.fileSelectionService.hasSession) {
       throw new ReviewScopeError('NO_ACTIVE_REVIEW', 'No active review session.');
