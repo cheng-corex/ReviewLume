@@ -3,8 +3,8 @@ import { COMMANDS } from '../constants';
 import { HistoryService } from '../services/historyService';
 import { ReportService } from '../services/reportService';
 import {
-  buildIssueStatusOptions,
-  issueStatusLabel,
+  formatIssueStatus,
+  getIssueStatusActions,
 } from '../services/issueStatusPresentation';
 import { GitContextService } from '../services/gitContextService';
 import { historyText as t } from '../services/historyI18n';
@@ -24,6 +24,7 @@ export function registerUpdateIssueStatus(
       );
       if (!repositoryRoot) return;
 
+      const locale = vscode.env.language.toLowerCase().startsWith('zh') ? 'zh' : 'en';
       const historyService = new HistoryService();
       const entries = await historyService.list(repositoryRoot);
       const candidates = [] as Array<{
@@ -106,7 +107,7 @@ export function registerUpdateIssueStatus(
       const issue = await vscode.window.showQuickPick(
         result.report.issues.map((item) => ({
           label: `[${item.severity}] ${item.title}`,
-          description: `${issueStatusLabel(item.status)} · ${item.filePath ?? t('(no location)', '（无位置）')}`,
+          description: `${formatIssueStatus(item.status, locale)} · ${item.filePath ?? t('(no location)', '（无位置）')}`,
           detail: item.description,
           issue: item,
         })),
@@ -119,7 +120,7 @@ export function registerUpdateIssueStatus(
       );
       if (!issue) return;
 
-      const options = buildIssueStatusOptions(issue.issue.status);
+      const options = getIssueStatusActions(issue.issue.status, locale);
       if (options.length === 0) {
         await vscode.window.showInformationMessage(
           t(
@@ -132,7 +133,7 @@ export function registerUpdateIssueStatus(
 
       const target = await vscode.window.showQuickPick(
         options.map((option) => ({
-          label: option.label,
+          label: `$(${option.icon}) ${option.label}`,
           description: option.description,
           status: option.status,
         })),
@@ -153,8 +154,8 @@ export function registerUpdateIssueStatus(
         );
         await vscode.window.showInformationMessage(
           t(
-            `ReviewLume: Issue status updated to ${issueStatusLabel(target.status)}.`,
-            `ReviewLume：问题状态已更新为“${issueStatusLabel(target.status)}”。`,
+            `ReviewLume: Issue status updated to ${formatIssueStatus(target.status, locale)}.`,
+            `ReviewLume：问题状态已更新为“${formatIssueStatus(target.status, locale)}”。`,
           ),
         );
         logInfo(
