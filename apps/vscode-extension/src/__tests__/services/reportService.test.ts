@@ -201,6 +201,67 @@ describe('ReportService', () => {
     );
   });
 
+  it('persists a valid issue status transition', async () => {
+    const report = await service.createReport(reviewDir, REVIEW_ID, sampleResponse);
+    const issueId = report.issues[0].issueId;
+
+    const updated = await service.transitionIssueStatusOnDisk(
+      reviewDir,
+      REVIEW_ID,
+      issueId,
+      'fixed',
+      sampleResponse,
+    );
+
+    expect(updated.issues[0].status).toBe('fixed');
+    const stored = await service.readReport(reviewDir, REVIEW_ID, sampleResponse);
+    expect(stored.status).toBe('valid');
+    expect(stored.report?.issues[0].status).toBe('fixed');
+  });
+
+  it('does not overwrite stale reports during status updates', async () => {
+    const original = await service.createReport(reviewDir, REVIEW_ID, sampleResponse);
+    await expect(
+      service.transitionIssueStatusOnDisk(
+        reviewDir,
+        REVIEW_ID,
+        original.issues[0].issueId,
+        'fixed',
+        'changed response',
+      ),
+    ).rejects.toThrow(/stale-hash/);
+
+    const stored = await service.readReport(reviewDir, REVIEW_ID);
+    expect(stored.report?.issues[0].status).toBe('open');
+  });
+
+  it('rejects invalid and missing issue transitions without modifying disk', async () => {
+    const original = await service.createReport(reviewDir, REVIEW_ID, sampleResponse);
+    const issueId = original.issues[0].issueId;
+
+    await expect(
+      service.transitionIssueStatusOnDisk(
+        reviewDir,
+        REVIEW_ID,
+        issueId,
+        'open',
+        sampleResponse,
+      ),
+    ).rejects.toThrow();
+    await expect(
+      service.transitionIssueStatusOnDisk(
+        reviewDir,
+        REVIEW_ID,
+        'ISSUE-0000000000000000',
+        'fixed',
+        sampleResponse,
+      ),
+    ).rejects.toThrow(ReportServiceError);
+
+    const stored = await service.readReport(reviewDir, REVIEW_ID, sampleResponse);
+    expect(stored.report?.issues[0].status).toBe('open');
+  });
+
   it('serializes concurrent writes without corrupting report.json', async () => {
     const response =
       '```json\n[{"title":"Concurrent","description":"second payload","severity":"low"}]\n```';

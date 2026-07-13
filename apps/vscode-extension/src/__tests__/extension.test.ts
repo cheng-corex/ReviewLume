@@ -75,6 +75,7 @@ describe('reviewlume-vscode manifest', () => {
     },
     { command: 'reviewlume.openReviewHistory', title: 'Open Review History' },
     { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
+    { command: 'reviewlume.updateIssueStatus', title: 'Update Issue Status' },
     { command: 'reviewlume.openReviewPanel', title: 'Open Review Panel' },
   ];
 
@@ -112,6 +113,8 @@ describe('reviewlume-vscode manifest', () => {
     ) as Record<string, string>;
     expect(english['command.openReviewPanel']).toContain('Open Review Panel');
     expect(chinese['command.openReviewPanel']).toContain('打开审核面板');
+    expect(english['command.updateIssueStatus']).toContain('Update Issue Status');
+    expect(chinese['command.updateIssueStatus']).toContain('更新问题状态');
   });
 
   it('packages self-contained Git, scanner, Review Pack, report parser, and Webview runtimes', () => {

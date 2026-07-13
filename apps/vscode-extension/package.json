@@ -28,6 +28,7 @@
     "onCommand:reviewlume.addExportDirectoryToGitignore",
     "onCommand:reviewlume.openReviewHistory",
     "onCommand:reviewlume.importReviewResponse",
+    "onCommand:reviewlume.updateIssueStatus",
     "onCommand:reviewlume.openReviewPanel",
     "onView:reviewlume.mainView"
   ],
@@ -53,6 +54,7 @@
       { "command": "reviewlume.addExportDirectoryToGitignore", "title": "%command.addExportDirectoryToGitignore%" },
       { "command": "reviewlume.openReviewHistory", "title": "%command.openReviewHistory%" },
       { "command": "reviewlume.importReviewResponse", "title": "%command.importReviewResponse%" },
+      { "command": "reviewlume.updateIssueStatus", "title": "%command.updateIssueStatus%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" }
     ],
     "configuration": {
