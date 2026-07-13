@@ -42,20 +42,6 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
-      - name: Build VS Code extension for diagnostics
-        run: pnpm --filter reviewlume-vscode build
-
-      - name: Test VS Code extension
-        run: pnpm --filter reviewlume-vscode exec vitest run --reporter=json --outputFile=vscode-test-results.json
-
-      - name: Upload VS Code test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: vscode-test-results-${{ matrix.os }}-node-${{ matrix.node-version }}
-          path: apps/vscode-extension/vscode-test-results.json
-          if-no-files-found: warn
-
       - name: Test
         run: pnpm test
 
