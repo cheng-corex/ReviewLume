@@ -253,11 +253,18 @@ export class ReviewLumeTreeProvider
   private buildFileItem(entry: ReviewFileSelectionEntry): ReviewLumeTreeItem {
     const label = entry.path.split('/').at(-1) ?? entry.path;
     const description = describeFileEntry(entry);
+    const iconName =
+      entry.source === 'recommended'
+        ? 'beaker'
+        : entry.source === 'manual'
+          ? 'link'
+          : entry.source === 'context'
+            ? 'references'
+            : 'diff';
     return new ReviewLumeTreeItem('file', label, vscode.TreeItemCollapsibleState.None, {
       relativePath: entry.path,
       description,
-      iconName:
-        entry.source === 'recommended' ? 'beaker' : entry.source === 'manual' ? 'link' : 'diff',
+      iconName,
       selected: entry.selected,
       tooltip: `${entry.path} — ${description}`,
     });
@@ -374,6 +381,7 @@ function actionItem(
 function describeFileEntry(entry: ReviewFileSelectionEntry): string {
   if (entry.source === 'manual') return 'related file';
   if (entry.source === 'recommended') return 'recommended test';
+  if (entry.source === 'context') return 'automatic context';
 
   const changeDescription = entry.changeKinds.length > 0 ? entry.changeKinds.join(', ') : 'changed';
   return entry.exists ? changeDescription : `${changeDescription}, deleted`;
