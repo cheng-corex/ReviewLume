@@ -56,6 +56,15 @@
     exact Markdown recovery, and confirmed deletion.
   - Response import from a user-selected file or clipboard with a 5 MB limit.
   - Automatic Chinese history UI for Chinese VS Code locales and English otherwise.
+- P7.5 review scope modes:
+  - Changes Only, Smart Context, and Full Repository choices in the Review Panel.
+  - Smart Context is the default and adds one-hop local dependencies, direct dependents,
+    related tests, type companions, and project configuration within strict budgets.
+  - Full Repository includes only eligible UTF-8 text files admitted by Git and
+    `.reviewlumeignore`, with generated output, dependencies, databases, and binaries excluded.
+  - Full Repository is rejected when it cannot fit into a single non-truncated Review Pack.
+  - Scope changes remain subject to the existing sensitive-content scan, fingerprint,
+    and export gates.
 
 ### Fixed
 
