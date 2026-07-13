@@ -9,6 +9,7 @@ import { registerOpenReviewPanel } from './commands/openReviewPanel';
 import { registerImportReviewResponse } from './commands/importReviewResponse';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
+import { ReviewScopeService } from './services/reviewScopeService';
 import { SecurityReviewService } from './services/securityReviewService';
 import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
 import { refreshReviewPanel } from './webview/reviewPanel';
@@ -28,7 +29,14 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const gitRunner = new LazyFileSelectionGitRunner();
   const fileSelectionService = new FileSelectionService(gitRunner);
-  const securityReviewService = new SecurityReviewService(fileSelectionService, gitRunner);
+  const reviewScopeService = new ReviewScopeService(fileSelectionService);
+  const securityReviewService = new SecurityReviewService(
+    fileSelectionService,
+    gitRunner,
+    undefined,
+    undefined,
+    reviewScopeService,
+  );
   const treeProvider = registerReviewLumeTreeView(context, fileSelectionService);
   const refreshViews = (): void => {
     treeProvider.refresh();
@@ -39,11 +47,22 @@ export function activate(context: vscode.ExtensionContext): void {
     refreshViews();
   };
 
-  registerCreateReviewPack(context, undefined, fileSelectionService, selectionChanged);
+  registerCreateReviewPack(
+    context,
+    undefined,
+    fileSelectionService,
+    selectionChanged,
+    reviewScopeService,
+  );
   registerFileSelectionCommands(context, fileSelectionService, selectionChanged);
   registerSecurityReviewCommands(context, securityReviewService, refreshViews);
   registerOpenReviewHistory(context, fileSelectionService);
-  registerOpenReviewPanel(context, fileSelectionService, securityReviewService);
+  registerOpenReviewPanel(
+    context,
+    fileSelectionService,
+    securityReviewService,
+    reviewScopeService,
+  );
   registerImportReviewResponse(context, fileSelectionService);
 
   logInfo('ReviewLume extension activated');
