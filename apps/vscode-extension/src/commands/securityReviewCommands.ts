@@ -2,6 +2,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
+import { isChineseLanguage } from '../localization';
 import type { SecurityReviewService } from '../services/securityReviewService';
 import {
   saveAutomaticReviewPack,
@@ -67,10 +68,13 @@ export function registerSecurityReviewCommands(
         }
         logInfo(`Sensitive-content scan completed (${summary})`);
       } catch (error) {
-        if (getErrorCode(error) === 'CANCELLED') return;
-        logWarn(`Sensitive-content scan failed (${getErrorCode(error)})`);
+        const code = getErrorCode(error);
+        if (code === 'CANCELLED' || code === 'GIT_CANCELLED') return;
+        logWarn(`Sensitive-content scan failed (${code})`);
         await vscode.window.showErrorMessage(
-          'ReviewLume: Sensitive-content scan failed. No raw matched secret was written to the UI or log.',
+          isFullRepositorySizeError(code)
+            ? fullRepositorySizeMessage()
+            : 'ReviewLume: Sensitive-content scan failed. No raw matched secret was written to the UI or log.',
         );
       }
     }),
@@ -180,10 +184,11 @@ export function registerSecurityReviewCommands(
         logInfo(`Review Pack exported (${pack.reviewId}, ${format})`);
       } catch (error) {
         const code = getErrorCode(error);
-        if (code === 'CANCELLED') return;
+        if (code === 'CANCELLED' || code === 'GIT_CANCELLED') return;
         logWarn(`Review Pack export failed (${code})`);
-        const message =
-          code === 'EEXIST'
+        const message = isFullRepositorySizeError(code)
+          ? fullRepositorySizeMessage()
+          : code === 'EEXIST'
             ? 'ReviewLume: The export target already exists. Create a new review or choose a different location.'
             : code === 'INVALID_EXPORT_DIRECTORY'
               ? 'ReviewLume: The automatic export directory must stay inside the active repository and cannot traverse symbolic links.'
@@ -242,7 +247,6 @@ async function recordHistory(
   options: HistorySaveOptions,
 ): Promise<void> {
   try {
-    // History contains the exact approved review request and must never become Git input.
     await ensureExportDirectoryIgnored(repositoryRoot, HISTORY_DIRECTORY);
     await new HistoryService().save(repositoryRoot, pack, options);
     logInfo(`Review history recorded (${pack.reviewId})`);
@@ -274,6 +278,16 @@ async function withCancellation<T>(
       }
     },
   );
+}
+
+function isFullRepositorySizeError(code: string): boolean {
+  return code === 'FULL_REPOSITORY_TOO_LARGE' || code === 'FULL_REPOSITORY_TOO_MANY_FILES';
+}
+
+function fullRepositorySizeMessage(): string {
+  return isChineseLanguage(vscode.env.language)
+    ? 'ReviewLume：合规仓库内容过大，无法生成一个不截断的审核包。请改用智能上下文或缩小仓库范围。'
+    : 'ReviewLume: The eligible repository is too large for one non-truncated Review Pack. Use Smart Context or reduce the repository scope.';
 }
 
 function getErrorCode(error: unknown): string {
