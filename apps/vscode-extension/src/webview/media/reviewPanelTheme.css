@@ -75,6 +75,12 @@
   filter: none;
 }
 
+/* Scanning already builds and refreshes the review preview. Keep export as the
+ * only explicit persistence action and hide the redundant intermediate action. */
+.btn[data-action='createReviewPack'] {
+  display: none;
+}
+
 .review-option-control {
   display: flex;
   align-items: center;
