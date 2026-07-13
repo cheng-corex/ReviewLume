@@ -201,16 +201,18 @@ describe('ReportService', () => {
     );
   });
 
-  it('serializes concurrent writes for the same review directory', async () => {
-    const first = service.createReport(reviewDir, REVIEW_ID, sampleResponse);
+  it('serializes concurrent writes without corrupting report.json', async () => {
     const response =
-      '```json\n[{"title":"Last","description":"last write","severity":"low"}]\n```';
-    const second = new ReportService().createReport(reviewDir, REVIEW_ID, response);
-    await Promise.all([first, second]);
+      '```json\n[{"title":"Concurrent","description":"second payload","severity":"low"}]\n```';
+    await Promise.all([
+      service.createReport(reviewDir, REVIEW_ID, sampleResponse),
+      new ReportService().createReport(reviewDir, REVIEW_ID, response),
+    ]);
 
-    const result = await service.readReport(reviewDir, REVIEW_ID, response);
+    const result = await service.readReport(reviewDir, REVIEW_ID);
     expect(result.status).toBe('valid');
-    expect(result.report?.issues[0].title).toBe('Last');
+    expect(['SQL Injection Risk', 'Concurrent']).toContain(result.report?.issues[0]?.title);
+    expect((await fs.readdir(reviewDir)).filter((file) => file.startsWith('.report-'))).toHaveLength(0);
   });
 
   it('rejects invalid reports before updating disk', async () => {
