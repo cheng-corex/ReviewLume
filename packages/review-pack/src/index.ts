@@ -11,7 +11,7 @@ export interface ReviewPackSecuritySummary {
   readonly infoCount: number; readonly confirmedWarnCount: number;
   readonly hasHardBlock: boolean; readonly hasUnresolvedBlock: boolean; readonly hasUnresolvedWarn: boolean;
 }
-export interface ReviewPackFile { readonly path: string; readonly content: string; readonly source?: 'changed' | 'manual' | 'recommended' }
+export interface ReviewPackFile { readonly path: string; readonly content: string; readonly source?: 'changed' | 'manual' | 'recommended' | 'context' }
 export interface ReviewPackBuildInput {
   readonly repositoryIdentity: string; readonly repositoryDisplayName: string; readonly reviewMode: ReviewMode;
   readonly gitBase: string; readonly gitTarget: string; readonly security: ReviewPackSecuritySummary;
