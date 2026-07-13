@@ -140,7 +140,7 @@ export class ReviewPanelController {
           await vscode.commands.executeCommand(COMMANDS.CREATE_REVIEW_PACK);
           break;
         case 'toggleFile':
-          this.#toggleFile(message.filePath, message.selected);
+          await this.#toggleFile(message.filePath, message.selected);
           break;
         case 'addRelatedFiles':
           await vscode.commands.executeCommand(COMMANDS.ADD_RELATED_FILES);
@@ -183,8 +183,6 @@ export class ReviewPanelController {
           ? this.#strings.fullRepositoryTooLarge
           : this.#strings.genericOperationError,
       );
-      // A rejected scope change must immediately restore the real extension state
-      // instead of leaving the Webview select on an unapplied value.
       void this.postState();
     }
   }
@@ -238,7 +236,7 @@ export class ReviewPanelController {
     logInfo(`Review Panel scope updated to ${scope}`);
   }
 
-  #toggleFile(filePath: string, selected: boolean): void {
+  async #toggleFile(filePath: string, selected: boolean): Promise<void> {
     if (!this.#fileSelectionService.hasSession) {
       throw Object.assign(new Error('No active review session.'), {
         code: 'NO_ACTIVE_SESSION',
@@ -255,6 +253,9 @@ export class ReviewPanelController {
       });
     }
     this.#fileSelectionService.setSelected(entry.path, selected);
+    if (entry.source !== 'context') {
+      await this.#reviewScopeService.refreshSmartContext();
+    }
     this.#securityReviewService.invalidate();
   }
 
