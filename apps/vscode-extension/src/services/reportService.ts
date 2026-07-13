@@ -1,4 +1,4 @@
-/** P8A/P8B report.json lifecycle, integrity checks, and issue resolution. */
+/** P8A/P8B/P8C report.json lifecycle, integrity checks, and issue resolution. */
 import { createHash, randomUUID } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
@@ -40,16 +40,10 @@ export class ReportService {
   ): Promise<ReviewReport> {
     await this.#assertSafeDirectory(reviewDirectory, reviewId);
 
-    const context: ParseContext = { reviewId };
-    const parseResult = parseReviewResponse(responseText, context);
-    const report = parseStoredReviewReport({
-      ...parseResult.report,
-      sourceResponseHash: sha256(responseText),
-    });
-
+    const report = this.#parseReport(reviewId, responseText);
     await this.#queueWrite(reviewDirectory, report);
     logInfo(
-      `Report created for review ${reviewId} (${parseResult.issueCount} issues, status=${report.parseStatus})`,
+      `Report created for review ${reviewId} (${report.issues.length} issues, status=${report.parseStatus})`,
     );
     return report;
   }
@@ -112,12 +106,42 @@ export class ReportService {
     return { status: 'valid', report };
   }
 
+  /**
+   * P8C: Reparse the current response while preserving statuses for issues that
+   * remain identifiable. Only a fully valid stored report participates in the
+   * migration. New issues start as open and removed issues are discarded.
+   */
   async reparseReport(
     reviewDirectory: string,
     reviewId: string,
     responseText: string,
   ): Promise<ReviewReport> {
-    return this.createReport(reviewDirectory, reviewId, responseText);
+    await this.#assertSafeDirectory(reviewDirectory, reviewId);
+    const key = path.resolve(reviewDirectory);
+    const previous = ReportService.#writeQueues.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(async () => {
+      const stored = await this.readReport(reviewDirectory, reviewId);
+      const previousReport = stored.status === 'valid' ? stored.report : undefined;
+      const parsed = this.#parseReport(reviewId, responseText);
+      const migrated = previousReport
+        ? this.#inheritIssueStatuses(parsed, previousReport)
+        : parsed;
+
+      await this.#atomicWriteReport(reviewDirectory, migrated);
+      logInfo(
+        `Report reparsed for review ${reviewId} (${migrated.issues.length} issues, preserved=${migrated.issues.filter((issue) => issue.status !== 'open').length})`,
+      );
+      return migrated;
+    });
+
+    ReportService.#writeQueues.set(key, next);
+    try {
+      return await next;
+    } finally {
+      if (ReportService.#writeQueues.get(key) === next) {
+        ReportService.#writeQueues.delete(key);
+      }
+    }
   }
 
   transitionIssueStatus(
@@ -191,6 +215,31 @@ export class ReportService {
     await this.#assertSafeDirectory(reviewDirectory, report.reviewId);
     const validated = parseStoredReviewReport(report);
     await this.#queueWrite(reviewDirectory, validated);
+  }
+
+  #parseReport(reviewId: string, responseText: string): ReviewReport {
+    const context: ParseContext = { reviewId };
+    const parseResult = parseReviewResponse(responseText, context);
+    return parseStoredReviewReport({
+      ...parseResult.report,
+      sourceResponseHash: sha256(responseText),
+    });
+  }
+
+  #inheritIssueStatuses(nextReport: ReviewReport, previousReport: ReviewReport): ReviewReport {
+    const previousByIssueId = new Map(
+      previousReport.issues.map((issue) => [issue.issueId, issue] as const),
+    );
+    const previousByFingerprint = new Map(
+      previousReport.issues.map((issue) => [issue.sourceFingerprint, issue] as const),
+    );
+    const issues = nextReport.issues.map((issue) => {
+      const previousIssue =
+        previousByIssueId.get(issue.issueId) ??
+        previousByFingerprint.get(issue.sourceFingerprint);
+      return previousIssue ? { ...issue, status: previousIssue.status } : issue;
+    });
+    return parseStoredReviewReport({ ...nextReport, issues });
   }
 
   async #assertSafeDirectory(reviewDirectory: string, reviewId: string): Promise<void> {
