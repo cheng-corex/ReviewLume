@@ -11,10 +11,7 @@ import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
 import { ReviewScopeService } from './services/reviewScopeService';
 import { SecurityReviewService } from './services/securityReviewService';
-import {
-  registerReviewLumeTreeView,
-  type ReviewLumeTreeProvider,
-} from './views/reviewLumeTreeProvider';
+import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
 import { refreshReviewPanel } from './webview/reviewPanel';
 
 /** Activates the ReviewLume VS Code extension. */
@@ -41,21 +38,22 @@ export function activate(context: vscode.ExtensionContext): void {
     reviewScopeService,
   );
 
-  let treeProvider: ReviewLumeTreeProvider;
-  const refreshViews = (): void => {
+  function refreshViews(): void {
     treeProvider.refresh();
     refreshReviewPanel();
-  };
-  const selectionChanged = (): void => {
+  }
+
+  function selectionChanged(): void {
     securityReviewService.invalidate();
     refreshViews();
-  };
-  const treeSelectionChanged = async (refreshSmartContext: boolean): Promise<void> => {
+  }
+
+  async function treeSelectionChanged(refreshSmartContext: boolean): Promise<void> {
     if (refreshSmartContext) await reviewScopeService.refreshSmartContext();
     selectionChanged();
-  };
+  }
 
-  treeProvider = registerReviewLumeTreeView(
+  const treeProvider = registerReviewLumeTreeView(
     context,
     fileSelectionService,
     treeSelectionChanged,
