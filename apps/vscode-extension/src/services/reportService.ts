@@ -31,7 +31,7 @@ function sha256(content: string): string {
 }
 
 export class ReportService {
-  static readonly #writeQueues = new Map<string, Promise<void>>();
+  static readonly #writeQueues = new Map<string, Promise<unknown>>();
 
   async createReport(
     reviewDirectory: string,
@@ -140,8 +140,8 @@ export class ReportService {
   }
 
   /**
-   * P8B: validate and persist one issue status transition as a single queued update.
-   * The report must already be structurally valid; stale/corrupt reports are never overwritten.
+   * P8B: validate and persist one status transition as one serialized read-modify-write.
+   * The report must be valid and current; stale/corrupt reports are never overwritten.
    */
   async transitionIssueStatusOnDisk(
     reviewDirectory: string,
@@ -150,27 +150,41 @@ export class ReportService {
     newStatus: ReviewIssueStatus,
     responseText?: string,
   ): Promise<ReviewReport> {
-    const readResult = await this.readReport(
-      reviewDirectory,
-      reviewId,
-      responseText,
-    );
-    if (readResult.status !== 'valid' || !readResult.report) {
-      throw new ReportServiceError(
-        `Cannot update issue status while report is ${readResult.status}.`,
+    await this.#assertSafeDirectory(reviewDirectory, reviewId);
+    const key = path.resolve(reviewDirectory);
+    const previous = ReportService.#writeQueues.get(key) ?? Promise.resolve();
+    const next = previous.catch(() => undefined).then(async () => {
+      const readResult = await this.readReport(
+        reviewDirectory,
+        reviewId,
+        responseText,
       );
-    }
+      if (readResult.status !== 'valid' || !readResult.report) {
+        throw new ReportServiceError(
+          `Cannot update issue status while report is ${readResult.status}.`,
+        );
+      }
 
-    const updated = this.transitionIssueStatus(
-      readResult.report,
-      issueId,
-      newStatus,
-    );
-    await this.updateReport(reviewDirectory, updated);
-    logInfo(
-      `Issue status updated (${reviewId}/${issueId}): ${newStatus}`,
-    );
-    return updated;
+      const updated = this.transitionIssueStatus(
+        readResult.report,
+        issueId,
+        newStatus,
+      );
+      await this.#atomicWriteReport(reviewDirectory, updated);
+      logInfo(
+        `Issue status updated (${reviewId}/${issueId}): ${newStatus}`,
+      );
+      return updated;
+    });
+
+    ReportService.#writeQueues.set(key, next);
+    try {
+      return await next;
+    } finally {
+      if (ReportService.#writeQueues.get(key) === next) {
+        ReportService.#writeQueues.delete(key);
+      }
+    }
   }
 
   async updateReport(reviewDirectory: string, report: ReviewReport): Promise<void> {
@@ -199,7 +213,9 @@ export class ReportService {
   async #queueWrite(reviewDirectory: string, report: ReviewReport): Promise<void> {
     const key = path.resolve(reviewDirectory);
     const previous = ReportService.#writeQueues.get(key) ?? Promise.resolve();
-    const next = previous.catch(() => undefined).then(() => this.#atomicWriteReport(reviewDirectory, report));
+    const next = previous
+      .catch(() => undefined)
+      .then(() => this.#atomicWriteReport(reviewDirectory, report));
     ReportService.#writeQueues.set(key, next);
     try {
       await next;
