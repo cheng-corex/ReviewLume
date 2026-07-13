@@ -148,6 +148,29 @@ describe('FileSelectionService', () => {
     expect(service.selectedCount).toBe(3);
   });
 
+  it('preserves explicitly changed files under roots excluded only from automatic context', async () => {
+    const { root, repository } = await createRepository();
+    await fs.mkdir(path.join(root, 'dist'), { recursive: true });
+    await fs.writeFile(path.join(root, 'dist', 'custom-runtime.js'), 'export const runtime = true;');
+
+    const service = new FileSelectionService(gitRunner());
+    await service.initialize(
+      repository,
+      status(repository, {
+        unstaged: [{ path: 'dist/custom-runtime.js', status: 'modified' }],
+        hasChanges: true,
+      }),
+    );
+
+    expect(service.entries).toEqual([
+      expect.objectContaining({
+        path: 'dist/custom-runtime.js',
+        source: 'changed',
+        selected: true,
+      }),
+    ]);
+  });
+
   const backslashPathTest = process.platform === 'win32' ? it.skip : it;
   backslashPathTest('preserves legal POSIX filenames containing a backslash', async () => {
     const { root, repository } = await createRepository();
@@ -197,6 +220,27 @@ describe('FileSelectionService', () => {
     expect(runner.run).toHaveBeenCalledWith(
       expect.objectContaining({ args: ['check-ignore', '-q', '--', 'related.md'] }),
     );
+  });
+
+  it('allows an explicitly selected related file under an automatic-context excluded root', async () => {
+    const { root, repository } = await createRepository();
+    await fs.mkdir(path.join(root, 'build'), { recursive: true });
+    await fs.writeFile(path.join(root, 'build', 'review-helper.js'), 'export const helper = true;');
+
+    const service = new FileSelectionService(gitRunner());
+    await service.initialize(repository, status(repository));
+    const result = await service.addManualFiles([
+      path.join(root, 'build', 'review-helper.js'),
+    ]);
+
+    expect(result.added).toEqual(['build/review-helper.js']);
+    expect(service.entries).toEqual([
+      expect.objectContaining({
+        path: 'build/review-helper.js',
+        source: 'manual',
+        selected: true,
+      }),
+    ]);
   });
 
   it('rejects manual files from another repository', async () => {
@@ -273,5 +317,69 @@ describe('FileSelectionService', () => {
 
     service.setSelected('src/widget.test.ts', true);
     expect(service.selectedCount).toBe(2);
+  });
+
+  it('excludes generated roots and binary or database files only from automatic context enumeration', async () => {
+    const { root, repository } = await createRepository();
+    const files = [
+      'src/app.ts',
+      'dist/generated.js',
+      'build/output.js',
+      '.reviewlume/history/old/request.md',
+      'data.sqlite',
+      'assets/logo.png',
+    ];
+    for (const relativePath of files) {
+      const absolutePath = path.join(root, ...relativePath.split('/'));
+      await fs.mkdir(path.dirname(absolutePath), { recursive: true });
+      await fs.writeFile(
+        absolutePath,
+        relativePath.endsWith('.png') || relativePath.endsWith('.sqlite')
+          ? Buffer.from([0, 1, 2])
+          : 'export const value = true;',
+      );
+    }
+
+    const service = new FileSelectionService(gitRunner({ files }));
+    await service.initialize(repository, status(repository));
+
+    await expect(service.listEligibleRepositoryFiles()).resolves.toEqual([
+      { path: 'src/app.ts', size: Buffer.byteLength('export const value = true;') },
+    ]);
+  });
+
+  it('accepts a valid UTF-8 text file when the probe ends inside a multibyte character', async () => {
+    const { root, repository } = await createRepository();
+    const relativePath = 'src/utf8-boundary.txt';
+    await fs.mkdir(path.join(root, 'src'), { recursive: true });
+    const content = `${'a'.repeat(8191)}€tail`;
+    await fs.writeFile(path.join(root, relativePath), content, 'utf8');
+
+    const service = new FileSelectionService(gitRunner({ files: [relativePath] }));
+    await service.initialize(repository, status(repository));
+
+    await expect(service.listEligibleRepositoryFiles()).resolves.toEqual([
+      { path: relativePath, size: Buffer.byteLength(content, 'utf8') },
+    ]);
+  });
+
+  const automaticSymlinkTest = process.platform === 'win32' ? it.skip : it;
+  automaticSymlinkTest('skips an escaping symlink during automatic context enumeration', async () => {
+    const { root, repository } = await createRepository();
+    const outside = await fs.mkdtemp(path.join(os.tmpdir(), 'reviewlume-auto-link-'));
+    temporaryDirectories.push(outside);
+    await fs.mkdir(path.join(root, 'src'), { recursive: true });
+    await fs.writeFile(path.join(root, 'src', 'safe.ts'), 'export const safe = true;');
+    await fs.writeFile(path.join(outside, 'secret.ts'), 'export const secret = true;');
+    await fs.symlink(path.join(outside, 'secret.ts'), path.join(root, 'linked.ts'));
+
+    const service = new FileSelectionService(
+      gitRunner({ files: ['linked.ts', 'src/safe.ts'] }),
+    );
+    await service.initialize(repository, status(repository));
+
+    await expect(service.listEligibleRepositoryFiles()).resolves.toEqual([
+      { path: 'src/safe.ts', size: Buffer.byteLength('export const safe = true;') },
+    ]);
   });
 });
