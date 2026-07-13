@@ -183,6 +183,9 @@ export class ReviewPanelController {
           ? this.#strings.fullRepositoryTooLarge
           : this.#strings.genericOperationError,
       );
+      // A rejected scope change must immediately restore the real extension state
+      // instead of leaving the Webview select on an unapplied value.
+      void this.postState();
     }
   }
 
