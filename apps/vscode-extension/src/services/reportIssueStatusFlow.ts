@@ -41,8 +41,9 @@ export async function runReportIssueStatusFlow(
 ): Promise<ReviewReport | undefined> {
   const locale = resolveIssueActionLocale(options.language);
   let filter: ReportDashboardFilter = {};
+  let keepPicking = true;
 
-  while (true) {
+  while (keepPicking) {
     const dashboard = buildReportDashboardView(options.report, filter, locale);
     const pickerItems: readonly ReportDashboardPickerItem[] = [
       ...dashboard.filters,
@@ -75,6 +76,7 @@ export async function runReportIssueStatusFlow(
     const pickedStatus = await options.ui.pickStatus(issue, statusItems);
     if (!pickedStatus) return undefined;
 
+    keepPicking = false;
     return options.reportService.transitionIssueStatusOnDisk(
       options.reviewDirectory,
       options.reviewId,
@@ -83,4 +85,6 @@ export async function runReportIssueStatusFlow(
       options.responseText,
     );
   }
+
+  return undefined;
 }
