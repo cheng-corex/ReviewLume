@@ -58,4 +58,4 @@ export {
 export {
   parseReviewResponse,
   type ParseResult,
-} from './parser.js';
+} from './compatibility.js';

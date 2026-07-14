@@ -2,17 +2,25 @@ import type { ReviewIssue, ReviewReport } from '@reviewlume/report-parser';
 import type { ReportService } from './reportService';
 import {
   buildIssueStatusItems,
-  buildReportIssueListItem,
   resolveIssueActionLocale,
-  type ReportIssueListItem,
   type ReportIssueStatusItem,
 } from './reportIssueActions';
+import {
+  buildReportDashboardPickerItems,
+  buildReportDashboardView,
+  filterForDashboardPreset,
+  type ReportDashboardPickerItem,
+} from './reportDashboardPresentation';
+import type { ReportDashboardFilter } from './reportDashboardModel';
 
 export interface ReportIssueStatusFlowUi {
   pickIssue(
-    items: readonly ReportIssueListItem[],
+    items: readonly ReportDashboardPickerItem[],
     report: ReviewReport,
-  ): PromiseLike<ReportIssueListItem | undefined>;
+    summary: string,
+    filterDescription: string,
+    visibleCount: number,
+  ): PromiseLike<ReportDashboardPickerItem | undefined>;
   pickStatus(
     issue: ReviewIssue,
     items: readonly ReportIssueStatusItem[],
@@ -33,30 +41,52 @@ export async function runReportIssueStatusFlow(
   options: RunReportIssueStatusFlowOptions,
 ): Promise<ReviewReport | undefined> {
   const locale = resolveIssueActionLocale(options.language);
-  const issueItems = options.report.issues.map((issue) =>
-    buildReportIssueListItem(issue, locale),
-  );
-  if (issueItems.length === 0) return undefined;
+  let filter: ReportDashboardFilter = {};
+  let keepPicking = true;
 
-  const pickedIssueItem = await options.ui.pickIssue(issueItems, options.report);
-  if (!pickedIssueItem) return undefined;
+  while (keepPicking) {
+    const dashboard = buildReportDashboardView(options.report, filter, locale);
+    const pickerItems = buildReportDashboardPickerItems(dashboard, locale);
+    if (dashboard.totalCount === 0) return undefined;
 
-  const issue = options.report.issues.find(
-    (candidate) => candidate.issueId === pickedIssueItem.issueId,
-  );
-  if (!issue) return undefined;
+    const pickedItem = await options.ui.pickIssue(
+      pickerItems,
+      options.report,
+      dashboard.summary,
+      dashboard.filterDescription,
+      dashboard.visibleCount,
+    );
+    if (!pickedItem) return undefined;
 
-  const statusItems = buildIssueStatusItems(issue, locale);
-  if (statusItems.length === 0) return undefined;
+    if (pickedItem.itemType === 'separator') {
+      continue;
+    }
 
-  const pickedStatus = await options.ui.pickStatus(issue, statusItems);
-  if (!pickedStatus) return undefined;
+    if (pickedItem.itemType === 'filter') {
+      filter = filterForDashboardPreset(pickedItem.preset);
+      continue;
+    }
 
-  return options.reportService.transitionIssueStatusOnDisk(
-    options.reviewDirectory,
-    options.reviewId,
-    issue.issueId,
-    pickedStatus.status,
-    options.responseText,
-  );
+    const issue = options.report.issues.find(
+      (candidate) => candidate.issueId === pickedItem.issueId,
+    );
+    if (!issue) return undefined;
+
+    const statusItems = buildIssueStatusItems(issue, locale);
+    if (statusItems.length === 0) return undefined;
+
+    const pickedStatus = await options.ui.pickStatus(issue, statusItems);
+    if (!pickedStatus) return undefined;
+
+    keepPicking = false;
+    return options.reportService.transitionIssueStatusOnDisk(
+      options.reviewDirectory,
+      options.reviewId,
+      issue.issueId,
+      pickedStatus.status,
+      options.responseText,
+    );
+  }
+
+  return undefined;
 }
