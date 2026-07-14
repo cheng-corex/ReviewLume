@@ -29,7 +29,17 @@ export interface ReportDashboardFilterItem {
   readonly detail: string;
 }
 
-export type ReportDashboardPickerItem = ReportDashboardFilterItem | ReportIssueListItem;
+export interface ReportDashboardSeparatorItem {
+  readonly itemType: 'separator';
+  /** VS Code QuickPickItemKind.Separator. Kept numeric to preserve presentation purity. */
+  readonly kind: -1;
+  readonly label: string;
+}
+
+export type ReportDashboardPickerItem =
+  | ReportDashboardFilterItem
+  | ReportDashboardSeparatorItem
+  | ReportIssueListItem;
 
 export interface ReportDashboardView {
   readonly summary: string;
@@ -97,6 +107,42 @@ export function buildReportDashboardView(
     visibleCount: visibleIssues.length,
     totalCount: counts.total,
   };
+}
+
+export function buildReportDashboardPickerItems(
+  view: ReportDashboardView,
+  locale: IssueActionLocale,
+): readonly ReportDashboardPickerItem[] {
+  const zh = locale === 'zh';
+  const issueSectionLabel = zh
+    ? `问题列表（当前显示 ${view.visibleCount}/${view.totalCount}）`
+    : `Issues (${view.visibleCount}/${view.totalCount} shown)`;
+
+  const items: ReportDashboardPickerItem[] = [
+    {
+      itemType: 'separator',
+      kind: -1,
+      label: zh ? '筛选条件' : 'Filters',
+    },
+    ...view.filters,
+    {
+      itemType: 'separator',
+      kind: -1,
+      label: issueSectionLabel,
+    },
+  ];
+
+  if (view.issues.length > 0) {
+    items.push(...view.issues);
+  } else {
+    items.push({
+      itemType: 'separator',
+      kind: -1,
+      label: zh ? '没有符合当前筛选的问题' : 'No issues match the current filter',
+    });
+  }
+
+  return items;
 }
 
 export function filterForDashboardPreset(
