@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import type { ReviewReport } from '@reviewlume/report-parser';
-import { buildReportDashboardView } from '../../services/reportDashboardPresentation';
+import {
+  buildReportDashboardPickerItems,
+  buildReportDashboardView,
+} from '../../services/reportDashboardPresentation';
 
 const report: ReviewReport = {
   schemaVersion: 1,
@@ -53,5 +56,29 @@ describe('reportDashboardPresentation', () => {
     expect(view.summary).toBe('2 total · 1 unresolved · 1 critical · 1 high');
     expect(view.filterDescription).toBe('No filters');
     expect(view.visibleCount).toBe(2);
+  });
+
+  it('separates filters from issues and reports the visible count', () => {
+    const view = buildReportDashboardView(report, { statuses: ['open'] }, 'zh');
+    const items = buildReportDashboardPickerItems(view, 'zh');
+
+    expect(items[0]).toEqual({ itemType: 'separator', kind: -1, label: '筛选条件' });
+    expect(items[6]).toEqual({
+      itemType: 'separator',
+      kind: -1,
+      label: '问题列表（当前显示 1/2）',
+    });
+    expect(items[7].itemType).toBe('issue');
+  });
+
+  it('shows a non-selectable empty result message', () => {
+    const view = buildReportDashboardView(report, { statuses: ['needs-review'] }, 'en');
+    const items = buildReportDashboardPickerItems(view, 'en');
+
+    expect(items.at(-1)).toEqual({
+      itemType: 'separator',
+      kind: -1,
+      label: 'No issues match the current filter',
+    });
   });
 });
