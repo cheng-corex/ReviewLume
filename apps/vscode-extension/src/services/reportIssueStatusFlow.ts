@@ -6,6 +6,7 @@ import {
   type ReportIssueStatusItem,
 } from './reportIssueActions';
 import {
+  buildReportDashboardPickerItems,
   buildReportDashboardView,
   filterForDashboardPreset,
   type ReportDashboardPickerItem,
@@ -45,10 +46,7 @@ export async function runReportIssueStatusFlow(
 
   while (keepPicking) {
     const dashboard = buildReportDashboardView(options.report, filter, locale);
-    const pickerItems: readonly ReportDashboardPickerItem[] = [
-      ...dashboard.filters,
-      ...dashboard.issues,
-    ];
+    const pickerItems = buildReportDashboardPickerItems(dashboard, locale);
     if (dashboard.totalCount === 0) return undefined;
 
     const pickedItem = await options.ui.pickIssue(
@@ -59,6 +57,10 @@ export async function runReportIssueStatusFlow(
       dashboard.visibleCount,
     );
     if (!pickedItem) return undefined;
+
+    if (pickedItem.itemType === 'separator') {
+      continue;
+    }
 
     if (pickedItem.itemType === 'filter') {
       filter = filterForDashboardPreset(pickedItem.preset);
