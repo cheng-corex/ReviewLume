@@ -10,10 +10,6 @@ import { historyText as t } from '../services/historyI18n';
 import { logInfo, logWarn } from '../services/logService';
 import type { FileSelectionService } from '../services/fileSelectionService';
 import { runReportIssueStatusFlow } from '../services/reportIssueStatusFlow';
-import type {
-  ReportIssueListItem,
-  ReportIssueStatusItem,
-} from '../services/reportIssueActions';
 
 export function registerOpenReviewHistory(
   context: vscode.ExtensionContext,
@@ -557,7 +553,7 @@ async function showReportQuickPick(
       language: vscode.env.language,
       reportService,
       ui: {
-        pickIssue: async (items, currentReport) =>
+        pickIssue: (items, currentReport) =>
           vscode.window.showQuickPick(items, {
             title: t(
               `ReviewLume Report: ${reviewId}`,
@@ -569,15 +565,15 @@ async function showReportQuickPick(
             ),
             matchOnDescription: true,
             matchOnDetail: true,
-          }) as Promise<ReportIssueListItem | undefined>,
-        pickStatus: async (issue, items) =>
+          }),
+        pickStatus: (issue, items) =>
           vscode.window.showQuickPick(items, {
             title: t(
               `Update Issue Status: ${issue.title}`,
               `修改问题状态：${issue.title}`,
             ),
             placeHolder: t('Choose the new status', '选择新的问题状态'),
-          }) as Promise<ReportIssueStatusItem | undefined>,
+          }),
       },
     });
 
