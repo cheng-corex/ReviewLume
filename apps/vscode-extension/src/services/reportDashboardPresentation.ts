@@ -14,9 +14,27 @@ import {
   type ReportIssueListItem,
 } from './reportIssueActions';
 
+export type ReportDashboardPreset =
+  | 'all'
+  | 'unresolved'
+  | 'open'
+  | 'needs-review'
+  | 'critical-high';
+
+export interface ReportDashboardFilterItem {
+  readonly itemType: 'filter';
+  readonly preset: ReportDashboardPreset;
+  readonly label: string;
+  readonly description: string;
+  readonly detail: string;
+}
+
+export type ReportDashboardPickerItem = ReportDashboardFilterItem | ReportIssueListItem;
+
 export interface ReportDashboardView {
   readonly summary: string;
   readonly filterDescription: string;
+  readonly filters: readonly ReportDashboardFilterItem[];
   readonly issues: readonly ReportIssueListItem[];
   readonly visibleCount: number;
   readonly totalCount: number;
@@ -65,17 +83,81 @@ export function buildReportDashboardView(
 ): ReportDashboardView {
   const summary = summarizeReport(report);
   const visibleIssues = filterAndSortReportIssues(report, filter);
+  const filterDescription = formatFilterDescription(filter, locale);
 
   return {
     summary:
       locale === 'zh'
         ? `共 ${summary.total} 个 · 未处理 ${summary.unresolved} 个 · 严重 ${summary.bySeverity.critical} · 高 ${summary.bySeverity.high}`
         : `${summary.total} total · ${summary.unresolved} unresolved · ${summary.bySeverity.critical} critical · ${summary.bySeverity.high} high`,
-    filterDescription: formatFilterDescription(filter, locale),
+    filterDescription,
+    filters: buildFilterItems(locale, filterDescription),
     issues: visibleIssues.map((issue) => buildReportIssueListItem(issue, locale)),
     visibleCount: visibleIssues.length,
     totalCount: summary.total,
   };
+}
+
+export function filterForDashboardPreset(
+  preset: ReportDashboardPreset,
+): ReportDashboardFilter {
+  switch (preset) {
+    case 'unresolved':
+      return { statuses: ['open', 'needs-review'] };
+    case 'open':
+      return { statuses: ['open'] };
+    case 'needs-review':
+      return { statuses: ['needs-review'] };
+    case 'critical-high':
+      return { severities: ['critical', 'high'] };
+    case 'all':
+      return {};
+  }
+}
+
+function buildFilterItems(
+  locale: IssueActionLocale,
+  currentFilter: string,
+): readonly ReportDashboardFilterItem[] {
+  const zh = locale === 'zh';
+  const detail = zh ? `当前：${currentFilter}` : `Current: ${currentFilter}`;
+  return [
+    {
+      itemType: 'filter',
+      preset: 'all',
+      label: zh ? '$(list-flat) 显示全部问题' : '$(list-flat) Show all issues',
+      description: zh ? '清除状态和严重级别筛选' : 'Clear status and severity filters',
+      detail,
+    },
+    {
+      itemType: 'filter',
+      preset: 'unresolved',
+      label: zh ? '$(circle-large-outline) 仅看未处理' : '$(circle-large-outline) Unresolved only',
+      description: zh ? '待处理 + 待复核' : 'Open + needs review',
+      detail,
+    },
+    {
+      itemType: 'filter',
+      preset: 'open',
+      label: zh ? '$(issues) 仅看待处理' : '$(issues) Open only',
+      description: zh ? '仅显示尚未处理的问题' : 'Only issues that are still open',
+      detail,
+    },
+    {
+      itemType: 'filter',
+      preset: 'needs-review',
+      label: zh ? '$(eye) 仅看待复核' : '$(eye) Needs review only',
+      description: zh ? '仅显示需要再次确认的问题' : 'Only issues requiring another review',
+      detail,
+    },
+    {
+      itemType: 'filter',
+      preset: 'critical-high',
+      label: zh ? '$(flame) 仅看严重和高等级' : '$(flame) Critical and high only',
+      description: zh ? '聚焦最优先处理的问题' : 'Focus on the highest-priority issues',
+      detail,
+    },
+  ];
 }
 
 function formatFilterDescription(
