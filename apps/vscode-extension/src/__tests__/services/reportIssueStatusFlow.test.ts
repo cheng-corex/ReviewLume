@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import type { ReviewIssue, ReviewReport } from '@reviewlume/report-parser';
 import type { ReportIssueStatusItem } from '../../services/reportIssueActions';
 import type { ReportDashboardPickerItem } from '../../services/reportDashboardPresentation';
+import type { ReportIssueStatusFlowUi } from '../../services/reportIssueStatusFlow';
 import { runReportIssueStatusFlow } from '../../services/reportIssueStatusFlow';
 
 function report(): ReviewReport {
@@ -41,9 +42,22 @@ describe('runReportIssueStatusFlow', () => {
       issues: [{ ...current.issues[0], status: 'fixed' }],
     };
     const transitionIssueStatusOnDisk = vi.fn().mockResolvedValue(updated);
-    const pickIssue = vi.fn(async (items: readonly ReportDashboardPickerItem[]) =>
-      firstIssue(items),
-    );
+    const issuePickerCalls: Array<{
+      items: readonly ReportDashboardPickerItem[];
+      summary: string;
+      filterDescription: string;
+      visibleCount: number;
+    }> = [];
+    const pickIssue: ReportIssueStatusFlowUi['pickIssue'] = async (
+      items,
+      _report,
+      summary,
+      filterDescription,
+      visibleCount,
+    ) => {
+      issuePickerCalls.push({ items, summary, filterDescription, visibleCount });
+      return firstIssue(items);
+    };
     const pickStatus = vi.fn(
       async (_issue: ReviewIssue, items: readonly ReportIssueStatusItem[]) =>
         items.find((item) => item.status === 'fixed'),
@@ -60,9 +74,9 @@ describe('runReportIssueStatusFlow', () => {
     });
 
     expect(result).toBe(updated);
-    const issueItem = firstIssue(pickIssue.mock.calls[0][0]);
+    const issueItem = firstIssue(issuePickerCalls[0].items);
     expect(issueItem?.description).toContain('待处理');
-    expect(pickIssue.mock.calls[0][2]).toContain('共 1 个');
+    expect(issuePickerCalls[0].summary).toContain('共 1 个');
     expect(pickStatus.mock.calls[0][1].map((item) => item.status)).toEqual([
       'fixed',
       'rejected',
@@ -92,16 +106,31 @@ describe('runReportIssueStatusFlow', () => {
         },
       ],
     };
-    const updated = { ...current, issues: [{ ...current.issues[0], status: 'fixed' }, current.issues[1]] };
+    const updated = {
+      ...current,
+      issues: [{ ...current.issues[0], status: 'fixed' }, current.issues[1]],
+    };
     const transitionIssueStatusOnDisk = vi.fn().mockResolvedValue(updated);
-    const pickIssue = vi
-      .fn()
-      .mockImplementationOnce(async (items: readonly ReportDashboardPickerItem[]) =>
-        items.find((item) => item.itemType === 'filter' && item.preset === 'unresolved'),
-      )
-      .mockImplementationOnce(async (items: readonly ReportDashboardPickerItem[]) =>
-        firstIssue(items),
-      );
+    const pickerCalls: Array<{
+      items: readonly ReportDashboardPickerItem[];
+      filterDescription: string;
+      visibleCount: number;
+    }> = [];
+    const pickIssue: ReportIssueStatusFlowUi['pickIssue'] = async (
+      items,
+      _report,
+      _summary,
+      filterDescription,
+      visibleCount,
+    ) => {
+      pickerCalls.push({ items, filterDescription, visibleCount });
+      if (pickerCalls.length === 1) {
+        return items.find(
+          (item) => item.itemType === 'filter' && item.preset === 'unresolved',
+        );
+      }
+      return firstIssue(items);
+    };
 
     await runReportIssueStatusFlow({
       report: current,
@@ -112,13 +141,15 @@ describe('runReportIssueStatusFlow', () => {
       reportService: { transitionIssueStatusOnDisk },
       ui: {
         pickIssue,
-        pickStatus: vi.fn(async (_issue, items: readonly ReportIssueStatusItem[]) => items[0]),
+        pickStatus: vi.fn(
+          async (_issue: ReviewIssue, items: readonly ReportIssueStatusItem[]) => items[0],
+        ),
       },
     });
 
-    expect(pickIssue).toHaveBeenCalledTimes(2);
-    expect(pickIssue.mock.calls[1][3]).toBe('Open, Needs review');
-    expect(pickIssue.mock.calls[1][4]).toBe(1);
+    expect(pickerCalls).toHaveLength(2);
+    expect(pickerCalls[1].filterDescription).toBe('Open, Needs review');
+    expect(pickerCalls[1].visibleCount).toBe(1);
   });
 
   it('does not write when issue selection is cancelled', async () => {
@@ -152,9 +183,7 @@ describe('runReportIssueStatusFlow', () => {
       language: 'en',
       reportService: { transitionIssueStatusOnDisk },
       ui: {
-        pickIssue: vi.fn(async (items: readonly ReportDashboardPickerItem[]) =>
-          firstIssue(items),
-        ),
+        pickIssue: async (items) => firstIssue(items),
         pickStatus: vi.fn().mockResolvedValue(undefined),
       },
     });
