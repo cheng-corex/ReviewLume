@@ -27,7 +27,7 @@ describe('reportIssueActions', () => {
 
   it('builds a localized report issue list item', () => {
     expect(buildReportIssueListItem(issue, 'zh')).toEqual({
-      kind: 'issue',
+      itemType: 'issue',
       issueId: issue.issueId,
       label: '$(error) [critical] SQL Injection Risk',
       description: '待处理 · src/db.ts:42-44',
