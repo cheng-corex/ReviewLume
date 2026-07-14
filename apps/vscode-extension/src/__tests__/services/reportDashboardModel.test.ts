@@ -39,14 +39,16 @@ describe('reportDashboardModel', () => {
         issue({ issueId: 'ISSUE-2', severity: 'high', status: 'needs-review' }),
         issue({ issueId: 'ISSUE-3', severity: 'low', status: 'fixed' }),
         issue({ issueId: 'ISSUE-4', severity: 'low', status: 'rejected' }),
+        issue({ issueId: 'ISSUE-5', severity: 'info', status: 'fixed' }),
+        issue({ issueId: 'ISSUE-6', severity: 'unknown', status: 'open' }),
       ]),
     );
 
-    expect(summary.total).toBe(4);
-    expect(summary.unresolved).toBe(2);
+    expect(summary.total).toBe(6);
+    expect(summary.unresolved).toBe(3);
     expect(summary.byStatus).toEqual({
-      open: 1,
-      fixed: 1,
+      open: 2,
+      fixed: 2,
       rejected: 1,
       'needs-review': 1,
     });
@@ -55,6 +57,8 @@ describe('reportDashboardModel', () => {
       high: 1,
       medium: 0,
       low: 2,
+      info: 1,
+      unknown: 1,
     });
   });
 
@@ -77,6 +81,8 @@ describe('reportDashboardModel', () => {
   it('sorts by severity, status, ordinal and issue id', () => {
     const sorted = filterAndSortReportIssues(
       report([
+        issue({ issueId: 'ISSUE-6', ordinal: 6, severity: 'unknown' }),
+        issue({ issueId: 'ISSUE-5', ordinal: 5, severity: 'info' }),
         issue({ issueId: 'ISSUE-4', ordinal: 4, severity: 'low' }),
         issue({ issueId: 'ISSUE-3', ordinal: 3, severity: 'critical', status: 'fixed' }),
         issue({ issueId: 'ISSUE-2', ordinal: 2, severity: 'critical', status: 'open' }),
@@ -89,6 +95,8 @@ describe('reportDashboardModel', () => {
       'ISSUE-2',
       'ISSUE-3',
       'ISSUE-4',
+      'ISSUE-5',
+      'ISSUE-6',
     ]);
   });
 });
