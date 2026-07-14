@@ -1,5 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
-import type { ReviewReport } from '@reviewlume/report-parser';
+import type { ReviewIssue, ReviewReport } from '@reviewlume/report-parser';
+import type {
+  ReportIssueListItem,
+  ReportIssueStatusItem,
+} from '../../services/reportIssueActions';
 import { runReportIssueStatusFlow } from '../../services/reportIssueStatusFlow';
 
 function report(): ReviewReport {
@@ -35,9 +39,10 @@ describe('runReportIssueStatusFlow', () => {
       issues: [{ ...current.issues[0], status: 'fixed' }],
     };
     const transitionIssueStatusOnDisk = vi.fn().mockResolvedValue(updated);
-    const pickIssue = vi.fn(async (items) => items[0]);
-    const pickStatus = vi.fn(async (_issue, items) =>
-      items.find((item) => item.status === 'fixed'),
+    const pickIssue = vi.fn(async (items: readonly ReportIssueListItem[]) => items[0]);
+    const pickStatus = vi.fn(
+      async (_issue: ReviewIssue, items: readonly ReportIssueStatusItem[]) =>
+        items.find((item) => item.status === 'fixed'),
     );
 
     const result = await runReportIssueStatusFlow({
@@ -97,7 +102,7 @@ describe('runReportIssueStatusFlow', () => {
       language: 'en',
       reportService: { transitionIssueStatusOnDisk },
       ui: {
-        pickIssue: vi.fn(async (items) => items[0]),
+        pickIssue: vi.fn(async (items: readonly ReportIssueListItem[]) => items[0]),
         pickStatus: vi.fn().mockResolvedValue(undefined),
       },
     });
