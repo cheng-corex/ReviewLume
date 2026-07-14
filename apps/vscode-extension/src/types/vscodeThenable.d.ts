@@ -1,11 +1,11 @@
-export {};
+import 'vscode';
 
-declare global {
-  interface Thenable<T> {
-    catch<TResult = never>(
-      onrejected?: ((reason: unknown) => TResult | PromiseLike<TResult>) | null,
-    ): Promise<T | TResult>;
-    finally(onfinally?: (() => void) | null): Promise<T>;
-    readonly [Symbol.toStringTag]: string;
+declare module 'vscode' {
+  namespace window {
+    function showQuickPick<T extends QuickPickItem>(
+      items: readonly T[] | Thenable<readonly T[]>,
+      options?: QuickPickOptions,
+      token?: CancellationToken,
+    ): Promise<T | undefined>;
   }
 }
