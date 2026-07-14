@@ -1,9 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import type { ReviewIssue, ReviewReport } from '@reviewlume/report-parser';
-import type {
-  ReportIssueListItem,
-  ReportIssueStatusItem,
-} from '../../services/reportIssueActions';
+import type { ReportIssueStatusItem } from '../../services/reportIssueActions';
+import type { ReportDashboardPickerItem } from '../../services/reportDashboardPresentation';
 import { runReportIssueStatusFlow } from '../../services/reportIssueStatusFlow';
 
 function report(): ReviewReport {
@@ -31,6 +29,10 @@ function report(): ReviewReport {
   };
 }
 
+function firstIssue(items: readonly ReportDashboardPickerItem[]) {
+  return items.find((item) => item.itemType === 'issue');
+}
+
 describe('runReportIssueStatusFlow', () => {
   it('persists the selected legal status transition', async () => {
     const current = report();
@@ -39,7 +41,9 @@ describe('runReportIssueStatusFlow', () => {
       issues: [{ ...current.issues[0], status: 'fixed' }],
     };
     const transitionIssueStatusOnDisk = vi.fn().mockResolvedValue(updated);
-    const pickIssue = vi.fn(async (items: readonly ReportIssueListItem[]) => items[0]);
+    const pickIssue = vi.fn(async (items: readonly ReportDashboardPickerItem[]) =>
+      firstIssue(items),
+    );
     const pickStatus = vi.fn(
       async (_issue: ReviewIssue, items: readonly ReportIssueStatusItem[]) =>
         items.find((item) => item.status === 'fixed'),
@@ -56,7 +60,9 @@ describe('runReportIssueStatusFlow', () => {
     });
 
     expect(result).toBe(updated);
-    expect(pickIssue.mock.calls[0][0][0].description).toContain('待处理');
+    const issueItem = firstIssue(pickIssue.mock.calls[0][0]);
+    expect(issueItem?.description).toContain('待处理');
+    expect(pickIssue.mock.calls[0][2]).toContain('共 1 个');
     expect(pickStatus.mock.calls[0][1].map((item) => item.status)).toEqual([
       'fixed',
       'rejected',
@@ -69,6 +75,50 @@ describe('runReportIssueStatusFlow', () => {
       'fixed',
       'response',
     );
+  });
+
+  it('applies a dashboard filter before selecting an issue', async () => {
+    const current: ReviewReport = {
+      ...report(),
+      issues: [
+        ...report().issues,
+        {
+          ...report().issues[0],
+          issueId: 'ISSUE-2',
+          ordinal: 2,
+          title: 'Resolved issue',
+          status: 'fixed',
+          sourceFingerprint: 'ISSUE-2',
+        },
+      ],
+    };
+    const updated = { ...current, issues: [{ ...current.issues[0], status: 'fixed' }, current.issues[1]] };
+    const transitionIssueStatusOnDisk = vi.fn().mockResolvedValue(updated);
+    const pickIssue = vi
+      .fn()
+      .mockImplementationOnce(async (items: readonly ReportDashboardPickerItem[]) =>
+        items.find((item) => item.itemType === 'filter' && item.preset === 'unresolved'),
+      )
+      .mockImplementationOnce(async (items: readonly ReportDashboardPickerItem[]) =>
+        firstIssue(items),
+      );
+
+    await runReportIssueStatusFlow({
+      report: current,
+      reviewDirectory: '/review',
+      reviewId: current.reviewId,
+      responseText: 'response',
+      language: 'en',
+      reportService: { transitionIssueStatusOnDisk },
+      ui: {
+        pickIssue,
+        pickStatus: vi.fn(async (_issue, items: readonly ReportIssueStatusItem[]) => items[0]),
+      },
+    });
+
+    expect(pickIssue).toHaveBeenCalledTimes(2);
+    expect(pickIssue.mock.calls[1][3]).toBe('Open, Needs review');
+    expect(pickIssue.mock.calls[1][4]).toBe(1);
   });
 
   it('does not write when issue selection is cancelled', async () => {
@@ -102,7 +152,9 @@ describe('runReportIssueStatusFlow', () => {
       language: 'en',
       reportService: { transitionIssueStatusOnDisk },
       ui: {
-        pickIssue: vi.fn(async (items: readonly ReportIssueListItem[]) => items[0]),
+        pickIssue: vi.fn(async (items: readonly ReportDashboardPickerItem[]) =>
+          firstIssue(items),
+        ),
         pickStatus: vi.fn().mockResolvedValue(undefined),
       },
     });
