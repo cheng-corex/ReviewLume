@@ -12,11 +12,11 @@ export interface ReportIssueStatusFlowUi {
   pickIssue(
     items: readonly ReportIssueListItem[],
     report: ReviewReport,
-  ): Promise<ReportIssueListItem | undefined>;
+  ): PromiseLike<ReportIssueListItem | undefined>;
   pickStatus(
     issue: ReviewIssue,
     items: readonly ReportIssueStatusItem[],
-  ): Promise<ReportIssueStatusItem | undefined>;
+  ): PromiseLike<ReportIssueStatusItem | undefined>;
 }
 
 export interface RunReportIssueStatusFlowOptions {
