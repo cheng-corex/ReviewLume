@@ -81,20 +81,21 @@ export function buildReportDashboardView(
   filter: ReportDashboardFilter,
   locale: IssueActionLocale,
 ): ReportDashboardView {
-  const summary = summarizeReport(report);
+  const counts = summarizeReport(report);
   const visibleIssues = filterAndSortReportIssues(report, filter);
   const filterDescription = formatFilterDescription(filter, locale);
+  const summary =
+    locale === 'zh'
+      ? `共 ${counts.total} 个 · 未处理 ${counts.unresolved} 个 · 严重 ${counts.bySeverity.critical} · 高 ${counts.bySeverity.high}`
+      : `${counts.total} total · ${counts.unresolved} unresolved · ${counts.bySeverity.critical} critical · ${counts.bySeverity.high} high`;
 
   return {
-    summary:
-      locale === 'zh'
-        ? `共 ${summary.total} 个 · 未处理 ${summary.unresolved} 个 · 严重 ${summary.bySeverity.critical} · 高 ${summary.bySeverity.high}`
-        : `${summary.total} total · ${summary.unresolved} unresolved · ${summary.bySeverity.critical} critical · ${summary.bySeverity.high} high`,
+    summary,
     filterDescription,
-    filters: buildFilterItems(locale, filterDescription),
+    filters: buildFilterItems(locale, summary, filterDescription),
     issues: visibleIssues.map((issue) => buildReportIssueListItem(issue, locale)),
     visibleCount: visibleIssues.length,
-    totalCount: summary.total,
+    totalCount: counts.total,
   };
 }
 
@@ -117,10 +118,13 @@ export function filterForDashboardPreset(
 
 function buildFilterItems(
   locale: IssueActionLocale,
+  summary: string,
   currentFilter: string,
 ): readonly ReportDashboardFilterItem[] {
   const zh = locale === 'zh';
-  const detail = zh ? `当前：${currentFilter}` : `Current: ${currentFilter}`;
+  const detail = zh
+    ? `${summary} · 当前：${currentFilter}`
+    : `${summary} · Current: ${currentFilter}`;
   return [
     {
       itemType: 'filter',
