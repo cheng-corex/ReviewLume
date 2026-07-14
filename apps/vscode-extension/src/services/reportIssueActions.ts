@@ -8,7 +8,7 @@ import {
 export type IssueActionLocale = 'en' | 'zh';
 
 export interface ReportIssueListItem {
-  readonly kind: 'issue';
+  readonly itemType: 'issue';
   readonly issueId: string;
   readonly label: string;
   readonly description: string;
@@ -16,7 +16,7 @@ export interface ReportIssueListItem {
 }
 
 export interface ReportIssueStatusItem {
-  readonly kind: 'status';
+  readonly itemType: 'status';
   readonly status: ReviewIssueStatus;
   readonly label: string;
   readonly description: string;
@@ -41,7 +41,7 @@ export function buildReportIssueListItem(
   const location = formatIssueLocation(issue, locale);
 
   return {
-    kind: 'issue',
+    itemType: 'issue',
     issueId: issue.issueId,
     label: `${severityIcon} [${issue.severity}] ${issue.title.slice(0, 80)}`,
     description: `${formatIssueStatus(issue.status, locale)} · ${location}`,
@@ -55,7 +55,7 @@ export function buildIssueStatusItems(
 ): readonly ReportIssueStatusItem[] {
   return getIssueStatusActions(issue.status, locale).map(
     (action: IssueStatusAction): ReportIssueStatusItem => ({
-      kind: 'status',
+      itemType: 'status',
       status: action.status,
       label: `$(${action.icon}) ${action.label}`,
       description: action.description,
