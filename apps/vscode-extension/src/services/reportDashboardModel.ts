@@ -23,6 +23,8 @@ const severityRank: Readonly<Record<ReviewIssueSeverity, number>> = {
   high: 1,
   medium: 2,
   low: 3,
+  info: 4,
+  unknown: 5,
 };
 
 const statusRank: Readonly<Record<ReviewIssueStatus, number>> = {
@@ -44,6 +46,8 @@ export function summarizeReport(report: ReviewReport): ReportDashboardSummary {
     high: 0,
     medium: 0,
     low: 0,
+    info: 0,
+    unknown: 0,
   };
 
   for (const issue of report.issues) {
