@@ -15,6 +15,8 @@ describe('constants', () => {
         OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
         IMPORT_REVIEW_RESPONSE: 'reviewlume.importReviewResponse',
         UPDATE_ISSUE_STATUS: 'reviewlume.updateIssueStatus',
+        GENERATE_IMPLEMENTATION_PROMPT: 'reviewlume.generateImplementationPrompt',
+        IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
         OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
       });
     });
