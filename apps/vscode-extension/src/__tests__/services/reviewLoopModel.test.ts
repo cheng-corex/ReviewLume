@@ -150,4 +150,46 @@ describe('reviewLoopModel', () => {
       severityChanged: 1,
     });
   });
+
+  it('limits re-review comparison to selected baseline issues without misclassifying unrelated findings', () => {
+    const baseline = report('same-review', [
+      issue(),
+      issue({
+        issueId: 'ISSUE-0000000000000002',
+        ordinal: 2,
+        title: 'Unrelated existing issue',
+        severity: 'medium',
+        sourceFingerprint: 'fingerprint-2',
+      }),
+    ]);
+    const current = report('same-review', [
+      issue({
+        issueId: 'ISSUE-aaaaaaaaaaaaaaaa',
+        severity: 'high',
+      }),
+      issue({
+        issueId: 'ISSUE-bbbbbbbbbbbbbbbb',
+        ordinal: 2,
+        title: 'Unrelated existing issue',
+        severity: 'medium',
+        sourceFingerprint: 'fingerprint-2',
+      }),
+      issue({
+        issueId: 'ISSUE-0000000000000003',
+        ordinal: 3,
+        title: 'Regression introduced by the fix',
+        severity: 'low',
+        sourceFingerprint: 'fingerprint-3',
+      }),
+    ]);
+
+    const comparisons = compareReviewReports(baseline, current, [
+      'ISSUE-0000000000000001',
+    ]);
+
+    expect(comparisons.map((item) => [item.status, item.current?.title])).toEqual([
+      ['persistent', 'SQL injection'],
+      ['new', 'Regression introduced by the fix'],
+    ]);
+  });
 });
