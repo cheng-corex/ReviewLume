@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   MAX_IMPLEMENTATION_SUMMARY_LENGTH,
+  MAX_REVIEW_ROUNDS,
   implementationSummarySchema,
   reviewLoopStateSchema,
   type ImplementationSummary,
@@ -126,17 +127,29 @@ export class ReviewLoopStorageService {
   ): Promise<ReviewLoopState> {
     const directory = await assertReviewDirectory(reviewDirectory);
     const state = await this.readState(directory, reviewId);
-    if (!Number.isInteger(round) || round !== state.rounds.length + 1) {
-      throw new ReviewLoopStorageError('INVALID_STATE', 'Review round must be sequential.');
+    if (
+      !Number.isInteger(round) ||
+      round < 1 ||
+      round > MAX_REVIEW_ROUNDS ||
+      round !== state.rounds.length + 1
+    ) {
+      throw new ReviewLoopStorageError('INVALID_STATE', 'Review round must be sequential and in range.');
     }
     assertByteLimit(prompt, MAX_PROMPT_BYTES);
+
+    const requestPath = path.join(directory, `re-review-request-${round}.md`);
     const requestHash = sha256(prompt);
-    await atomicWrite(path.join(directory, `re-review-request-${round}.md`), prompt);
-    return this.appendRound(directory, reviewId, {
-      round,
-      createdAt: new Date().toISOString(),
-      requestHash,
-    });
+    await atomicWrite(requestPath, prompt);
+    try {
+      return await this.appendRound(directory, reviewId, {
+        round,
+        createdAt: new Date().toISOString(),
+        requestHash,
+      });
+    } catch (error) {
+      await fs.rm(requestPath, { force: true }).catch(() => undefined);
+      throw error;
+    }
   }
 
   async saveImplementationSummary(
