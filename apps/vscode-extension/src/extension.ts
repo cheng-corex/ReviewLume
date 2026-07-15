@@ -8,6 +8,7 @@ import { registerOpenReviewHistory } from './commands/openReviewHistory';
 import { registerOpenReviewPanel } from './commands/openReviewPanel';
 import { registerImportReviewResponse } from './commands/importReviewResponse';
 import { registerUpdateIssueStatus } from './commands/updateIssueStatus';
+import { registerReviewLoopCommands } from './commands/reviewLoopCommands';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
 import { ReviewScopeService } from './services/reviewScopeService';
@@ -83,6 +84,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   registerImportReviewResponse(context, fileSelectionService);
   registerUpdateIssueStatus(context, fileSelectionService);
+  registerReviewLoopCommands(context);
 
   logInfo('ReviewLume extension activated');
 }
