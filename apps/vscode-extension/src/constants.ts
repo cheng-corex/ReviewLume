@@ -23,6 +23,10 @@ export const COMMANDS = {
   IMPORT_REVIEW_RESPONSE: 'reviewlume.importReviewResponse',
   /** Update one structured review issue status */
   UPDATE_ISSUE_STATUS: 'reviewlume.updateIssueStatus',
+  /** Generate a bounded implementation prompt from selected review issues */
+  GENERATE_IMPLEMENTATION_PROMPT: 'reviewlume.generateImplementationPrompt',
+  /** Import a human-controlled implementation summary */
+  IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
 } as const;
