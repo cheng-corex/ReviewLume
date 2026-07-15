@@ -16,6 +16,7 @@ const IMPLEMENTATION_REQUEST_FILE = 'implementation-request.md';
 const IMPLEMENTATION_RESPONSE_FILE = 'implementation-response.md';
 const MAX_PROMPT_BYTES = 1_000_000;
 const MAX_RESPONSE_BYTES = MAX_IMPLEMENTATION_SUMMARY_LENGTH * 4;
+const MAX_REPORT_BYTES = 10 * 1024 * 1024;
 const REVIEW_ID_PATTERN = /^\d{8}T\d{6}Z-[0-9a-f]{12}$/;
 
 export class ReviewLoopStorageError extends Error {
@@ -150,6 +151,66 @@ export class ReviewLoopStorageService {
       await fs.rm(requestPath, { force: true }).catch(() => undefined);
       throw error;
     }
+  }
+
+  async saveReReviewResult(
+    reviewDirectory: string,
+    reviewId: string,
+    round: number,
+    responseText: string,
+    reportText: string,
+  ): Promise<ReviewLoopState> {
+    const directory = await assertReviewDirectory(reviewDirectory);
+    assertByteLimit(responseText, MAX_RESPONSE_BYTES);
+    assertByteLimit(reportText, MAX_REPORT_BYTES);
+    const state = await this.readState(directory, reviewId);
+    const index = round - 1;
+    const existing = state.rounds[index];
+    if (!existing || existing.round !== round || existing.responseHash || existing.reportHash) {
+      throw new ReviewLoopStorageError('INVALID_STATE', 'Review round is missing or already completed.');
+    }
+
+    const responsePath = path.join(directory, `re-review-response-${round}.md`);
+    const reportPath = path.join(directory, `re-review-report-${round}.json`);
+    const completed: ReviewRound = {
+      ...existing,
+      responseHash: sha256(responseText),
+      reportHash: sha256(reportText),
+    };
+    const rounds = [...state.rounds];
+    rounds[index] = completed;
+    const next: ReviewLoopState = { ...state, rounds };
+
+    await atomicWrite(responsePath, responseText);
+    try {
+      await atomicWrite(reportPath, reportText);
+      await this.writeState(directory, next);
+    } catch (error) {
+      await Promise.all([
+        fs.rm(responsePath, { force: true }).catch(() => undefined),
+        fs.rm(reportPath, { force: true }).catch(() => undefined),
+      ]);
+      throw error;
+    }
+    return next;
+  }
+
+  async readReReviewReportText(
+    reviewDirectory: string,
+    reviewId: string,
+    round: number,
+  ): Promise<string> {
+    const directory = await assertReviewDirectory(reviewDirectory);
+    const state = await this.readState(directory, reviewId);
+    const storedRound = state.rounds[round - 1];
+    if (!storedRound || storedRound.round !== round || !storedRound.reportHash) {
+      throw new ReviewLoopStorageError('MISSING_STATE', 'Completed re-review report is missing.');
+    }
+    const text = await readRegularFile(path.join(directory, `re-review-report-${round}.json`));
+    if (sha256(text) !== storedRound.reportHash) {
+      throw new ReviewLoopStorageError('INVALID_STATE', 'Re-review report hash does not match state.');
+    }
+    return text;
   }
 
   async saveImplementationSummary(
