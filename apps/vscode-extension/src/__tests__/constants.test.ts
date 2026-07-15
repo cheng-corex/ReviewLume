@@ -17,6 +17,7 @@ describe('constants', () => {
         UPDATE_ISSUE_STATUS: 'reviewlume.updateIssueStatus',
         GENERATE_IMPLEMENTATION_PROMPT: 'reviewlume.generateImplementationPrompt',
         IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
+        GENERATE_RE_REVIEW_PROMPT: 'reviewlume.generateReReviewPrompt',
         OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
       });
     });
