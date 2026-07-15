@@ -31,6 +31,7 @@
     "onCommand:reviewlume.updateIssueStatus",
     "onCommand:reviewlume.generateImplementationPrompt",
     "onCommand:reviewlume.importImplementationSummary",
+    "onCommand:reviewlume.generateReReviewPrompt",
     "onCommand:reviewlume.openReviewPanel",
     "onView:reviewlume.mainView"
   ],
@@ -59,6 +60,7 @@
       { "command": "reviewlume.updateIssueStatus", "title": "%command.updateIssueStatus%" },
       { "command": "reviewlume.generateImplementationPrompt", "title": "%command.generateImplementationPrompt%" },
       { "command": "reviewlume.importImplementationSummary", "title": "%command.importImplementationSummary%" },
+      { "command": "reviewlume.generateReReviewPrompt", "title": "%command.generateReReviewPrompt%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" }
     ],
     "configuration": {
