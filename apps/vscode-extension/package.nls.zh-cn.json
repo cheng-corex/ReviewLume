@@ -15,6 +15,7 @@
   "command.updateIssueStatus": "ReviewLume：更新问题状态",
   "command.generateImplementationPrompt": "ReviewLume：生成实施提示",
   "command.importImplementationSummary": "ReviewLume：导入修复摘要",
+  "command.generateReReviewPrompt": "ReviewLume：生成二次复核提示",
   "config.export.mode.automatic": "自动保存到当前仓库中。",
   "config.export.mode.askEveryTime": "每次导出时询问保存位置。",
   "config.export.mode.description": "自动将审核包保存到当前仓库，或每次导出时询问保存位置。",
