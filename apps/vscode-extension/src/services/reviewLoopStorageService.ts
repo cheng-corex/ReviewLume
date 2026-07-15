@@ -3,6 +3,7 @@ import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import {
   MAX_IMPLEMENTATION_SUMMARY_LENGTH,
+  implementationSummarySchema,
   reviewLoopStateSchema,
   type ImplementationSummary,
   type ReviewLoopState,
@@ -144,12 +145,20 @@ export class ReviewLoopStorageService {
     summary: ImplementationSummary,
   ): Promise<ReviewLoopState> {
     assertByteLimit(summary.text, MAX_RESPONSE_BYTES);
+    const summaryResult = implementationSummarySchema.safeParse(summary);
+    if (!summaryResult.success) {
+      throw new ReviewLoopStorageError('INVALID_STATE', 'Implementation summary failed validation.');
+    }
     const directory = await assertReviewDirectory(reviewDirectory);
     const state = await this.readState(directory, reviewId);
-    await atomicWrite(path.join(directory, IMPLEMENTATION_RESPONSE_FILE), summary.text);
-    const next: ReviewLoopState = { ...state, implementationSummary: summary };
-    await this.writeState(directory, next);
-    return next;
+    const next: ReviewLoopState = { ...state, implementationSummary: summaryResult.data };
+    const nextResult = reviewLoopStateSchema.safeParse(next);
+    if (!nextResult.success) {
+      throw new ReviewLoopStorageError('INVALID_STATE', 'Review loop state failed validation.');
+    }
+    await atomicWrite(path.join(directory, IMPLEMENTATION_RESPONSE_FILE), summaryResult.data.text);
+    await this.writeState(directory, nextResult.data);
+    return nextResult.data;
   }
 
   async appendRound(
