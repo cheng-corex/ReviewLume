@@ -5,6 +5,7 @@ import { HistoryService, type HistoryEntry } from '../services/historyService';
 import { ReportService } from '../services/reportService';
 import {
   generateImplementationPrompt,
+  generateReReviewPrompt,
   type ImplementationSummary,
 } from '../services/reviewLoopModel';
 import {
@@ -25,6 +26,9 @@ export function registerReviewLoopCommands(context: vscode.ExtensionContext): vo
     }),
     vscode.commands.registerCommand(COMMANDS.IMPORT_IMPLEMENTATION_SUMMARY, async () => {
       await runImportImplementationSummary();
+    }),
+    vscode.commands.registerCommand(COMMANDS.GENERATE_RE_REVIEW_PROMPT, async () => {
+      await runGenerateReReviewPrompt();
     }),
   );
 }
@@ -106,6 +110,60 @@ async function runImportImplementationSummary(): Promise<void> {
       t(
         'ReviewLume: Failed to import the implementation summary safely.',
         'ReviewLume：无法安全导入修复摘要。',
+      ),
+    );
+  }
+}
+
+async function runGenerateReReviewPrompt(): Promise<void> {
+  const warning = getWorkspaceWarning();
+  if (warning) {
+    await vscode.window.showWarningMessage(`ReviewLume: ${warning}`);
+    return;
+  }
+
+  try {
+    const selected = await selectReviewWithReport();
+    if (!selected) return;
+
+    const storage = new ReviewLoopStorageService();
+    await ensureLoopState(storage, selected.reviewDirectory, selected.entry, selected.report);
+    const state = await storage.readState(
+      selected.reviewDirectory,
+      selected.entry.metadata.reviewId,
+    );
+    if (!state.implementationSummary) {
+      await vscode.window.showWarningMessage(
+        t(
+          'ReviewLume: Import an implementation summary before generating a re-review prompt.',
+          'ReviewLume：请先导入修复摘要，再生成二次复核提示。',
+        ),
+      );
+      return;
+    }
+
+    const round = state.rounds.length + 1;
+    const prompt = generateReReviewPrompt(selected.report, state.implementationSummary, round);
+    await storage.saveReReviewPrompt(
+      selected.reviewDirectory,
+      selected.entry.metadata.reviewId,
+      round,
+      prompt,
+    );
+    await vscode.env.clipboard.writeText(prompt);
+    await vscode.window.showInformationMessage(
+      t(
+        `ReviewLume: Re-review prompt for round ${round} generated and copied to the clipboard.`,
+        `ReviewLume：第 ${round} 轮二次复核提示已生成并复制到剪贴板。`,
+      ),
+    );
+    logInfo(`Re-review prompt generated (${selected.entry.metadata.reviewId}, round ${round})`);
+  } catch (error) {
+    logWarn(`Re-review prompt generation failed (${errorCode(error)})`);
+    await vscode.window.showErrorMessage(
+      t(
+        'ReviewLume: Failed to generate the re-review prompt safely.',
+        'ReviewLume：无法安全生成二次复核提示。',
       ),
     );
   }
