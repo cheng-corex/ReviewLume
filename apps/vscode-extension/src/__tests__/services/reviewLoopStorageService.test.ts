@@ -51,6 +51,26 @@ describe('ReviewLoopStorageService', () => {
     expect(await fs.readFile(path.join(directory, 'implementation-response.md'), 'utf8')).toBe(text);
   });
 
+  it('validates an implementation summary before creating its response file', async () => {
+    const directory = await createReviewDirectory();
+    const service = new ReviewLoopStorageService();
+    await service.initialize(directory, reviewId, 'baseline');
+
+    await expect(
+      service.saveImplementationSummary(directory, reviewId, {
+        importedAt: 'not-a-date',
+        sourceHash: 'not-a-hash',
+        issueIds: ['ISSUE-0000000000000001'],
+        text: 'invalid summary',
+      }),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+
+    await expect(
+      fs.stat(path.join(directory, 'implementation-response.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+    expect((await service.readState(directory, reviewId)).implementationSummary).toBeUndefined();
+  });
+
   it('only accepts sequential review rounds', async () => {
     const directory = await createReviewDirectory();
     const service = new ReviewLoopStorageService();
