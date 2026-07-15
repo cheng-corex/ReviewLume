@@ -92,6 +92,46 @@ describe('ReviewLoopStorageService', () => {
     expect(state.rounds).toHaveLength(1);
   });
 
+  it('persists and verifies a completed re-review result', async () => {
+    const directory = await createReviewDirectory();
+    const service = new ReviewLoopStorageService();
+    await service.initialize(directory, reviewId, 'baseline');
+    await service.saveReReviewPrompt(directory, reviewId, 1, '# re-review');
+
+    const responseText = 'review response';
+    const reportText = '{"schemaVersion":1}\n';
+    const state = await service.saveReReviewResult(
+      directory,
+      reviewId,
+      1,
+      responseText,
+      reportText,
+    );
+
+    expect(state.rounds[0]).toMatchObject({
+      round: 1,
+      responseHash: sha256(responseText),
+      reportHash: sha256(reportText),
+    });
+    expect(await service.readReReviewReportText(directory, reviewId, 1)).toBe(reportText);
+    await expect(
+      service.saveReReviewResult(directory, reviewId, 1, responseText, reportText),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+  });
+
+  it('detects tampered re-review reports', async () => {
+    const directory = await createReviewDirectory();
+    const service = new ReviewLoopStorageService();
+    await service.initialize(directory, reviewId, 'baseline');
+    await service.saveReReviewPrompt(directory, reviewId, 1, '# re-review');
+    await service.saveReReviewResult(directory, reviewId, 1, 'response', '{"ok":true}\n');
+    await fs.writeFile(path.join(directory, 're-review-report-1.json'), '{"ok":false}\n');
+
+    await expect(service.readReReviewReportText(directory, reviewId, 1)).rejects.toMatchObject({
+      code: 'INVALID_STATE',
+    });
+  });
+
   it('rejects invalid review IDs and symlinked review directories', async () => {
     const directory = await createReviewDirectory();
     const service = new ReviewLoopStorageService();
