@@ -27,6 +27,8 @@ export const COMMANDS = {
   GENERATE_IMPLEMENTATION_PROMPT: 'reviewlume.generateImplementationPrompt',
   /** Import a human-controlled implementation summary */
   IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
+  /** Generate a bounded re-review prompt linked to the same review session */
+  GENERATE_RE_REVIEW_PROMPT: 'reviewlume.generateReReviewPrompt',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
 } as const;
