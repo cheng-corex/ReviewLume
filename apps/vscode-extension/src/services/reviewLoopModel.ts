@@ -173,12 +173,19 @@ function severityChanged(
 export function compareReviewReports(
   baseline: ReviewReport,
   current: ReviewReport,
+  issueIds?: readonly string[],
 ): ReviewIssueComparison[] {
-  const baselineByKey = new Map(baseline.issues.map((issue) => [comparisonKey(issue), issue]));
+  const scopedBaseline = issueIds ? selectedIssues(baseline, issueIds) : baseline.issues;
+  const allBaselineByKey = new Map(
+    baseline.issues.map((issue) => [comparisonKey(issue), issue]),
+  );
+  const scopedBaselineByKey = new Map(
+    scopedBaseline.map((issue) => [comparisonKey(issue), issue]),
+  );
   const currentByKey = new Map(current.issues.map((issue) => [comparisonKey(issue), issue]));
   const comparisons: ReviewIssueComparison[] = [];
 
-  for (const issue of baseline.issues) {
+  for (const issue of scopedBaseline) {
     const currentIssue = currentByKey.get(comparisonKey(issue));
     comparisons.push({
       status: currentIssue ? 'persistent' : 'resolved',
@@ -189,7 +196,8 @@ export function compareReviewReports(
   }
 
   for (const issue of current.issues) {
-    if (baselineByKey.has(comparisonKey(issue))) continue;
+    const key = comparisonKey(issue);
+    if (scopedBaselineByKey.has(key) || allBaselineByKey.has(key)) continue;
     comparisons.push({
       status: 'new',
       current: issue,
