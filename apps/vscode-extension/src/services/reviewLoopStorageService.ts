@@ -117,6 +117,27 @@ export class ReviewLoopStorageService {
     return sha256(prompt);
   }
 
+  async saveReReviewPrompt(
+    reviewDirectory: string,
+    reviewId: string,
+    round: number,
+    prompt: string,
+  ): Promise<ReviewLoopState> {
+    const directory = await assertReviewDirectory(reviewDirectory);
+    const state = await this.readState(directory, reviewId);
+    if (!Number.isInteger(round) || round !== state.rounds.length + 1) {
+      throw new ReviewLoopStorageError('INVALID_STATE', 'Review round must be sequential.');
+    }
+    assertByteLimit(prompt, MAX_PROMPT_BYTES);
+    const requestHash = sha256(prompt);
+    await atomicWrite(path.join(directory, `re-review-request-${round}.md`), prompt);
+    return this.appendRound(directory, reviewId, {
+      round,
+      createdAt: new Date().toISOString(),
+      requestHash,
+    });
+  }
+
   async saveImplementationSummary(
     reviewDirectory: string,
     reviewId: string,
