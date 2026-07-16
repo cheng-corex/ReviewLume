@@ -18,6 +18,7 @@ describe('constants', () => {
         GENERATE_IMPLEMENTATION_PROMPT: 'reviewlume.generateImplementationPrompt',
         IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
         GENERATE_RE_REVIEW_PROMPT: 'reviewlume.generateReReviewPrompt',
+        IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
         OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
       });
     });
