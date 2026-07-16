@@ -23,6 +23,7 @@ export const reviewRoundSchema = z
     round: z.number().int().min(1).max(MAX_REVIEW_ROUNDS),
     createdAt: isoTimestampSchema,
     requestHash: hashSchema,
+    issueIds: z.array(issueIdSchema).min(1).max(500).optional(),
     responseHash: hashSchema.optional(),
     reportHash: hashSchema.optional(),
   })
