@@ -124,6 +124,7 @@ export class ReviewLoopStorageService {
     reviewDirectory: string,
     reviewId: string,
     round: number,
+    issueIds: readonly string[],
     prompt: string,
   ): Promise<ReviewLoopState> {
     const directory = await assertReviewDirectory(reviewDirectory);
@@ -143,6 +144,9 @@ export class ReviewLoopStorageService {
     ) {
       throw new ReviewLoopStorageError('INVALID_STATE', 'Review round must be sequential and in range.');
     }
+    if (issueIds.length === 0 || new Set(issueIds).size !== issueIds.length) {
+      throw new ReviewLoopStorageError('INVALID_STATE', 'Review round issue scope is invalid.');
+    }
     assertByteLimit(prompt, MAX_PROMPT_BYTES);
 
     const requestPath = path.join(directory, `re-review-request-${round}.md`);
@@ -153,6 +157,7 @@ export class ReviewLoopStorageService {
         round,
         createdAt: new Date().toISOString(),
         requestHash,
+        issueIds: [...issueIds],
       });
     } catch (error) {
       await fs.rm(requestPath, { force: true }).catch(() => undefined);
