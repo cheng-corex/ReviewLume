@@ -33,6 +33,7 @@
     "onCommand:reviewlume.importImplementationSummary",
     "onCommand:reviewlume.generateReReviewPrompt",
     "onCommand:reviewlume.importReReviewResponse",
+    "onCommand:reviewlume.viewReReviewComparison",
     "onCommand:reviewlume.openReviewPanel",
     "onView:reviewlume.mainView"
   ],
@@ -63,6 +64,7 @@
       { "command": "reviewlume.importImplementationSummary", "title": "%command.importImplementationSummary%" },
       { "command": "reviewlume.generateReReviewPrompt", "title": "%command.generateReReviewPrompt%" },
       { "command": "reviewlume.importReReviewResponse", "title": "%command.importReReviewResponse%" },
+      { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" }
     ],
     "configuration": {
