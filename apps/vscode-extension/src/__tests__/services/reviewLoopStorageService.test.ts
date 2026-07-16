@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { ReviewLoopStorageService, ReviewLoopStorageError, sha256 } from '../../services/reviewLoopStorageService';
 
 const reviewId = '20260714T010203Z-aabbccddeeff';
+const issueIds = ['ISSUE-0000000000000001'] as const;
 const roots: string[] = [];
 
 async function createReviewDirectory(): Promise<string> {
@@ -41,7 +42,7 @@ describe('ReviewLoopStorageService', () => {
     const state = await service.saveImplementationSummary(directory, reviewId, {
       importedAt: '2026-07-14T01:02:03.000Z',
       sourceHash: sha256(text),
-      issueIds: ['ISSUE-0000000000000001'],
+      issueIds: [...issueIds],
       text,
     });
 
@@ -60,7 +61,7 @@ describe('ReviewLoopStorageService', () => {
       service.saveImplementationSummary(directory, reviewId, {
         importedAt: 'not-a-date',
         sourceHash: 'not-a-hash',
-        issueIds: ['ISSUE-0000000000000001'],
+        issueIds: [...issueIds],
         text: 'invalid summary',
       }),
     ).rejects.toMatchObject({ code: 'INVALID_STATE' });
@@ -96,14 +97,15 @@ describe('ReviewLoopStorageService', () => {
     const directory = await createReviewDirectory();
     const service = new ReviewLoopStorageService();
     await service.initialize(directory, reviewId, 'baseline');
-    await service.saveReReviewPrompt(directory, reviewId, 1, '# first re-review');
+    await service.saveReReviewPrompt(directory, reviewId, 1, '# first re-review', issueIds);
 
     await expect(
-      service.saveReReviewPrompt(directory, reviewId, 2, '# overlapping re-review'),
+      service.saveReReviewPrompt(directory, reviewId, 2, '# overlapping re-review', issueIds),
     ).rejects.toMatchObject({ code: 'INVALID_STATE' });
 
     const state = await service.readState(directory, reviewId);
     expect(state.rounds).toHaveLength(1);
+    expect(state.rounds[0]?.issueIds).toEqual(issueIds);
     await expect(
       fs.stat(path.join(directory, 're-review-request-2.md')),
     ).rejects.toMatchObject({ code: 'ENOENT' });
@@ -113,7 +115,7 @@ describe('ReviewLoopStorageService', () => {
     const directory = await createReviewDirectory();
     const service = new ReviewLoopStorageService();
     await service.initialize(directory, reviewId, 'baseline');
-    await service.saveReReviewPrompt(directory, reviewId, 1, '# re-review');
+    await service.saveReReviewPrompt(directory, reviewId, 1, '# re-review', issueIds);
 
     const responseText = 'review response';
     const reportText = '{"schemaVersion":1}\n';
@@ -127,6 +129,7 @@ describe('ReviewLoopStorageService', () => {
 
     expect(state.rounds[0]).toMatchObject({
       round: 1,
+      issueIds,
       responseHash: sha256(responseText),
       reportHash: sha256(reportText),
     });
@@ -140,7 +143,7 @@ describe('ReviewLoopStorageService', () => {
     const directory = await createReviewDirectory();
     const service = new ReviewLoopStorageService();
     await service.initialize(directory, reviewId, 'baseline');
-    await service.saveReReviewPrompt(directory, reviewId, 1, '# re-review');
+    await service.saveReReviewPrompt(directory, reviewId, 1, '# re-review', issueIds);
     await service.saveReReviewResult(directory, reviewId, 1, 'response', '{"ok":true}\n');
     await fs.writeFile(path.join(directory, 're-review-report-1.json'), '{"ok":false}\n');
 
