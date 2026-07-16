@@ -131,7 +131,7 @@ async function selectReviewWithPendingRound(): Promise<{
         reviewDirectory,
         baselineReport: result.report,
         round: pending.round,
-        issueIds: state.implementationSummary.issueIds,
+        issueIds: pending.issueIds,
       });
     } catch {
       // Invalid or incomplete loop state is not selectable.
