@@ -92,6 +92,23 @@ describe('ReviewLoopStorageService', () => {
     expect(state.rounds).toHaveLength(1);
   });
 
+  it('does not create a new round while an earlier re-review is pending', async () => {
+    const directory = await createReviewDirectory();
+    const service = new ReviewLoopStorageService();
+    await service.initialize(directory, reviewId, 'baseline');
+    await service.saveReReviewPrompt(directory, reviewId, 1, '# first re-review');
+
+    await expect(
+      service.saveReReviewPrompt(directory, reviewId, 2, '# overlapping re-review'),
+    ).rejects.toMatchObject({ code: 'INVALID_STATE' });
+
+    const state = await service.readState(directory, reviewId);
+    expect(state.rounds).toHaveLength(1);
+    await expect(
+      fs.stat(path.join(directory, 're-review-request-2.md')),
+    ).rejects.toMatchObject({ code: 'ENOENT' });
+  });
+
   it('persists and verifies a completed re-review result', async () => {
     const directory = await createReviewDirectory();
     const service = new ReviewLoopStorageService();
