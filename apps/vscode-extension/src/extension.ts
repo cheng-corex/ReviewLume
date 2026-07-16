@@ -7,6 +7,7 @@ import { registerSecurityReviewCommands } from './commands/securityReviewCommand
 import { registerOpenReviewHistory } from './commands/openReviewHistory';
 import { registerOpenReviewPanel } from './commands/openReviewPanel';
 import { registerImportReviewResponse } from './commands/importReviewResponse';
+import { registerImportReReviewResponse } from './commands/importReReviewResponse';
 import { registerUpdateIssueStatus } from './commands/updateIssueStatus';
 import { registerReviewLoopCommands } from './commands/reviewLoopCommands';
 import { FileSelectionService } from './services/fileSelectionService';
@@ -83,6 +84,7 @@ export function activate(context: vscode.ExtensionContext): void {
     reviewScopeService,
   );
   registerImportReviewResponse(context, fileSelectionService);
+  registerImportReReviewResponse(context);
   registerUpdateIssueStatus(context, fileSelectionService);
   registerReviewLoopCommands(context);
 
