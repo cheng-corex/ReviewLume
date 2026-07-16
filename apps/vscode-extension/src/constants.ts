@@ -31,6 +31,8 @@ export const COMMANDS = {
   GENERATE_RE_REVIEW_PROMPT: 'reviewlume.generateReReviewPrompt',
   /** Import and persist a re-review response for the active review round */
   IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
+  /** Open a read-only comparison of baseline and completed re-review findings */
+  VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
 } as const;
