@@ -29,6 +29,8 @@ export const COMMANDS = {
   IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
   /** Generate a bounded re-review prompt linked to the same review session */
   GENERATE_RE_REVIEW_PROMPT: 'reviewlume.generateReReviewPrompt',
+  /** Import and persist a re-review response for the active review round */
+  IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
 } as const;
