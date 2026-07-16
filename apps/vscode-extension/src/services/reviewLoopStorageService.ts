@@ -128,6 +128,13 @@ export class ReviewLoopStorageService {
   ): Promise<ReviewLoopState> {
     const directory = await assertReviewDirectory(reviewDirectory);
     const state = await this.readState(directory, reviewId);
+    const pendingRound = state.rounds.find((item) => !item.responseHash && !item.reportHash);
+    if (pendingRound) {
+      throw new ReviewLoopStorageError(
+        'INVALID_STATE',
+        `Re-review round ${pendingRound.round} is still pending.`,
+      );
+    }
     if (
       !Number.isInteger(round) ||
       round < 1 ||
