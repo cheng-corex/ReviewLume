@@ -10,6 +10,7 @@ import { registerImportReviewResponse } from './commands/importReviewResponse';
 import { registerImportReReviewResponse } from './commands/importReReviewResponse';
 import { registerUpdateIssueStatus } from './commands/updateIssueStatus';
 import { registerReviewLoopCommands } from './commands/reviewLoopCommands';
+import { registerViewReReviewComparison } from './commands/viewReReviewComparison';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
 import { ReviewScopeService } from './services/reviewScopeService';
@@ -87,6 +88,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerImportReReviewResponse(context);
   registerUpdateIssueStatus(context, fileSelectionService);
   registerReviewLoopCommands(context);
+  registerViewReReviewComparison(context);
 
   logInfo('ReviewLume extension activated');
 }
