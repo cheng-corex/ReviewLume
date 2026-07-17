@@ -88,6 +88,7 @@ describe('reviewLoopModel', () => {
     expect(prompt).toContain('Missing authorization check');
     expect(prompt).not.toContain('SQL injection');
     expect(prompt).toContain('persistent 或 resolved');
+    expect(prompt).toContain('persistent 问题必须保留上方给出的原始问题 ID');
     expect(prompt).toContain('Added the missing authorization guard and tests.');
   });
 
@@ -148,6 +149,31 @@ describe('reviewLoopModel', () => {
       resolved: 1,
       newIssues: 1,
       severityChanged: 1,
+    });
+  });
+
+  it('does not classify the same finding as both resolved and new when parser fingerprints change', () => {
+    const baseline = report('same-review', [issue()]);
+    const current = report('same-review', [
+      issue({
+        issueId: 'ISSUE-aaaaaaaaaaaaaaaa',
+        sourceFingerprint: 'fingerprint-from-re-review',
+        description: 'The SQL injection remains present after the attempted fix.',
+      }),
+    ]);
+
+    const comparisons = compareReviewReports(baseline, current, [
+      'ISSUE-0000000000000001',
+    ]);
+
+    expect(comparisons).toHaveLength(1);
+    expect(comparisons[0]).toMatchObject({ status: 'persistent' });
+    expect(comparisons[0].baseline?.issueId).toBe('ISSUE-0000000000000001');
+    expect(comparisons[0].current?.issueId).toBe('ISSUE-aaaaaaaaaaaaaaaa');
+    expect(summarizeComparisons(comparisons)).toMatchObject({
+      persistent: 1,
+      resolved: 0,
+      newIssues: 0,
     });
   });
 
