@@ -23,6 +23,16 @@ export const COMMANDS = {
   IMPORT_REVIEW_RESPONSE: 'reviewlume.importReviewResponse',
   /** Update one structured review issue status */
   UPDATE_ISSUE_STATUS: 'reviewlume.updateIssueStatus',
+  /** Generate a bounded implementation prompt from selected review issues */
+  GENERATE_IMPLEMENTATION_PROMPT: 'reviewlume.generateImplementationPrompt',
+  /** Import a human-controlled implementation summary */
+  IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
+  /** Generate a bounded re-review prompt linked to the same review session */
+  GENERATE_RE_REVIEW_PROMPT: 'reviewlume.generateReReviewPrompt',
+  /** Import and persist a re-review response for the active review round */
+  IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
+  /** Open a read-only comparison of baseline and completed re-review findings */
+  VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
 } as const;

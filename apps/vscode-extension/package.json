@@ -29,6 +29,11 @@
     "onCommand:reviewlume.openReviewHistory",
     "onCommand:reviewlume.importReviewResponse",
     "onCommand:reviewlume.updateIssueStatus",
+    "onCommand:reviewlume.generateImplementationPrompt",
+    "onCommand:reviewlume.importImplementationSummary",
+    "onCommand:reviewlume.generateReReviewPrompt",
+    "onCommand:reviewlume.importReReviewResponse",
+    "onCommand:reviewlume.viewReReviewComparison",
     "onCommand:reviewlume.openReviewPanel",
     "onView:reviewlume.mainView"
   ],
@@ -55,6 +60,11 @@
       { "command": "reviewlume.openReviewHistory", "title": "%command.openReviewHistory%" },
       { "command": "reviewlume.importReviewResponse", "title": "%command.importReviewResponse%" },
       { "command": "reviewlume.updateIssueStatus", "title": "%command.updateIssueStatus%" },
+      { "command": "reviewlume.generateImplementationPrompt", "title": "%command.generateImplementationPrompt%" },
+      { "command": "reviewlume.importImplementationSummary", "title": "%command.importImplementationSummary%" },
+      { "command": "reviewlume.generateReReviewPrompt", "title": "%command.generateReReviewPrompt%" },
+      { "command": "reviewlume.importReReviewResponse", "title": "%command.importReReviewResponse%" },
+      { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" }
     ],
     "configuration": {

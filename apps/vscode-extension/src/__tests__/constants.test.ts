@@ -15,6 +15,11 @@ describe('constants', () => {
         OPEN_REVIEW_HISTORY: 'reviewlume.openReviewHistory',
         IMPORT_REVIEW_RESPONSE: 'reviewlume.importReviewResponse',
         UPDATE_ISSUE_STATUS: 'reviewlume.updateIssueStatus',
+        GENERATE_IMPLEMENTATION_PROMPT: 'reviewlume.generateImplementationPrompt',
+        IMPORT_IMPLEMENTATION_SUMMARY: 'reviewlume.importImplementationSummary',
+        GENERATE_RE_REVIEW_PROMPT: 'reviewlume.generateReReviewPrompt',
+        IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
+        VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
         OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
       });
     });
