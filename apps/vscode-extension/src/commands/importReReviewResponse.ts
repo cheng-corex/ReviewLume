@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as vscode from 'vscode';
 import { parseReviewResponse, type ReviewReport } from '@reviewlume/report-parser';
@@ -43,7 +44,10 @@ async function runImportReReviewResponse(): Promise<void> {
     const parsed = parseReviewResponse(responseText, {
       reviewId: selected.entry.metadata.reviewId,
     });
-    const report = parseStoredReviewReport(parsed.report);
+    const report = parseStoredReviewReport({
+      ...parsed.report,
+      sourceResponseHash: sha256(responseText),
+    });
     if (report.reviewId !== selected.entry.metadata.reviewId) {
       throw new ReviewLoopStorageError('INVALID_STATE', 'Re-review response reviewId mismatch.');
     }
@@ -73,7 +77,7 @@ async function runImportReReviewResponse(): Promise<void> {
       `Re-review response imported (${selected.entry.metadata.reviewId}, round ${selected.round})`,
     );
   } catch (error) {
-    logWarn(`Re-review response import failed (${errorCode(error)})`);
+    logWarn(`Re-review response import failed (${errorCode(error)}): ${errorMessage(error)}`);
     await vscode.window.showErrorMessage(
       t(
         'ReviewLume: Failed to import the re-review response safely.',
@@ -207,8 +211,17 @@ function formatDate(iso: string): string {
   return Number.isFinite(date.getTime()) ? date.toLocaleString() : iso;
 }
 
+function sha256(content: string): string {
+  return createHash('sha256').update(content).digest('hex');
+}
+
 function errorCode(error: unknown): string {
   return typeof error === 'object' && error !== null && 'code' in error
     ? String((error as { code: unknown }).code)
     : 'UNKNOWN';
+}
+
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) return error.message;
+  return String(error);
 }
