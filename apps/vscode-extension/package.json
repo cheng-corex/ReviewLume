@@ -35,6 +35,10 @@
     "onCommand:reviewlume.importReReviewResponse",
     "onCommand:reviewlume.viewReReviewComparison",
     "onCommand:reviewlume.openReviewPanel",
+    "onCommand:reviewlume.startBrowserBridge",
+    "onCommand:reviewlume.pairBrowserExtension",
+    "onCommand:reviewlume.revokeBrowserSessions",
+    "onCommand:reviewlume.sendPromptToBrowser",
     "onView:reviewlume.mainView"
   ],
   "main": "dist/extension.js",
@@ -65,7 +69,11 @@
       { "command": "reviewlume.generateReReviewPrompt", "title": "%command.generateReReviewPrompt%" },
       { "command": "reviewlume.importReReviewResponse", "title": "%command.importReReviewResponse%" },
       { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
-      { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" }
+      { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" },
+      { "command": "reviewlume.startBrowserBridge", "title": "%command.startBrowserBridge%" },
+      { "command": "reviewlume.pairBrowserExtension", "title": "%command.pairBrowserExtension%" },
+      { "command": "reviewlume.revokeBrowserSessions", "title": "%command.revokeBrowserSessions%" },
+      { "command": "reviewlume.sendPromptToBrowser", "title": "%command.sendPromptToBrowser%" }
     ],
     "configuration": {
       "title": "ReviewLume",
@@ -110,6 +118,7 @@
   "dependencies": {
     "@reviewlume/core": "workspace:*",
     "@reviewlume/report-parser": "workspace:*",
+    "@reviewlume/web-bridge": "workspace:*",
     "zod": "^4.4.3"
   },
   "devDependencies": {
