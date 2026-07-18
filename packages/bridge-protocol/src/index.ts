@@ -58,6 +58,13 @@ export const promptFillRequestSchema = z.object({
   ),
 }).strict();
 
+export const promptTakeRequestSchema = z.object({
+  ...envelopeFields,
+  type: z.literal('prompt-take'),
+  sessionToken: sessionTokenSchema,
+  extensionInstanceId: z.string().uuid(),
+}).strict();
+
 export const revokeRequestSchema = z.object({
   ...envelopeFields,
   type: z.literal('revoke'),
@@ -69,6 +76,7 @@ export const bridgeRequestSchema = z.discriminatedUnion('type', [
   healthRequestSchema,
   pairingRequestSchema,
   promptFillRequestSchema,
+  promptTakeRequestSchema,
   revokeRequestSchema,
 ]);
 
@@ -76,6 +84,7 @@ export type BridgeRequest = z.infer<typeof bridgeRequestSchema>;
 export type PairingRequest = z.infer<typeof pairingRequestSchema>;
 export type PairingResponse = z.infer<typeof pairingResponseSchema>;
 export type PromptFillRequest = z.infer<typeof promptFillRequestSchema>;
+export type PromptTakeRequest = z.infer<typeof promptTakeRequestSchema>;
 export type RevokeRequest = z.infer<typeof revokeRequestSchema>;
 
 export class BridgeProtocolError extends Error {
