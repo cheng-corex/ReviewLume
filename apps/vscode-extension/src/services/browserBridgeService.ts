@@ -1,10 +1,25 @@
 import type { BridgeServerAddress, LocalBridgeServer as LocalBridgeServerType } from '../../../web-bridge/src/index';
 
-// This runtime dependency is copied into dist/vendor during packaging, so it cannot be a static TS import.
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const { LocalBridgeServer } = require('../vendor/web-bridge/index.js') as {
-  readonly LocalBridgeServer: typeof LocalBridgeServerType;
-};
+type LocalBridgeServerConstructor = typeof LocalBridgeServerType;
+
+function loadLocalBridgeServer(): LocalBridgeServerConstructor {
+  try {
+    // Packaged VSIX runtime: copied into dist/vendor by the extension build.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return (require('../vendor/web-bridge/index.js') as { readonly LocalBridgeServer: LocalBridgeServerConstructor })
+      .LocalBridgeServer;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'MODULE_NOT_FOUND') {
+      throw error;
+    }
+
+    // Source/test runtime: use the workspace implementation before packaging has copied the vendor bundle.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    return (require('../../../web-bridge/src/index') as { readonly LocalBridgeServer: LocalBridgeServerConstructor })
+      .LocalBridgeServer;
+  }
+}
 
 export interface BrowserPromptInput {
   readonly reviewId: string;
@@ -14,7 +29,7 @@ export interface BrowserPromptInput {
 
 /** Owns the loopback bridge lifecycle for the current VS Code extension host. */
 export class BrowserBridgeService {
-  readonly #server = new LocalBridgeServer();
+  readonly #server = new (loadLocalBridgeServer())();
   #address: BridgeServerAddress | undefined;
 
   async start(): Promise<BridgeServerAddress> {
