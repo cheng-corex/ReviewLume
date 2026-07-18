@@ -35,6 +35,14 @@ export const COMMANDS = {
   VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
+  /** Start the loopback-only browser bridge */
+  START_BROWSER_BRIDGE: 'reviewlume.startBrowserBridge',
+  /** Create a short-lived browser-extension pairing code */
+  PAIR_BROWSER_EXTENSION: 'reviewlume.pairBrowserExtension',
+  /** Revoke all active browser-extension sessions */
+  REVOKE_BROWSER_SESSIONS: 'reviewlume.revokeBrowserSessions',
+  /** Queue a prompt for a paired browser extension without submitting it */
+  SEND_PROMPT_TO_BROWSER: 'reviewlume.sendPromptToBrowser',
 } as const;
 
 /** View and view-container identifiers. */
