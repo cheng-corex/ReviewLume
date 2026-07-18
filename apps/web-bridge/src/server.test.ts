@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { request as httpRequest } from 'node:http';
 import { afterEach, describe, expect, it } from 'vitest';
 import { computeRequestHash, type PairingRequest } from '@reviewlume/bridge-protocol';
 import { LocalBridgeServer } from './server.js';
@@ -24,6 +25,20 @@ function signedPairingRequest(
     extensionInstanceId,
   };
   return { ...unsigned, requestHash: computeRequestHash(unsigned as never) };
+}
+
+function requestStatus(
+  url: string,
+  headers: Record<string, string>,
+): Promise<number | undefined> {
+  return new Promise((resolve, reject) => {
+    const request = httpRequest(url, { headers }, (response) => {
+      response.resume();
+      response.once('end', () => resolve(response.statusCode));
+    });
+    request.once('error', reject);
+    request.end();
+  });
 }
 
 describe('LocalBridgeServer', () => {
@@ -84,10 +99,10 @@ describe('LocalBridgeServer', () => {
     });
     expect(badOrigin.status).toBe(403);
 
-    const badHost = await fetch(`${address.baseUrl}/v1/health`, {
-      headers: { host: 'localhost:9999' },
+    const badHostStatus = await requestStatus(`${address.baseUrl}/v1/health`, {
+      host: 'localhost:9999',
     });
-    expect(badHost.status).toBe(403);
+    expect(badHostStatus).toBe(403);
   });
 
   it('returns controlled JSON for malformed and oversized bodies', async () => {
