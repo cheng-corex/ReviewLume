@@ -11,6 +11,8 @@ import { registerImportReReviewResponse } from './commands/importReReviewRespons
 import { registerUpdateIssueStatus } from './commands/updateIssueStatus';
 import { registerReviewLoopCommands } from './commands/reviewLoopCommands';
 import { registerViewReReviewComparison } from './commands/viewReReviewComparison';
+import { registerBrowserBridgeCommands } from './commands/browserBridgeCommands';
+import { BrowserBridgeService } from './services/browserBridgeService';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
 import { ReviewScopeService } from './services/reviewScopeService';
@@ -41,6 +43,12 @@ export function activate(context: vscode.ExtensionContext): void {
     undefined,
     reviewScopeService,
   );
+  const browserBridgeService = new BrowserBridgeService();
+  context.subscriptions.push({
+    dispose: () => {
+      void browserBridgeService.dispose();
+    },
+  });
 
   function refreshViews(): void {
     treeProvider.refresh();
@@ -89,6 +97,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerUpdateIssueStatus(context, fileSelectionService);
   registerReviewLoopCommands(context);
   registerViewReReviewComparison(context);
+  registerBrowserBridgeCommands(context, browserBridgeService);
 
   logInfo('ReviewLume extension activated');
 }
