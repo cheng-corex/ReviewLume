@@ -2,6 +2,7 @@
   "files": [],
   "references": [
     { "path": "./packages/core" },
+    { "path": "./packages/bridge-protocol" },
     { "path": "./packages/git-context" },
     { "path": "./packages/prompt-templates" },
     { "path": "./packages/report-parser" },
