@@ -1,1 +1,1 @@
-export { LocalBridgeServer, type BridgeServerAddress } from './server';
+export { LocalBridgeServer, type BridgeServerAddress } from './server.js';
