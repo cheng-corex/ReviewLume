@@ -21,6 +21,10 @@ describe('constants', () => {
         IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
         VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
         OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
+        START_BROWSER_BRIDGE: 'reviewlume.startBrowserBridge',
+        PAIR_BROWSER_EXTENSION: 'reviewlume.pairBrowserExtension',
+        REVOKE_BROWSER_SESSIONS: 'reviewlume.revokeBrowserSessions',
+        SEND_PROMPT_TO_BROWSER: 'reviewlume.sendPromptToBrowser',
       });
     });
   });
