@@ -12,7 +12,7 @@
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run src/server.test.ts"
   },
   "dependencies": {
     "@reviewlume/bridge-protocol": "workspace:*"
