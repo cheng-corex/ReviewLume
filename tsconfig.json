@@ -8,6 +8,7 @@
     { "path": "./packages/report-parser" },
     { "path": "./packages/review-pack" },
     { "path": "./packages/secret-scanner" },
+    { "path": "./apps/web-bridge" },
     { "path": "./apps/vscode-extension" }
   ]
 }
