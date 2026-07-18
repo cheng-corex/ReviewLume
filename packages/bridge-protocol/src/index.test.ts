@@ -7,7 +7,7 @@ import {
   computeRequestHash,
   parseBridgeRequest,
   validateBridgeRequest,
-} from './index';
+} from './index.js';
 
 const now = Date.parse('2026-07-18T00:00:00.000Z');
 
