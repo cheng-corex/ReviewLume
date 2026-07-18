@@ -94,13 +94,26 @@ export class BridgeProtocolError extends Error {
   }
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableStringify(item)).join(',')}]`;
+  }
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, item]) => `${JSON.stringify(key)}:${stableStringify(item)}`);
+    return `{${entries.join(',')}}`;
+  }
+  return JSON.stringify(value);
+}
+
 function canonicalPayload(value: BridgeRequest): string {
   const { requestHash: _requestHash, ...unsigned } = value;
-  return JSON.stringify(unsigned);
+  return stableStringify(unsigned);
 }
 
 export function computeRequestHash(value: Omit<BridgeRequest, 'requestHash'>): string {
-  return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex');
+  return createHash('sha256').update(stableStringify(value), 'utf8').digest('hex');
 }
 
 function equalHash(left: string, right: string): boolean {
