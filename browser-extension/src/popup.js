@@ -42,7 +42,11 @@ $('fill').addEventListener('click', async () => {
     const hostname = new URL(tab.url).hostname;
     if (hostname !== prompt.targetSite) throw new Error(`提示目标为 ${prompt.targetSite}，当前页面不匹配。`);
     await chrome.scripting.executeScript({ target: { tabId: tab.id }, files: ['src/adapters.js'] });
-    const [{ result }] = await chrome.scripting.executeScript({ target: { tabId: tab.id }, func: async (text, site) => (await import(chrome.runtime.getURL('src/adapters.js'))).fillPrompt(text, site), args: [prompt.prompt, prompt.targetSite] });
+    const [{ result }] = await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      func: (text, site) => globalThis.reviewLumeFillPrompt(text, site),
+      args: [prompt.prompt, prompt.targetSite],
+    });
     await chrome.storage.local.remove('pendingPrompt');
     await chrome.action.setBadgeText({ text: '' });
     show(`已填入 ${result.characters} 个字符。请自行检查并发送。`);
