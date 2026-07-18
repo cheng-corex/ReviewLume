@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import { afterEach, describe, expect, it } from 'vitest';
 import { computeRequestHash, type PairingRequest } from '@reviewlume/bridge-protocol';
-import { LocalBridgeServer } from './server';
+import { LocalBridgeServer } from './server.js';
 
 const servers: LocalBridgeServer[] = [];
 
@@ -9,7 +9,10 @@ afterEach(async () => {
   await Promise.all(servers.splice(0).map((server) => server.stop()));
 });
 
-function signedPairingRequest(code: string, extensionInstanceId = randomUUID()): PairingRequest {
+function signedPairingRequest(
+  code: string,
+  extensionInstanceId: string = randomUUID(),
+): PairingRequest {
   const unsigned = {
     protocolVersion: 1 as const,
     type: 'pairing' as const,
