@@ -1,4 +1,8 @@
-import { LocalBridgeServer, type BridgeServerAddress } from '@reviewlume/web-bridge';
+import type { BridgeServerAddress, LocalBridgeServer as LocalBridgeServerType } from '../../../web-bridge/src/index';
+
+const { LocalBridgeServer } = require('../vendor/web-bridge/index.js') as {
+  readonly LocalBridgeServer: typeof LocalBridgeServerType;
+};
 
 export interface BrowserPromptInput {
   readonly reviewId: string;
