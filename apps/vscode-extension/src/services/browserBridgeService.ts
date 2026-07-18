@@ -1,6 +1,7 @@
 import type { BridgeServerAddress, LocalBridgeServer as LocalBridgeServerType } from '../../../web-bridge/src/index';
 
 type LocalBridgeServerConstructor = typeof LocalBridgeServerType;
+type LocalBridgeServerInstance = InstanceType<LocalBridgeServerConstructor>;
 
 function loadLocalBridgeServer(): LocalBridgeServerConstructor {
   try {
@@ -14,7 +15,7 @@ function loadLocalBridgeServer(): LocalBridgeServerConstructor {
       throw error;
     }
 
-    // Source/test runtime: use the workspace implementation before packaging has copied the vendor bundle.
+    // Source runtime: use the workspace implementation before packaging has copied the vendor bundle.
     // eslint-disable-next-line @typescript-eslint/no-var-requires
     return (require('../../../web-bridge/src/index') as { readonly LocalBridgeServer: LocalBridgeServerConstructor })
       .LocalBridgeServer;
@@ -29,11 +30,17 @@ export interface BrowserPromptInput {
 
 /** Owns the loopback bridge lifecycle for the current VS Code extension host. */
 export class BrowserBridgeService {
-  readonly #server = new (loadLocalBridgeServer())();
+  #server: LocalBridgeServerInstance | undefined;
   #address: BridgeServerAddress | undefined;
 
+  #getServer(): LocalBridgeServerInstance {
+    // Keep activation side-effect free: the bridge implementation is loaded only after an explicit user command.
+    this.#server ??= new (loadLocalBridgeServer())();
+    return this.#server;
+  }
+
   async start(): Promise<BridgeServerAddress> {
-    this.#address = await this.#server.start();
+    this.#address = await this.#getServer().start();
     return this.#address;
   }
 
@@ -47,24 +54,25 @@ export class BrowserBridgeService {
     readonly expiresAt: string;
   }> {
     const address = await this.start();
-    return { address, ...this.#server.createPairingCode() };
+    return { address, ...this.#getServer().createPairingCode() };
   }
 
   getPairedExtensions(): readonly string[] {
-    return this.#server.getPairedExtensions();
+    return this.#server?.getPairedExtensions() ?? [];
   }
 
   async publishPrompt(extensionInstanceId: string, input: BrowserPromptInput): Promise<void> {
     await this.start();
-    this.#server.publishPromptForExtension(extensionInstanceId, input);
+    this.#getServer().publishPromptForExtension(extensionInstanceId, input);
   }
 
   revokeAll(): void {
-    this.#server.revokeAll();
+    this.#server?.revokeAll();
   }
 
   async dispose(): Promise<void> {
-    await this.#server.stop();
+    await this.#server?.stop();
+    this.#server = undefined;
     this.#address = undefined;
   }
 }
