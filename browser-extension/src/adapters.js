@@ -18,7 +18,7 @@ function locateComposer(hostname) {
   return unique[0];
 }
 
-export function fillPrompt(prompt, expectedSite) {
+globalThis.reviewLumeFillPrompt = function reviewLumeFillPrompt(prompt, expectedSite) {
   if (location.hostname !== expectedSite) throw new Error('当前页面与提示目标站点不一致。');
   const composer = locateComposer(location.hostname);
   composer.focus();
@@ -31,4 +31,4 @@ export function fillPrompt(prompt, expectedSite) {
   composer.dispatchEvent(new InputEvent('input', { bubbles: true, inputType: 'insertText', data: prompt }));
   composer.dispatchEvent(new Event('change', { bubbles: true }));
   return { characters: prompt.length };
-}
+};
