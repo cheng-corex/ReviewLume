@@ -1,5 +1,7 @@
 import type { BridgeServerAddress, LocalBridgeServer as LocalBridgeServerType } from '../../../web-bridge/src/index';
 
+// This runtime dependency is copied into dist/vendor during packaging, so it cannot be a static TS import.
+// eslint-disable-next-line @typescript-eslint/no-var-requires
 const { LocalBridgeServer } = require('../vendor/web-bridge/index.js') as {
   readonly LocalBridgeServer: typeof LocalBridgeServerType;
 };
