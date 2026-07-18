@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "ReviewLume Browser Bridge",
+  "version": "0.1.0",
+  "description": "Explicitly pairs with the local ReviewLume bridge and fills approved AI composer pages without sending.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "optional_host_permissions": [
+    "https://chatgpt.com/*",
+    "https://claude.ai/*",
+    "https://gemini.google.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "ReviewLume Browser Bridge",
+    "default_popup": "src/popup.html"
+  }
+}
