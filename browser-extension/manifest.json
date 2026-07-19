@@ -3,7 +3,7 @@
   "name": "ReviewLume Browser Bridge",
   "version": "0.1.0",
   "description": "Explicitly pairs with the local ReviewLume bridge and fills approved AI composer pages without sending.",
-  "permissions": ["storage", "activeTab", "scripting"],
+  "permissions": ["storage", "activeTab", "scripting", "alarms"],
   "host_permissions": ["http://127.0.0.1/*"],
   "optional_host_permissions": [
     "https://chatgpt.com/*",
