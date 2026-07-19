@@ -45,6 +45,9 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Validate browser extension
+        run: pnpm validate:browser-extension
+
       - name: Build
         run: pnpm build
 
