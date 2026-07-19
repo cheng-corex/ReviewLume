@@ -31,6 +31,20 @@ ReviewLume 导入并整理审核结果
 ReviewLume 生成二次复核任务
 ```
 
+## 浏览器桥接（P9）
+
+浏览器桥接是可选的本地辅助能力，用于把 ReviewLume 已生成的提示填入受支持网页的输入框。它不会替代原有的复制、粘贴、导出和回答导入流程。
+
+- 本地服务只监听 `127.0.0.1` 的随机端口。
+- 用户必须在 VS Code 中显式启动桥接并生成一次性短时配对码。
+- 浏览器扩展采用 Manifest V3；AI 站点权限按站点单独请求，默认不持有站点访问权限。
+- 首批页面适配器支持 ChatGPT、Claude 和 Gemini 的公开输入页面。
+- 提示到达扩展后仍需用户点击“填入当前页面”；扩展只触发标准输入事件，绝不点击发送。
+- 不读取 Cookie、Session、Token、浏览历史或回答正文，不调用第三方 AI 内部接口。
+- 撤销会话或关闭 VS Code 扩展后，内存中的桥接会话失效。
+
+开发模式下可运行 `pnpm validate:browser-extension`，对 Manifest 权限、引用文件、JavaScript 语法以及禁止的自动发送和凭据读取原语执行专项校验。真实浏览器验收步骤见 [P9 人工验收清单](docs/p9-browser-bridge-verification.md)。
+
 ## 第一版范围
 
 第一版只实现“保守模式”：
@@ -41,6 +55,7 @@ ReviewLume 生成二次复核任务
 - 扫描敏感文件和疑似密钥。
 - 生成中文或英文审核提示。
 - 打开指定 AI 网页并复制提示。
+- 可选地通过显式配对的本地浏览器桥接填入提示，但不自动发送。
 - 手动粘贴 AI 回答并导入。
 - 保存结构化审核报告与历史记录。
 
@@ -50,6 +65,8 @@ ReviewLume 生成二次复核任务
 - 获取 Cookie、Session Token 或访问令牌。
 - 调用网页内部 Backend API。
 - 自动连续发送网页请求。
+- 自动点击网页发送按钮。
+- 自动采集或导入网页回答。
 - 自动执行 AI 返回的终端命令。
 - 让浏览器扩展读取任意本地文件。
 - 未经确认直接修改项目代码。
@@ -65,6 +82,8 @@ ReviewLume 生成二次复核任务
 7. [测试与验收](docs/test-and-verification.md)
 8. [发布指南](docs/publishing-guide.md)
 9. [用户指南](docs/user-guide.md)
+10. [P9 浏览器桥接实施计划](docs/p9-browser-bridge-plan.md)
+11. [P9 人工验收清单](docs/p9-browser-bridge-verification.md)
 
 ## 推荐技术栈
 
@@ -75,7 +94,7 @@ ReviewLume 生成二次复核任务
 - Zod
 - simple-git 或受控的 Git 子进程封装
 - Vitest
-- Playwright（第二阶段浏览器桥接）
+- Manifest V3 浏览器扩展
 
 ## 许可建议
 
