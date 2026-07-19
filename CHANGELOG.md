@@ -65,6 +65,19 @@
   - Full Repository is rejected when it cannot fit into a single non-truncated Review Pack.
   - Scope changes remain subject to the existing sensitive-content scan, fingerprint,
     and export gates.
+- P9 optional browser bridge:
+  - Strict Zod bridge protocol with request hashes, nonces, expiries, replay protection,
+    review binding, payload limits, and authenticated prompt polling.
+  - Loopback-only local bridge on a random `127.0.0.1` port with one-time pairing codes,
+    short-lived in-memory sessions, extension-instance binding, CORS restrictions, and revocation.
+  - VS Code commands for explicit bridge startup, browser pairing, session revocation, and
+    queueing a prompt for a paired extension.
+  - Manifest V3 browser extension with minimal regular permissions and optional per-site host
+    permissions for ChatGPT, Claude, and Gemini.
+  - Page adapters that only locate a confirmed visible composer and fill text after an explicit
+    user action; they never click or submit, read answers, or access cookies and session storage.
+  - Cross-platform CI validation for manifest safety, referenced files, JavaScript syntax,
+    prohibited auto-submit primitives, and prohibited credential/session reads.
 
 ### Fixed
 
