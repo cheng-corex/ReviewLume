@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../web-bridge/src",
+    "outDir": "dist/vendor/web-bridge",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "verbatimModuleSyntax": false,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["../web-bridge/src/**/*.ts"],
+  "exclude": ["../web-bridge/src/**/*.test.ts"]
+}
