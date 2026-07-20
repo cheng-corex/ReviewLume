@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
-import { logInfo } from '../services/logService';
+import { HistoryService, type HistoryEntry } from '../services/historyService';
+import { logInfo, logWarn } from '../services/logService';
 import { BrowserBridgeService } from '../services/browserBridgeService';
 
 const TARGET_SITES = ['chatgpt.com', 'claude.ai', 'gemini.google.com'] as const;
@@ -48,11 +49,7 @@ export function registerBrowserBridgeCommands(
             });
       if (!extensionInstanceId) return;
 
-      const reviewId = await vscode.window.showInputBox({
-        title: 'Review ID',
-        prompt: 'Enter the ReviewLume review ID bound to this prompt.',
-        validateInput: (value) => (value.trim() ? undefined : 'Review ID is required.'),
-      });
+      const reviewId = await selectReviewIdFromHistory();
       if (!reviewId) return;
 
       const targetSite = await vscode.window.showQuickPick([...TARGET_SITES], {
@@ -70,7 +67,7 @@ export function registerBrowserBridgeCommands(
       if (!prompt) return;
 
       await bridge.publishPrompt(extensionInstanceId, {
-        reviewId: reviewId.trim(),
+        reviewId,
         targetSite,
         prompt,
       });
@@ -80,4 +77,61 @@ export function registerBrowserBridgeCommands(
       );
     }),
   );
+}
+
+async function selectReviewIdFromHistory(): Promise<string | undefined> {
+  const workspaceFolders = vscode.workspace.workspaceFolders ?? [];
+  if (workspaceFolders.length === 0) {
+    await vscode.window.showWarningMessage(
+      'ReviewLume: Open the repository workspace that contains the review history first.',
+    );
+    return undefined;
+  }
+
+  const historyService = new HistoryService();
+  const entries: HistoryEntry[] = [];
+  for (const folder of workspaceFolders) {
+    try {
+      entries.push(...(await historyService.list(folder.uri.fsPath)));
+    } catch (error) {
+      logWarn(`Failed to list browser bridge review history (${getErrorCode(error)})`);
+    }
+  }
+
+  const usableEntries = entries.filter((entry) => entry.integrity !== 'corrupt');
+  if (usableEntries.length === 0) {
+    await vscode.window.showWarningMessage(
+      'ReviewLume: No usable review history was found in the current workspace.',
+    );
+    return undefined;
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    usableEntries.map((entry) => ({
+      label: entry.metadata.repositoryDisplayName,
+      description: formatDate(entry.metadata.createdAt),
+      detail: `${entry.metadata.reviewId} · ${entry.metadata.fileCount} file(s) · ${entry.integrity}`,
+      reviewId: entry.metadata.reviewId,
+    })),
+    {
+      title: 'Select ReviewLume review',
+      placeHolder: 'Search by repository, date, or review ID',
+      matchOnDescription: true,
+      matchOnDetail: true,
+    },
+  );
+
+  return picked?.reviewId;
+}
+
+function formatDate(iso: string): string {
+  const date = new Date(iso);
+  return Number.isFinite(date.getTime()) ? date.toLocaleString() : iso;
+}
+
+function getErrorCode(error: unknown): string {
+  if (typeof error === 'object' && error !== null && 'code' in error) {
+    return String((error as { code?: unknown }).code ?? 'UNKNOWN');
+  }
+  return 'UNKNOWN';
 }
