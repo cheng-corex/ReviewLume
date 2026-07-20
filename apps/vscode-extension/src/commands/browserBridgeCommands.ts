@@ -5,7 +5,8 @@ import { logInfo, logWarn } from '../services/logService';
 import { BrowserBridgeService } from '../services/browserBridgeService';
 
 const TARGET_SITES = ['chatgpt.com', 'claude.ai', 'gemini.google.com'] as const;
-const SITE_URLS: Readonly<Record<(typeof TARGET_SITES)[number], string>> = {
+type TargetSite = (typeof TARGET_SITES)[number];
+const SITE_URLS: Readonly<Record<TargetSite, string>> = {
   'chatgpt.com': 'https://chatgpt.com/',
   'claude.ai': 'https://claude.ai/',
   'gemini.google.com': 'https://gemini.google.com/',
@@ -187,7 +188,7 @@ export function registerBrowserBridgeCommands(
       const reviewId = await selectReviewIdFromHistory();
       if (!reviewId) return;
 
-      const targetSite = await vscode.window.showQuickPick([...TARGET_SITES], {
+      const targetSite = await vscode.window.showQuickPick<TargetSite>([...TARGET_SITES], {
         title: 'Target AI site',
         placeHolder: 'The browser extension will only fill this site.',
       });
@@ -216,11 +217,11 @@ export function registerBrowserBridgeCommands(
   );
 }
 
-async function openSite(site: (typeof TARGET_SITES)[number]): Promise<void> {
+async function openSite(site: TargetSite): Promise<void> {
   await vscode.env.openExternal(vscode.Uri.parse(SITE_URLS[site]));
 }
 
-function siteLabel(site: (typeof TARGET_SITES)[number]): string {
+function siteLabel(site: TargetSite): string {
   return site === 'chatgpt.com' ? 'ChatGPT' : site === 'claude.ai' ? 'Claude' : 'Gemini';
 }
 
