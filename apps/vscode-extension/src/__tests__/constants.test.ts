@@ -21,6 +21,7 @@ describe('constants', () => {
         IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
         VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
         OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
+        BROWSER_BRIDGE_MENU: 'reviewlume.browserBridgeMenu',
         START_BROWSER_BRIDGE: 'reviewlume.startBrowserBridge',
         PAIR_BROWSER_EXTENSION: 'reviewlume.pairBrowserExtension',
         REVOKE_BROWSER_SESSIONS: 'reviewlume.revokeBrowserSessions',
