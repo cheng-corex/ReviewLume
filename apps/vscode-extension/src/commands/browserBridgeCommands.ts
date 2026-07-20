@@ -5,38 +5,173 @@ import { logInfo, logWarn } from '../services/logService';
 import { BrowserBridgeService } from '../services/browserBridgeService';
 
 const TARGET_SITES = ['chatgpt.com', 'claude.ai', 'gemini.google.com'] as const;
+const SITE_URLS: Readonly<Record<(typeof TARGET_SITES)[number], string>> = {
+  'chatgpt.com': 'https://chatgpt.com/',
+  'claude.ai': 'https://claude.ai/',
+  'gemini.google.com': 'https://gemini.google.com/',
+};
+
+interface BridgeAction extends vscode.QuickPickItem {
+  readonly action:
+    | 'start'
+    | 'pair'
+    | 'open-chatgpt'
+    | 'open-claude'
+    | 'open-gemini'
+    | 'send'
+    | 'revoke'
+    | 'logs'
+    | 'stop';
+}
 
 export function registerBrowserBridgeCommands(
   context: vscode.ExtensionContext,
   bridge: BrowserBridgeService,
 ): void {
-  context.subscriptions.push(
-    vscode.commands.registerCommand(COMMANDS.START_BROWSER_BRIDGE, async () => {
-      const address = await bridge.start();
-      logInfo(`Browser bridge started on ${address.baseUrl}`);
+  const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 40);
+  status.name = 'ReviewLume Browser Bridge';
+  status.command = COMMANDS.BROWSER_BRIDGE_MENU;
+  status.show();
+  context.subscriptions.push(status);
+
+  const refreshStatus = (): void => {
+    const address = bridge.address;
+    status.text = address
+      ? `$(radio-tower) ReviewLume (${address.port})`
+      : '$(circle-slash) ReviewLume Bridge';
+    status.tooltip = address
+      ? `ReviewLume browser bridge is running on ${address.baseUrl}. Click for actions.`
+      : 'ReviewLume browser bridge is stopped. Click to start or open actions.';
+  };
+  refreshStatus();
+
+  const start = async (showMessage = true): Promise<void> => {
+    const address = await bridge.start();
+    refreshStatus();
+    logInfo(`Browser bridge started on ${address.baseUrl}`);
+    if (showMessage) {
       await vscode.window.showInformationMessage(
         `ReviewLume browser bridge is running on ${address.baseUrl}.`,
       );
-    }),
-    vscode.commands.registerCommand(COMMANDS.PAIR_BROWSER_EXTENSION, async () => {
-      const pairing = await bridge.createPairingCode();
-      await vscode.env.clipboard.writeText(pairing.code);
-      logInfo(`Browser pairing code created; expires at ${pairing.expiresAt}`);
-      await vscode.window.showInformationMessage(
-        `Pairing code ${pairing.code} copied to the clipboard. Bridge: ${pairing.address.baseUrl}`,
-      );
-    }),
-    vscode.commands.registerCommand(COMMANDS.REVOKE_BROWSER_SESSIONS, async () => {
-      bridge.revokeAll();
-      logInfo('All browser bridge sessions revoked');
-      await vscode.window.showInformationMessage('All ReviewLume browser sessions were revoked.');
-    }),
+    }
+  };
+
+  const pair = async (): Promise<void> => {
+    const pairing = await bridge.createPairingCode();
+    refreshStatus();
+    await vscode.env.clipboard.writeText(pairing.code);
+    logInfo(`Browser pairing code created; expires at ${pairing.expiresAt}`);
+    await vscode.window.showInformationMessage(
+      `Pairing code ${pairing.code} copied. Bridge ${pairing.address.baseUrl}. Open the ReviewLume browser extension and confirm pairing.`,
+      'Open ChatGPT',
+    ).then(async (choice) => {
+      if (choice === 'Open ChatGPT') await openSite('chatgpt.com');
+    });
+  };
+
+  const revoke = async (): Promise<void> => {
+    bridge.revokeAll();
+    logInfo('All browser bridge sessions revoked');
+    await vscode.window.showInformationMessage('All ReviewLume browser sessions were revoked.');
+  };
+
+  const stop = async (): Promise<void> => {
+    await bridge.stop();
+    refreshStatus();
+    logInfo('Browser bridge stopped');
+    await vscode.window.showInformationMessage('ReviewLume browser bridge stopped.');
+  };
+
+  const showMenu = async (): Promise<void> => {
+    const address = bridge.address;
+    const pairedCount = bridge.getPairedExtensions().length;
+    const items: BridgeAction[] = [];
+    if (!address) {
+      items.push({
+        label: '$(play) Start Browser Bridge',
+        description: 'Start the local loopback service',
+        action: 'start',
+      });
+    }
+    items.push(
+      {
+        label: '$(plug) Connect Browser Extension',
+        description: pairedCount > 0 ? `${pairedCount} active connection(s)` : 'Create a short-lived pairing code',
+        action: 'pair',
+      },
+      {
+        label: '$(globe) Open ChatGPT',
+        description: 'chatgpt.com',
+        action: 'open-chatgpt',
+      },
+      {
+        label: '$(globe) Open Claude',
+        description: 'claude.ai',
+        action: 'open-claude',
+      },
+      {
+        label: '$(globe) Open Gemini',
+        description: 'gemini.google.com',
+        action: 'open-gemini',
+      },
+      {
+        label: '$(send) Send Review Prompt',
+        description: pairedCount > 0 ? 'Queue a prompt without submitting it' : 'Requires a paired browser extension',
+        action: 'send',
+      },
+      {
+        label: '$(debug-disconnect) Revoke Browser Connections',
+        description: 'Invalidate all active sessions',
+        action: 'revoke',
+      },
+      {
+        label: '$(output) Show ReviewLume Logs',
+        description: 'Open the ReviewLume output channel',
+        action: 'logs',
+      },
+    );
+    if (address) {
+      items.push({
+        label: '$(close) Stop Browser Bridge',
+        description: address.baseUrl,
+        action: 'stop',
+      });
+    }
+
+    const picked = await vscode.window.showQuickPick(items, {
+      title: address
+        ? `ReviewLume Browser Bridge (port ${address.port})`
+        : 'ReviewLume Browser Bridge',
+      placeHolder: 'Choose a browser bridge action',
+    });
+    if (!picked) return;
+
+    switch (picked.action) {
+      case 'start': await start(); break;
+      case 'pair': await pair(); break;
+      case 'open-chatgpt': await openSite('chatgpt.com'); break;
+      case 'open-claude': await openSite('claude.ai'); break;
+      case 'open-gemini': await openSite('gemini.google.com'); break;
+      case 'send': await vscode.commands.executeCommand(COMMANDS.SEND_PROMPT_TO_BROWSER); break;
+      case 'revoke': await revoke(); break;
+      case 'logs': await vscode.commands.executeCommand('workbench.action.output.show', 'ReviewLume'); break;
+      case 'stop': await stop(); break;
+    }
+  };
+
+  context.subscriptions.push(
+    vscode.commands.registerCommand(COMMANDS.BROWSER_BRIDGE_MENU, showMenu),
+    vscode.commands.registerCommand(COMMANDS.START_BROWSER_BRIDGE, () => start()),
+    vscode.commands.registerCommand(COMMANDS.PAIR_BROWSER_EXTENSION, pair),
+    vscode.commands.registerCommand(COMMANDS.REVOKE_BROWSER_SESSIONS, revoke),
     vscode.commands.registerCommand(COMMANDS.SEND_PROMPT_TO_BROWSER, async () => {
       const paired = bridge.getPairedExtensions();
       if (paired.length === 0) {
-        await vscode.window.showWarningMessage(
-          'No active browser extension is paired. Run “ReviewLume: Pair Browser Extension” first.',
+        const choice = await vscode.window.showWarningMessage(
+          'No active browser extension is paired.',
+          'Connect Browser Extension',
         );
+        if (choice === 'Connect Browser Extension') await pair();
         return;
       }
 
@@ -72,11 +207,21 @@ export function registerBrowserBridgeCommands(
         prompt,
       });
       logInfo(`Prompt queued for paired browser extension ${extensionInstanceId}`);
-      await vscode.window.showInformationMessage(
-        'Prompt queued for the paired browser extension. It will be filled but not submitted.',
+      const openChoice = await vscode.window.showInformationMessage(
+        'Prompt queued. ReviewLume will fill it but never submit it.',
+        `Open ${siteLabel(targetSite)}`,
       );
+      if (openChoice) await openSite(targetSite);
     }),
   );
+}
+
+async function openSite(site: (typeof TARGET_SITES)[number]): Promise<void> {
+  await vscode.env.openExternal(vscode.Uri.parse(SITE_URLS[site]));
+}
+
+function siteLabel(site: (typeof TARGET_SITES)[number]): string {
+  return site === 'chatgpt.com' ? 'ChatGPT' : site === 'claude.ai' ? 'Claude' : 'Gemini';
 }
 
 async function selectReviewIdFromHistory(): Promise<string | undefined> {
