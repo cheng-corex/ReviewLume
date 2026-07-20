@@ -35,6 +35,8 @@ export const COMMANDS = {
   VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
+  /** Open the status-bar browser bridge action menu */
+  BROWSER_BRIDGE_MENU: 'reviewlume.browserBridgeMenu',
   /** Start the loopback-only browser bridge */
   START_BROWSER_BRIDGE: 'reviewlume.startBrowserBridge',
   /** Create a short-lived browser-extension pairing code */
