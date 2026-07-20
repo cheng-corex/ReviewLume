@@ -101,7 +101,7 @@ pnpm typecheck
 pnpm test
 pnpm validate:browser-extension
 pnpm build
-pnpm package:vsix
+pnpm package:vscode
 ```
 
 四平台 GitHub Actions 必须全部通过。人工验收完成后，应记录浏览器版本、VS Code 版本、操作系统、目标站点、结果和必要的脱敏截图。
