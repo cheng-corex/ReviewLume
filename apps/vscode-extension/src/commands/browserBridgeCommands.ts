@@ -11,6 +11,11 @@ const SITE_URLS: Readonly<Record<TargetSite, string>> = {
   'claude.ai': 'https://claude.ai/',
   'gemini.google.com': 'https://gemini.google.com/',
 };
+const SITE_LABELS: Readonly<Record<TargetSite, string>> = {
+  'chatgpt.com': 'ChatGPT',
+  'claude.ai': 'Claude',
+  'gemini.google.com': 'Gemini',
+};
 
 interface BridgeAction extends vscode.QuickPickItem {
   readonly action:
@@ -24,6 +29,16 @@ interface BridgeAction extends vscode.QuickPickItem {
     | 'logs'
     | 'stop';
 }
+
+interface TargetSiteItem extends vscode.QuickPickItem {
+  readonly site: TargetSite;
+}
+
+const TARGET_SITE_ITEMS: readonly TargetSiteItem[] = TARGET_SITES.map((site) => ({
+  label: SITE_LABELS[site],
+  description: site,
+  site,
+}));
 
 export function registerBrowserBridgeCommands(
   context: vscode.ExtensionContext,
@@ -188,11 +203,12 @@ export function registerBrowserBridgeCommands(
       const reviewId = await selectReviewIdFromHistory();
       if (!reviewId) return;
 
-      const targetSite = await vscode.window.showQuickPick<TargetSite>([...TARGET_SITES], {
+      const targetSiteItem = await vscode.window.showQuickPick(TARGET_SITE_ITEMS, {
         title: 'Target AI site',
         placeHolder: 'The browser extension will only fill this site.',
       });
-      if (!targetSite) return;
+      if (!targetSiteItem) return;
+      const targetSite = targetSiteItem.site;
 
       const prompt = await vscode.window.showInputBox({
         title: 'Prompt to fill in browser',
@@ -222,7 +238,7 @@ async function openSite(site: TargetSite): Promise<void> {
 }
 
 function siteLabel(site: TargetSite): string {
-  return site === 'chatgpt.com' ? 'ChatGPT' : site === 'claude.ai' ? 'Claude' : 'Gemini';
+  return SITE_LABELS[site];
 }
 
 async function selectReviewIdFromHistory(): Promise<string | undefined> {
