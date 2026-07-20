@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -35,6 +35,7 @@
     "onCommand:reviewlume.importReReviewResponse",
     "onCommand:reviewlume.viewReReviewComparison",
     "onCommand:reviewlume.openReviewPanel",
+    "onCommand:reviewlume.browserBridgeMenu",
     "onCommand:reviewlume.startBrowserBridge",
     "onCommand:reviewlume.pairBrowserExtension",
     "onCommand:reviewlume.revokeBrowserSessions",
@@ -49,7 +50,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.5.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.6.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
@@ -70,6 +71,7 @@
       { "command": "reviewlume.importReReviewResponse", "title": "%command.importReReviewResponse%" },
       { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" },
+      { "command": "reviewlume.browserBridgeMenu", "title": "ReviewLume: Browser Bridge Menu" },
       { "command": "reviewlume.startBrowserBridge", "title": "%command.startBrowserBridge%" },
       { "command": "reviewlume.pairBrowserExtension", "title": "%command.pairBrowserExtension%" },
       { "command": "reviewlume.revokeBrowserSessions", "title": "%command.revokeBrowserSessions%" },
