@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ReviewLume Browser Bridge",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Explicitly pairs with the local ReviewLume bridge and fills approved AI composer pages without sending.",
   "permissions": ["storage", "activeTab", "scripting", "alarms"],
   "host_permissions": ["http://127.0.0.1/*"],
@@ -14,6 +14,13 @@
     "service_worker": "src/background.js",
     "type": "module"
   },
+  "content_scripts": [
+    {
+      "matches": ["http://127.0.0.1/*"],
+      "js": ["src/handoff.js"],
+      "run_at": "document_idle"
+    }
+  ],
   "action": {
     "default_title": "ReviewLume Browser Bridge",
     "default_popup": "src/popup.html"
