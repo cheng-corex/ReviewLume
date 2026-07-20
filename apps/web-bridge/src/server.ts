@@ -17,6 +17,22 @@ const MAX_BODY_BYTES = 32_000;
 const PAIRING_TTL_MS = 2 * 60_000;
 const SESSION_TTL_MS = 15 * 60_000;
 const PROMPT_TTL_MS = 30_000;
+const HANDOFF_HTML = `<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ReviewLume Browser Bridge</title>
+</head>
+<body>
+  <main>
+    <h1>ReviewLume Browser Bridge</h1>
+    <p id="status">正在将短时连接信息安全交给 ReviewLume 浏览器扩展…</p>
+    <p>首次连接时，浏览器会要求你确认目标 AI 站点权限。ReviewLume 不会自动发送内容。</p>
+    <p>如果没有继续，请确认 ReviewLume Browser Bridge 扩展已安装并启用。</p>
+  </main>
+</body>
+</html>`;
 
 interface PairingRecord {
   readonly expiresAt: number;
@@ -179,6 +195,10 @@ export class LocalBridgeServer {
         this.#empty(request, response, 204);
         return;
       }
+      if (request.method === 'GET' && request.url === '/connect') {
+        this.#html(request, response, 200, HANDOFF_HTML);
+        return;
+      }
       if (request.method === 'GET' && request.url === '/v1/health') {
         this.#json(request, response, 200, { ok: true, protocolVersion: 1 });
         return;
@@ -194,6 +214,10 @@ export class LocalBridgeServer {
           return;
         }
         record.used = true;
+        for (const session of this.#sessions.values()) {
+          if (session.extensionInstanceId === parsed.extensionInstanceId) session.revoked = true;
+        }
+        this.#pendingPrompts.delete(parsed.extensionInstanceId);
         const sessionToken = randomBytes(32).toString('base64url');
         const expiresAt = now + SESSION_TTL_MS;
         this.#sessions.set(sessionToken, {
@@ -292,6 +316,7 @@ export class LocalBridgeServer {
     const headers: Record<string, string> = {
       'cache-control': 'no-store',
       'x-content-type-options': 'nosniff',
+      'referrer-policy': 'no-referrer',
     };
     const origin = request.headers.origin;
     if (origin && /^chrome-extension:\/\/[a-p]{32}$/.test(origin)) {
@@ -306,6 +331,21 @@ export class LocalBridgeServer {
   #empty(request: IncomingMessage, response: ServerResponse, status: number): void {
     response.writeHead(status, this.#headers(request));
     response.end();
+  }
+
+  #html(
+    request: IncomingMessage,
+    response: ServerResponse,
+    status: number,
+    body: string,
+  ): void {
+    response.writeHead(status, {
+      ...this.#headers(request),
+      'content-security-policy': "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+      'content-type': 'text/html; charset=utf-8',
+      'content-length': Buffer.byteLength(body).toString(),
+    });
+    response.end(body);
   }
 
   #json(
