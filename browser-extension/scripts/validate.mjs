@@ -31,13 +31,17 @@ assertExactSet(
 assert(manifest.content_scripts?.length === 1, 'Exactly one loopback handoff content script is required.');
 assertExactSet(
   manifest.content_scripts[0].matches,
-  ['http://127.0.0.1/*'],
+  ['http://127.0.0.1/connect*'],
   'handoff content script matches',
 );
 assertExactSet(
   manifest.content_scripts[0].js,
   ['src/handoff.js'],
   'handoff content script files',
+);
+assert(
+  manifest.content_scripts[0].run_at === 'document_idle',
+  'Handoff content script must run at document_idle.',
 );
 
 const forbiddenPermissions = ['cookies', 'history', 'tabs', 'webRequest', 'webRequestBlocking'];
