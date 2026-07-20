@@ -70,9 +70,13 @@ export class BrowserBridgeService {
     this.#server?.revokeAll();
   }
 
-  async dispose(): Promise<void> {
+  async stop(): Promise<void> {
     await this.#server?.stop();
     this.#server = undefined;
     this.#address = undefined;
+  }
+
+  async dispose(): Promise<void> {
+    await this.stop();
   }
 }
