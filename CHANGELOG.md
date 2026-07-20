@@ -70,10 +70,11 @@
     review binding, payload limits, and authenticated prompt polling.
   - Loopback-only local bridge on a random `127.0.0.1` port with one-time pairing codes,
     short-lived in-memory sessions, extension-instance binding, CORS restrictions, and revocation.
-  - VS Code commands for explicit bridge startup, browser pairing, session revocation, and
-    queueing a prompt for a paired extension.
-  - Manifest V3 browser extension with minimal regular permissions and optional per-site host
-    permissions for ChatGPT, Claude, and Gemini.
+  - One-click VS Code actions for ChatGPT, Claude, and Gemini that start the bridge, create a
+    fragment-only local handoff, pair the browser extension, and open the selected site without
+    requiring manual address or pairing-code entry.
+  - First-use per-site permission confirmation through Manifest V3 optional host permissions;
+    subsequent connections pair automatically while preserving explicit user control.
   - Page adapters that only locate a confirmed visible composer and fill text after an explicit
     user action; they never click or submit, read answers, or access cookies and session storage.
   - Cross-platform CI validation for manifest safety, referenced files, JavaScript syntax,
@@ -98,29 +99,6 @@
   previews, logs, or diagnostics.
 - Added the scan and export commands to the clickable Activity Bar action list.
 - Excluded generated `.reviewlume/exports/**` files from new review-selection sessions to
-  prevent Review Packs from recursively including earlier Review Packs.
-- Unified ZIP export to the same review-specific directory as Markdown and both formats:
-  all three formats now save under `.reviewlume/exports/<reviewId>/` instead of placing
-  ZIP archives directly in the export root.
-- Hardened P7 history handling:
-  - Reject symbolic-link escapes and non-regular history files.
-  - Surface corrupt or incomplete records instead of silently hiding them.
-  - Remove the incomplete fake ZIP reconstruction path; only exact historical content may be restored.
-  - Delete the matching managed export directory with a confirmed history deletion.
-  - Keep `.reviewlume/history/**` out of Git and future Review Pack selection.
-  - Avoid logging imported response content or user-controlled titles.
-
-## [0.1.0] - 2026-07-10
-
-### Added
-
-- P0: Engineering foundation.
-  - pnpm workspace with TypeScript project references.
-  - VS Code extension skeleton with `reviewlume.hello` command.
-  - Core packages: `@reviewlume/core`, `@reviewlume/git-context`,
-    `@reviewlume/review-pack`, `@reviewlume/secret-scanner`,
-    `@reviewlume/prompt-templates`, `@reviewlume/report-parser`.
-  - ESLint, Prettier, and Vitest configuration.
-  - GitHub Actions CI workflow.
-  - MIT License, SECURITY.md, and CHANGELOG.md.
-  - VSIX packaging with `@vscode/vsce`.
+  prevent ReviewLume from recursively reviewing its own output.
+- Kept review history and response imports bounded to the active repository and existing
+  review identifiers.
