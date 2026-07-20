@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -43,13 +43,13 @@
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && node -e \"const fs=require('node:fs');const path=require('node:path');fs.mkdirSync('dist/webview/media',{recursive:true});for(const f of ['reviewPanel.js','reviewPanel.css','reviewPanelTheme.css'])fs.copyFileSync('src/webview/media/'+f,'dist/webview/media/'+f);fs.cpSync('../web-bridge/dist','dist/vendor/web-bridge',{recursive:true});const zodDir=path.dirname(require.resolve('zod/package.json'));fs.cpSync(zodDir,'dist/vendor/node_modules/zod',{recursive:true})\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && node -e \"const fs=require('node:fs');const path=require('node:path');fs.mkdirSync('dist/webview/media',{recursive:true});for(const f of ['reviewPanel.js','reviewPanel.css','reviewPanelTheme.css'])fs.copyFileSync('src/webview/media/'+f,'dist/webview/media/'+f);fs.cpSync('../web-bridge/dist','dist/vendor/web-bridge',{recursive:true});const zodDir=path.dirname(require.resolve('zod/package.json'));fs.cpSync(zodDir,'dist/node_modules/zod',{recursive:true})\"",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.1.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.2.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
