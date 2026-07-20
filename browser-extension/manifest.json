@@ -16,7 +16,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["http://127.0.0.1/*"],
+      "matches": ["http://127.0.0.1/connect*"],
       "js": ["src/handoff.js"],
       "run_at": "document_idle"
     }
