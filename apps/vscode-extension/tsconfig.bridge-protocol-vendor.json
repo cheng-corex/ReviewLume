@@ -1,0 +1,16 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "../../packages/bridge-protocol/src",
+    "outDir": "dist/node_modules/@reviewlume/bridge-protocol",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "verbatimModuleSyntax": false,
+    "composite": false,
+    "declaration": false,
+    "declarationMap": false,
+    "sourceMap": false
+  },
+  "include": ["../../packages/bridge-protocol/src/**/*.ts"],
+  "exclude": ["../../packages/bridge-protocol/src/**/*.test.ts"]
+}
