@@ -62,6 +62,28 @@ describe('LocalBridgeServer', () => {
     await expect(response.json()).resolves.toEqual({ ok: true, protocolVersion: 1 });
   });
 
+  it('serves a fragment-only handoff page without exposing the pairing code', async () => {
+    const server = new LocalBridgeServer();
+    servers.push(server);
+    const address = await server.start();
+    const pairing = server.createPairingCode();
+
+    const response = await fetch(
+      `${address.baseUrl}/connect#v=1&code=${pairing.code}&site=chatgpt.com`,
+    );
+    expect(response.status).toBe(200);
+    expect(response.headers.get('content-type')).toContain('text/html');
+    expect(response.headers.get('cache-control')).toBe('no-store');
+    expect(response.headers.get('content-security-policy')).toContain("default-src 'none'");
+    const body = await response.text();
+    expect(body).toContain('id="status"');
+    expect(body).not.toContain(pairing.code);
+
+    const queryAttempt = await fetch(`${address.baseUrl}/connect?code=${pairing.code}`);
+    expect(queryAttempt.status).toBe(404);
+    await expect(queryAttempt.json()).resolves.toEqual({ error: 'NOT_FOUND' });
+  });
+
   it('issues one-time pairing codes and rejects replay', async () => {
     const server = new LocalBridgeServer();
     servers.push(server);

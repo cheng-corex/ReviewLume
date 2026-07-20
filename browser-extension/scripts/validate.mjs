@@ -28,6 +28,21 @@ assertExactSet(
   ['https://chatgpt.com/*', 'https://claude.ai/*', 'https://gemini.google.com/*'],
   'optional_host_permissions',
 );
+assert(manifest.content_scripts?.length === 1, 'Exactly one loopback handoff content script is required.');
+assertExactSet(
+  manifest.content_scripts[0].matches,
+  ['http://127.0.0.1/connect*'],
+  'handoff content script matches',
+);
+assertExactSet(
+  manifest.content_scripts[0].js,
+  ['src/handoff.js'],
+  'handoff content script files',
+);
+assert(
+  manifest.content_scripts[0].run_at === 'document_idle',
+  'Handoff content script must run at document_idle.',
+);
 
 const forbiddenPermissions = ['cookies', 'history', 'tabs', 'webRequest', 'webRequestBlocking'];
 for (const permission of forbiddenPermissions) {
@@ -37,9 +52,12 @@ for (const permission of forbiddenPermissions) {
 const referencedFiles = [
   manifest.background?.service_worker,
   manifest.action?.default_popup,
+  ...manifest.content_scripts.flatMap((entry) => entry.js ?? []),
+  'src/connect.html',
+  'src/connect.js',
 ].filter(Boolean);
 for (const file of referencedFiles) {
-  assert(existsSync(join(extensionRoot, file)), `Manifest references missing file: ${file}`);
+  assert(existsSync(join(extensionRoot, file)), `Browser extension references missing file: ${file}`);
 }
 
 function collectJavaScriptFiles(directory) {
@@ -54,8 +72,14 @@ const sourceFiles = collectJavaScriptFiles(join(extensionRoot, 'src'));
 for (const file of sourceFiles) {
   execFileSync(process.execPath, ['--check', file], { stdio: 'inherit' });
   const source = readFileSync(file, 'utf8');
-  assert(!/\.submit\s*\(|requestSubmit\s*\(|\.click\s*\(/u.test(source), `${relative(extensionRoot, file)} contains an automatic submission primitive.`);
-  assert(!/\bcookies\b|document\.cookie|sessionStorage/u.test(source), `${relative(extensionRoot, file)} contains a forbidden credential/session access primitive.`);
+  assert(
+    !/\.submit\s*\(|requestSubmit\s*\(|\.click\s*\(/u.test(source),
+    `${relative(extensionRoot, file)} contains an automatic submission primitive.`,
+  );
+  assert(
+    !/\bcookies\b|document\.cookie|sessionStorage/u.test(source),
+    `${relative(extensionRoot, file)} contains a forbidden credential/session access primitive.`,
+  );
 }
 
 console.log(`Validated Manifest V3 browser extension (${sourceFiles.length} JavaScript files).`);

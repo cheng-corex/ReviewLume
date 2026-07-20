@@ -20,7 +20,9 @@ const SITE_LABELS: Readonly<Record<TargetSite, string>> = {
 interface BridgeAction extends vscode.QuickPickItem {
   readonly action:
     | 'start'
-    | 'pair'
+    | 'connect-chatgpt'
+    | 'connect-claude'
+    | 'connect-gemini'
     | 'open-chatgpt'
     | 'open-claude'
     | 'open-gemini'
@@ -39,6 +41,20 @@ const TARGET_SITE_ITEMS: readonly TargetSiteItem[] = TARGET_SITES.map((site) => 
   description: site,
   site,
 }));
+
+export function createPairingHandoffUrl(
+  baseUrl: string,
+  code: string,
+  targetSite: TargetSite,
+): string {
+  const handoff = new URL('/connect', baseUrl);
+  handoff.hash = new URLSearchParams({
+    v: '1',
+    code,
+    site: targetSite,
+  }).toString();
+  return handoff.toString();
+}
 
 export function registerBrowserBridgeCommands(
   context: vscode.ExtensionContext,
@@ -72,17 +88,32 @@ export function registerBrowserBridgeCommands(
     }
   };
 
-  const pair = async (): Promise<void> => {
+  const pair = async (requestedSite?: TargetSite): Promise<void> => {
+    const targetSite = requestedSite ?? (await vscode.window.showQuickPick(TARGET_SITE_ITEMS, {
+      title: 'Connect ReviewLume browser extension',
+      placeHolder: 'Choose the AI site to open after pairing.',
+    }))?.site;
+    if (!targetSite) return;
+
     const pairing = await bridge.createPairingCode();
     refreshStatus();
-    await vscode.env.clipboard.writeText(pairing.code);
-    logInfo(`Browser pairing code created; expires at ${pairing.expiresAt}`);
+    const handoffUrl = createPairingHandoffUrl(
+      pairing.address.baseUrl,
+      pairing.code,
+      targetSite,
+    );
+    logInfo(`Browser pairing handoff created for ${targetSite}; expires at ${pairing.expiresAt}`);
+    const opened = await vscode.env.openExternal(vscode.Uri.parse(handoffUrl));
+    if (!opened) {
+      await vscode.window.showErrorMessage(
+        'ReviewLume could not open the browser pairing page. The pairing code was not copied or persisted.',
+      );
+      return;
+    }
     await vscode.window.showInformationMessage(
-      `Pairing code ${pairing.code} copied. Bridge ${pairing.address.baseUrl}. Open the ReviewLume browser extension and confirm pairing.`,
-      'Open ChatGPT',
-    ).then(async (choice) => {
-      if (choice === 'Open ChatGPT') await openSite('chatgpt.com');
-    });
+      `ReviewLume opened a secure ${siteLabel(targetSite)} connection page. ` +
+      'On first use, confirm the browser site permission once.',
+    );
   };
 
   const revoke = async (): Promise<void> => {
@@ -101,6 +132,9 @@ export function registerBrowserBridgeCommands(
   const showMenu = async (): Promise<void> => {
     const address = bridge.address;
     const pairedCount = bridge.getPairedExtensions().length;
+    const connectionDescription = pairedCount > 0
+      ? `${pairedCount} active connection(s); reconnect without manual codes`
+      : 'One-click pairing; first use asks for site permission';
     const items: BridgeAction[] = [];
     if (!address) {
       items.push({
@@ -111,9 +145,19 @@ export function registerBrowserBridgeCommands(
     }
     items.push(
       {
-        label: '$(plug) Connect Browser Extension',
-        description: pairedCount > 0 ? `${pairedCount} active connection(s)` : 'Create a short-lived pairing code',
-        action: 'pair',
+        label: '$(plug) Connect & Open ChatGPT',
+        description: connectionDescription,
+        action: 'connect-chatgpt',
+      },
+      {
+        label: '$(plug) Connect & Open Claude',
+        description: connectionDescription,
+        action: 'connect-claude',
+      },
+      {
+        label: '$(plug) Connect & Open Gemini',
+        description: connectionDescription,
+        action: 'connect-gemini',
       },
       {
         label: '$(globe) Open ChatGPT',
@@ -164,7 +208,9 @@ export function registerBrowserBridgeCommands(
 
     switch (picked.action) {
       case 'start': await start(); break;
-      case 'pair': await pair(); break;
+      case 'connect-chatgpt': await pair('chatgpt.com'); break;
+      case 'connect-claude': await pair('claude.ai'); break;
+      case 'connect-gemini': await pair('gemini.google.com'); break;
       case 'open-chatgpt': await openSite('chatgpt.com'); break;
       case 'open-claude': await openSite('claude.ai'); break;
       case 'open-gemini': await openSite('gemini.google.com'); break;
@@ -178,7 +224,7 @@ export function registerBrowserBridgeCommands(
   context.subscriptions.push(
     vscode.commands.registerCommand(COMMANDS.BROWSER_BRIDGE_MENU, showMenu),
     vscode.commands.registerCommand(COMMANDS.START_BROWSER_BRIDGE, () => start()),
-    vscode.commands.registerCommand(COMMANDS.PAIR_BROWSER_EXTENSION, pair),
+    vscode.commands.registerCommand(COMMANDS.PAIR_BROWSER_EXTENSION, () => pair()),
     vscode.commands.registerCommand(COMMANDS.REVOKE_BROWSER_SESSIONS, revoke),
     vscode.commands.registerCommand(COMMANDS.SEND_PROMPT_TO_BROWSER, async () => {
       const paired = bridge.getPairedExtensions();
