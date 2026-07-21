@@ -124,6 +124,19 @@
   - Reject symbolic-link escapes and non-regular history files.
   - Surface corrupt or incomplete records instead of silently hiding them.
   - Remove the incomplete fake ZIP reconstruction path; only exact historical content may be restored.
+  - Delete the matching managed export directory with a confirmed history deletion.
+  - Keep `.reviewlume/history/**` out of Git and future Review Pack selection.
+  - Avoid logging imported response content or user-controlled titles.
 - Fixed official Windows tunnel-client help validation, unauthenticated reachability probing,
   Protected Resource Metadata discovery, proxy persistence, and false-positive readiness reporting
   during real Windows Secure MCP Tunnel acceptance.
+
+## [0.1.0] - 2026-07-10
+
+### Added
+
+- P0: Engineering foundation.
+  - pnpm workspace with TypeScript project references.
+  - VS Code extension skeleton with `reviewlume.hello` command.
+  - Core packages: `@reviewlume/core`, `@reviewlume/git-context`, `@reviewlume/prompt-templates`,
+    `@reviewlume/review-pack`, `@reviewlume/secret-scanner`, and `@reviewlume/report-parser`.
