@@ -10,7 +10,7 @@ class FakeRunner implements McpGitRunner {
   async run(options: { readonly args: readonly string[] }): Promise<{ readonly stdout: string }> {
     this.calls.push([...options.args]);
     if (options.args[0] === 'ls-files') {
-      return { stdout: ['src/example.ts', 'src/example.test.ts', '.env', ''].join('\0') };
+      return { stdout: ['src/example.ts', 'src/example.test.ts', 'src/embedded-secret.ts', '.env', ''].join('\0') };
     }
     if (options.args[0] === 'diff' && options.args.includes('--name-only')) {
       return { stdout: ['src/example.ts', 'src/embedded-secret.ts', '.env', ''].join('\0') };
@@ -25,24 +25,14 @@ class FakeRunner implements McpGitRunner {
     }
     if (options.args[0] === 'status') return { stdout: '## main\n M src/example.ts\n' };
     if (options.args[0] === 'log') {
-      return { stdout: '0123456789012345678901234567890123456789\tDev\t2026-07-21T00:00:00Z\tTest' };
+      return { stdout: '0123456789012345678901234567890123456789\tDev\t2026-07-21T00:00:00Z\tToken embedded-secret-value' };
     }
-    if (options.args[0] === 'rev-parse' && options.args.includes('--abbrev-ref')) {
-      return { stdout: 'main\n' };
-    }
-    if (options.args[0] === 'rev-parse') {
-      return { stdout: '0123456789012345678901234567890123456789\n' };
-    }
+    if (options.args[0] === 'rev-parse' && options.args.includes('--abbrev-ref')) return { stdout: 'main\n' };
+    if (options.args[0] === 'rev-parse') return { stdout: '0123456789012345678901234567890123456789\n' };
     if (options.args[0] === 'remote') return { stdout: 'https://user:secret@example.com/acme/repo.git\n' };
     throw new Error(`Unexpected Git call: ${options.args.join(' ')}`);
   }
 }
-
-const contentGuard = {
-  hasSensitiveContent(_relativePath: string, content: string): boolean {
-    return content.includes('embedded-secret');
-  },
-};
 
 describe('McpRepositoryTools', () => {
   let root: string;
@@ -57,19 +47,14 @@ describe('McpRepositoryTools', () => {
     await writeFile(path.join(root, 'src', 'embedded-secret.ts'), 'const token = "embedded-secret-value";\n');
     await writeFile(path.join(root, '.env'), 'SECRET=do-not-read\n');
     runner = new FakeRunner();
-    tools = new McpRepositoryTools({
-      root,
-      displayName: 'fixture',
-      runner,
-      contentGuard,
-    });
+    tools = new McpRepositoryTools({ root, displayName: 'fixture', runner });
   });
 
   afterEach(async () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it('declares every MCP tool as read-only and non-destructive', () => {
+  it('declares the current MCP tools as read-only and non-destructive', () => {
     expect(tools.definitions.length).toBeGreaterThan(0);
     for (const definition of tools.definitions) {
       expect(definition.annotations).toEqual({
@@ -82,80 +67,82 @@ describe('McpRepositoryTools', () => {
   });
 
   it('reads only the requested bounded line range', async () => {
-    const result = await tools.call('read_file', {
-      path: 'src/example.ts',
-      startLine: 2,
-      endLine: 2,
-    });
-
+    const result = await tools.call('read_file', { path: 'src/example.ts', startLine: 2, endLine: 2 });
     expect(result.isError).toBe(false);
     expect(result.structuredContent).toMatchObject({
-      path: 'src/example.ts',
-      startLine: 2,
-      endLine: 2,
+      path: 'src/example.ts', startLine: 2, endLine: 2,
       content: '2: export const other = value + 1;',
     });
   });
 
-  it('blocks sensitive files, content, and repository escapes', async () => {
-    const sensitive = await tools.call('read_file', { path: '.env' });
+  it('reads credential-like paths and content while still blocking repository escapes', async () => {
+    const envFile = await tools.call('read_file', { path: '.env' });
     const embedded = await tools.call('read_file', { path: 'src/embedded-secret.ts' });
     const escaped = await tools.call('read_file', { path: '../outside.txt' });
 
-    expect(sensitive.isError).toBe(true);
-    expect(sensitive.content[0].text).toContain('Sensitive files are blocked');
-    expect(embedded.isError).toBe(true);
-    expect(embedded.content[0].text).toContain('Sensitive content was detected');
+    expect(envFile.isError).toBe(false);
+    expect(envFile.structuredContent?.content).toContain('SECRET=do-not-read');
+    expect(embedded.isError).toBe(false);
+    expect(embedded.structuredContent?.content).toContain('embedded-secret-value');
     expect(escaped.isError).toBe(true);
     expect(escaped.content[0].text).toContain('outside the repository');
   });
 
-  it('filters sensitive paths and content before returning Git diffs', async () => {
+  it('returns credential-like paths and content in Git diffs', async () => {
     const result = await tools.call('get_diff', { scope: 'working' });
 
     expect(result.isError).toBe(false);
     expect(result.structuredContent).toMatchObject({
-      excludedSensitiveFiles: 4,
-      includedFiles: 2,
+      excludedSensitiveFiles: 0,
+      includedFiles: 6,
       truncated: false,
     });
     expect(result.structuredContent?.diff).toContain('src/example.ts');
-    expect(result.structuredContent?.diff).not.toContain('do-not-return');
-    expect(result.structuredContent?.diff).not.toContain('embedded-secret');
-    expect(
-      runner.calls.some(
-        (args) => args[0] === 'diff' && !args.includes('--name-only') && args.at(-1) === '.env',
-      ),
-    ).toBe(false);
+    expect(result.structuredContent?.diff).toContain('do-not-return');
+    expect(result.structuredContent?.diff).toContain('embedded-secret-value');
+    expect(runner.calls.some((args) => args[0] === 'diff' && !args.includes('--name-only') && args.at(-1) === '.env')).toBe(true);
   });
 
-  it('rejects sensitive or escaping Git diff path filters', async () => {
-    const sensitive = await tools.call('get_diff', { scope: 'working', path: '.env' });
+  it('allows credential-like Git diff path filters but rejects escaping filters', async () => {
+    const envDiff = await tools.call('get_diff', { scope: 'working', path: '.env' });
     const escaped = await tools.call('get_diff', { scope: 'working', path: '../outside.ts' });
 
-    expect(sensitive.isError).toBe(true);
-    expect(sensitive.content[0].text).toContain('Sensitive files are blocked');
+    expect(envDiff.isError).toBe(false);
+    expect(envDiff.structuredContent?.diff).toContain('do-not-return');
     expect(escaped.isError).toBe(true);
     expect(escaped.content[0].text).toContain('outside the repository');
   });
 
-  it('searches text files while excluding blocked sensitive paths', async () => {
-    const result = await tools.call('search_code', { query: 'value', maxResults: 10 });
+  it('lists and searches credential-like files and matching lines', async () => {
+    const listed = await tools.call('list_files', { limit: 10 });
+    const envSearch = await tools.call('search_code', { query: 'do-not-read', maxResults: 10 });
+    const secretSearch = await tools.call('search_code', { query: 'embedded-secret', maxResults: 10 });
 
+    expect(listed.isError).toBe(false);
+    expect(listed.structuredContent?.files).toContain('.env');
+    expect(envSearch.structuredContent?.matches).toEqual([
+      { path: '.env', line: 1, snippet: 'SECRET=do-not-read' },
+    ]);
+    expect(secretSearch.structuredContent?.matches).toEqual([
+      { path: 'src/embedded-secret.ts', line: 1, snippet: 'const token = "embedded-secret-value";' },
+    ]);
+  });
+
+  it('does not hide credential-like text in commit subjects', async () => {
+    const result = await tools.call('recent_commits', { count: 1 });
     expect(result.isError).toBe(false);
-    expect(result.structuredContent).toMatchObject({
-      query: 'value',
-      matches: [
-        { path: 'src/example.ts', line: 1, snippet: 'export const value = 1;' },
-        { path: 'src/example.ts', line: 2, snippet: 'export const other = value + 1;' },
-        { path: 'src/example.test.ts', line: 1, snippet: 'expect(value).toBe(1);' },
-      ],
-    });
+    expect(result.structuredContent?.commits).toEqual([
+      {
+        sha: '0123456789012345678901234567890123456789',
+        author: 'Dev',
+        date: '2026-07-21T00:00:00Z',
+        subject: 'Token embedded-secret-value',
+      },
+    ]);
   });
 
   it('redacts credentials from remote URLs in repository summaries', async () => {
     const result = await tools.call('repository_summary', {});
-
     expect(result.isError).toBe(false);
     expect(result.structuredContent?.remoteUrl).toBe('https://example.com/acme/repo.git');
   });
