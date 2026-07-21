@@ -334,14 +334,17 @@ export function normalizeHealthBaseUrl(value: string): string {
   return parsed.origin;
 }
 
+export function isTunnelClientHelpOutput(output: string): boolean {
+  return (
+    /(?:^|\r?\n)\s*(?:Use|Usage):\s*(?:\r?\n\s*)?tunnel-client\b/i.test(output) &&
+    /Tunnel client for the OpenAI MCP control plane/i.test(output)
+  );
+}
+
 export async function verifyTunnelClientBinary(binaryPath: string): Promise<boolean> {
   try {
     const result = await execFileResult(binaryPath, ['--help'], process.env, 10_000);
-    const output = `${result.stdout}\n${result.stderr}`;
-    return (
-      /Use:\s+tunnel-client/i.test(output) &&
-      /Tunnel client for the OpenAI MCP control plane/i.test(output)
-    );
+    return isTunnelClientHelpOutput(`${result.stdout}\n${result.stderr}`);
   } catch {
     return false;
   }
