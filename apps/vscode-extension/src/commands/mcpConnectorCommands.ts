@@ -4,7 +4,11 @@ import {
   ChatGptBrowserService,
   browserPreferenceLabel,
 } from '../services/chatGptBrowserService';
-import { McpConnectorService, type McpConnectionInfo } from '../services/mcpConnectorService';
+import {
+  McpConnectorService,
+  type McpAccessMode,
+  type McpConnectionInfo,
+} from '../services/mcpConnectorService';
 import { logError, logInfo } from '../services/logService';
 import {
   CHATGPT_CONNECTORS_URL,
@@ -17,10 +21,13 @@ import {
 
 const CHATGPT_NEW_CHAT_URL = 'https://chatgpt.com/';
 
+type WriteAccessSetting = 'disabled' | 'confirmEachRequest';
+
 interface McpAction extends vscode.QuickPickItem {
   readonly action:
     | 'connect'
     | 'configure'
+    | 'configure-write-access'
     | 'copy'
     | 'choose-browser'
     | 'open-chatgpt'
@@ -52,9 +59,9 @@ export function registerMcpConnectorCommands(
     const connection = connector.connection;
     const tunnelState = secureTunnel.state;
     if (tunnelState.status === 'ready' && connection) {
-      status.text = `$(radio-tower) ReviewLume: ${connection.repository}`;
+      status.text = `${connection.accessMode === 'confirmed-write' ? '$(edit)' : '$(radio-tower)'} ReviewLume: ${connection.repository}`;
       status.tooltip =
-        `Secure MCP Tunnel is ready for ${connection.repository}. ` +
+        `Secure MCP Tunnel is ready for ${connection.repository} in ${accessModeLabel(connection.accessMode)} mode. ` +
         `Tunnel ${tunnelState.tunnelId ?? 'connected'}. Click for actions.`;
       return;
     }
@@ -69,15 +76,15 @@ export function registerMcpConnectorCommands(
       return;
     }
     if (connection) {
-      status.text = `$(plug) ReviewLume: ${connection.repository}`;
+      status.text = `${connection.accessMode === 'confirmed-write' ? '$(edit)' : '$(plug)'} ReviewLume: ${connection.repository}`;
       status.tooltip =
-        `Local read-only MCP is bound to ${connection.repository} on loopback port ${connection.port}; ` +
+        `Local MCP is bound to ${connection.repository} in ${accessModeLabel(connection.accessMode)} mode on loopback port ${connection.port}; ` +
         'the Secure MCP Tunnel is not running.';
       return;
     }
     status.text = '$(debug-disconnect) ReviewLume MCP';
     status.tooltip =
-      'Connect ChatGPT to the current VS Code Git repository through ReviewLume read-only MCP.';
+      'Connect ChatGPT to the current VS Code Git repository. Access is read-only by default; confirmed writes are opt-in.';
   }
   refreshStatus();
 
@@ -207,7 +214,7 @@ export function registerMcpConnectorCommands(
     refreshStatus();
     await chatGptBrowser.openUrl(CHATGPT_NEW_CHAT_URL);
     const selection = await vscode.window.showInformationMessage(
-      `ReviewLume is connected for ${connection.repository}. ` +
+      `ReviewLume is connected for ${connection.repository} in ${accessModeLabel(connection.accessMode)} mode. ` +
         `A new ChatGPT chat was opened in ${browserPreferenceLabel(browserPreference)}.`,
       'Open tunnel diagnostics',
     );
@@ -234,6 +241,49 @@ export function registerMcpConnectorCommands(
     );
   };
 
+  const configureWriteAccess = async (): Promise<void> => {
+    const configuration = vscode.workspace.getConfiguration('reviewlume');
+    const current = configuration.get<WriteAccessSetting>('mcp.writeAccess', 'disabled');
+    const selected = await vscode.window.showQuickPick(
+      [
+        {
+          label: '$(lock) Read-only',
+          description: current === 'disabled' ? 'Current mode' : 'Remove write tools on reconnect',
+          value: 'disabled' as const,
+        },
+        {
+          label: '$(edit) Confirm every write request',
+          description:
+            current === 'confirmEachRequest'
+              ? 'Current mode'
+              : 'Create or replace bounded text files after each VS Code confirmation',
+          value: 'confirmEachRequest' as const,
+        },
+      ],
+      {
+        title: 'ReviewLume MCP Write Access',
+        placeHolder: 'Read-only is the default and safest mode',
+      },
+    );
+    if (!selected || selected.value === current) return;
+
+    await configuration.update(
+      'mcp.writeAccess',
+      selected.value,
+      vscode.ConfigurationTarget.Workspace,
+    );
+    if (connector.connection || secureTunnel.state.status !== 'stopped') {
+      await secureTunnel.stop();
+      await connector.stop();
+      refreshStatus();
+    }
+    await vscode.window.showInformationMessage(
+      selected.value === 'confirmEachRequest'
+        ? 'Confirmed-write access enabled for this VS Code workspace. Reconnect ReviewLume to expose the write tools.'
+        : 'ReviewLume write access disabled. Reconnect to use read-only tools only.',
+    );
+  };
+
   const openTunnelUi = async (): Promise<void> => {
     const uiUrl = secureTunnel.state.uiUrl;
     if (!uiUrl) {
@@ -247,15 +297,28 @@ export function registerMcpConnectorCommands(
     const connection = connector.connection;
     const tunnelState = secureTunnel.state;
     const browserLabel = await chatGptBrowser.getPreferenceLabel();
+    const configuredWriteAccess = vscode.workspace
+      .getConfiguration('reviewlume')
+      .get<WriteAccessSetting>('mcp.writeAccess', 'disabled');
     const actions: McpAction[] = [
       {
-        label: tunnelState.status === 'ready'
-          ? '$(comment-discussion) Open New Chat in ChatGPT'
-          : '$(radio-tower) Connect Current Repository to ChatGPT',
-        description: tunnelState.status === 'ready'
-          ? `${connection?.repository ?? 'Repository'} · ${browserLabel}`
-          : 'Start local read-only MCP, the Secure MCP Tunnel, and a new ChatGPT chat',
+        label:
+          tunnelState.status === 'ready'
+            ? '$(comment-discussion) Open New Chat in ChatGPT'
+            : '$(radio-tower) Connect Current Repository to ChatGPT',
+        description:
+          tunnelState.status === 'ready'
+            ? `${connection?.repository ?? 'Repository'} · ${browserLabel} · ${connection ? accessModeLabel(connection.accessMode) : 'MCP'}`
+            : `Start local MCP, Secure MCP Tunnel, and ChatGPT · ${configuredWriteAccess === 'confirmEachRequest' ? 'confirmed writes' : 'read-only'}`,
         action: tunnelState.status === 'ready' ? 'open-chatgpt' : 'connect',
+      },
+      {
+        label: '$(shield) Configure Write Access',
+        description:
+          configuredWriteAccess === 'confirmEachRequest'
+            ? 'Current: confirm every write request'
+            : 'Current: read-only',
+        action: 'configure-write-access',
       },
       {
         label: '$(browser) Choose ChatGPT Browser',
@@ -294,13 +357,13 @@ export function registerMcpConnectorCommands(
       {
         label: '$(clippy) Copy Local MCP Info (Advanced)',
         description: connection
-          ? `${connection.repository} · loopback port ${connection.port}`
+          ? `${connection.repository} · ${accessModeLabel(connection.accessMode)} · loopback port ${connection.port}`
           : 'Start local MCP and copy short-lived debugging credentials',
         action: 'copy',
       },
       {
         label: '$(output) Show ReviewLume Logs',
-        description: 'Secrets, file contents, and raw HTTP payloads are not logged',
+        description: 'Secrets, file contents, write bodies, and raw HTTP payloads are not logged',
         action: 'logs',
       },
     );
@@ -314,7 +377,7 @@ export function registerMcpConnectorCommands(
 
     const selected = await vscode.window.showQuickPick(actions, {
       title: connection
-        ? `ReviewLume Secure MCP · ${connection.repository}`
+        ? `ReviewLume Secure MCP · ${connection.repository} · ${accessModeLabel(connection.accessMode)}`
         : 'ReviewLume Secure MCP',
       placeHolder: 'Choose an MCP action',
     });
@@ -326,6 +389,9 @@ export function registerMcpConnectorCommands(
         break;
       case 'configure':
         await configure(true);
+        break;
+      case 'configure-write-access':
+        await configureWriteAccess();
         break;
       case 'copy':
         await copy();
@@ -446,12 +512,15 @@ async function chooseWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefin
 async function copyConnectionInfo(connection: McpConnectionInfo): Promise<void> {
   const value = JSON.stringify(
     {
-      name: 'ReviewLume Read-only Repository',
+      name:
+        connection.accessMode === 'confirmed-write'
+          ? 'ReviewLume Confirmed-write Repository'
+          : 'ReviewLume Read-only Repository',
       transport: 'streamable-http',
       endpoint: connection.endpointUrl,
       authorization: connection.authorizationHeader,
       repository: connection.repository,
-      access: 'read-only',
+      access: connection.accessMode,
       note: 'For local debugging only. The normal ChatGPT flow uses the official OpenAI Secure MCP Tunnel.',
     },
     null,
@@ -461,6 +530,10 @@ async function copyConnectionInfo(connection: McpConnectionInfo): Promise<void> 
   logInfo(
     `Local MCP debugging information copied for ${connection.repository}; token omitted from logs`,
   );
+}
+
+function accessModeLabel(accessMode: McpAccessMode): string {
+  return accessMode === 'confirmed-write' ? 'confirmed-write' : 'read-only';
 }
 
 async function openExternal(value: string): Promise<void> {
