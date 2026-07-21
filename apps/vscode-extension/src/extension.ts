@@ -11,10 +11,10 @@ import { registerImportReReviewResponse } from './commands/importReReviewRespons
 import { registerUpdateIssueStatus } from './commands/updateIssueStatus';
 import { registerReviewLoopCommands } from './commands/reviewLoopCommands';
 import { registerViewReReviewComparison } from './commands/viewReReviewComparison';
-import { registerBrowserBridgeCommands } from './commands/browserBridgeCommands';
-import { BrowserBridgeService } from './services/browserBridgeService';
+import { registerMcpConnectorCommands } from './commands/mcpConnectorCommands';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
+import { McpConnectorService } from './services/mcpConnectorService';
 import { ReviewScopeService } from './services/reviewScopeService';
 import { SecurityReviewService } from './services/securityReviewService';
 import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
@@ -43,10 +43,10 @@ export function activate(context: vscode.ExtensionContext): void {
     undefined,
     reviewScopeService,
   );
-  const browserBridgeService = new BrowserBridgeService();
+  const mcpConnectorService = new McpConnectorService();
   context.subscriptions.push({
     dispose: () => {
-      void browserBridgeService.dispose();
+      void mcpConnectorService.dispose();
     },
   });
 
@@ -97,7 +97,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerUpdateIssueStatus(context, fileSelectionService);
   registerReviewLoopCommands(context);
   registerViewReReviewComparison(context);
-  registerBrowserBridgeCommands(context, browserBridgeService);
+  registerMcpConnectorCommands(context, mcpConnectorService);
 
   logInfo('ReviewLume extension activated');
 }
