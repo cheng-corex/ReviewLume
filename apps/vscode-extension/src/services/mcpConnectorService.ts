@@ -2,7 +2,8 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { logInfo } from './logService';
 import { McpConnectorServer, type McpConnectorAddress } from './mcpConnectorServer';
-import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
+import { McpReadOnlyRepositoryTools } from './mcpReadOnlyRepositoryTools';
+import type { McpGitRunner } from './mcpRepositoryTools';
 import {
   McpWritableRepositoryTools,
   type McpWriteConfirmationRequest,
@@ -90,7 +91,7 @@ export class McpConnectorService {
             ...commonOptions,
             confirmWrite: createWriteConfirmationHandler(repository),
           })
-        : new McpRepositoryTools(commonOptions);
+        : new McpReadOnlyRepositoryTools(commonOptions);
     const server = new McpConnectorServer({
       tools,
       onToolCall: createSafeToolCallObserver((toolName) =>
