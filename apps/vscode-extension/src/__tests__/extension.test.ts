@@ -95,7 +95,7 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.1.9');
+    expect(content.version).toBe('0.1.10');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
@@ -118,10 +118,19 @@ describe('reviewlume-vscode manifest', () => {
     { command: 'reviewlume.openReviewPanel', title: 'Open Review Panel' },
     { command: 'reviewlume.mcpConnectorMenu', title: 'Secure MCP Connector' },
     { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Repository to ChatGPT' },
-    { command: 'reviewlume.configureSecureMcpTunnel', title: 'Configure OpenAI Secure MCP Tunnel' },
-    { command: 'reviewlume.openSecureMcpTunnelUi', title: 'Open Secure MCP Tunnel Diagnostics' },
+    {
+      command: 'reviewlume.configureSecureMcpTunnel',
+      title: 'Configure OpenAI Secure MCP Tunnel',
+    },
+    {
+      command: 'reviewlume.openSecureMcpTunnelUi',
+      title: 'Open Secure MCP Tunnel Diagnostics',
+    },
     { command: 'reviewlume.startMcpConnector', title: 'Start Local Read-only MCP' },
-    { command: 'reviewlume.copyMcpConnectionInfo', title: 'Copy Local MCP Connection Info' },
+    {
+      command: 'reviewlume.copyMcpConnectionInfo',
+      title: 'Copy Local MCP Connection Info',
+    },
     { command: 'reviewlume.stopMcpConnector', title: 'Stop Secure MCP Connection' },
   ];
 
@@ -143,7 +152,9 @@ describe('reviewlume-vscode manifest', () => {
       type: 'string',
       scope: 'machine',
     });
-    expect(Object.keys(properties).some((key) => /api.?key|token|secret/i.test(key))).toBe(false);
+    expect(Object.keys(properties).some((key) => /api.?key|token|secret/i.test(key))).toBe(
+      false,
+    );
   });
 
   it('does not expose the superseded browser input bridge commands', () => {
@@ -189,18 +200,21 @@ describe('reviewlume-vscode manifest', () => {
       path.join(root, 'git-context', 'index.js'),
       path.join(root, 'secret-scanner', 'index.js'),
       path.join(root, 'review-pack', 'index.js'),
-      path.resolve(
-        __dirname,
-        '../../dist/node_modules/@reviewlume/report-parser/index.js',
-      ),
+      path.resolve(__dirname, '../../dist/node_modules/@reviewlume/report-parser/index.js'),
     ];
     for (const file of required) expect(fs.existsSync(file), file).toBe(true);
-    expect(fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8')).toContain('check-ignore');
-    expect(fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8')).toContain('HARD_BLOCK');
-    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain('REVIEW_REQUEST.md');
+    expect(fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8')).toContain(
+      'check-ignore',
+    );
+    expect(fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8')).toContain(
+      'HARD_BLOCK',
+    );
+    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain(
+      'REVIEW_REQUEST.md',
+    );
     const mediaRoot = path.resolve(__dirname, '../../dist/webview/media');
     for (const file of ['reviewPanel.js', 'reviewPanel.css', 'reviewPanelTheme.css']) {
-      expect(fs.existsSync(path.join(mediaRoot, file)), file).toBe(true);
+      expect(fs.existsSync(path.join(mediaRoot, file), file).toBe(true);
     }
   });
 
