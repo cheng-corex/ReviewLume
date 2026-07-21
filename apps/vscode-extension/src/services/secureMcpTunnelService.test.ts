@@ -29,6 +29,7 @@ const connection: McpConnectionInfo = {
   authorizationHeader: 'Bearer local-token-value-123456789',
   repository: 'fixture',
   repositoryRoot: '/workspace/fixture',
+  accessMode: 'read-only',
 };
 
 const healthyStatus = {
