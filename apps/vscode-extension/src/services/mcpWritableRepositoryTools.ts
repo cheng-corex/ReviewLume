@@ -1,6 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 import * as path from 'node:path';
 import {
+  link,
   lstat,
   mkdir,
   readFile,
@@ -232,14 +233,14 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
     }
 
     await this.#revalidateChanges(effective);
-    const started: PreparedChange[] = [];
+    const applied: PreparedChange[] = [];
     try {
       for (const change of effective) {
-        started.push(change);
         await this.#applyChange(change);
+        applied.push(change);
       }
     } catch (error) {
-      const rollbackFailures = await this.#rollback(started);
+      const rollbackFailures = await this.#rollback(applied);
       const originalMessage = toSafeErrorMessage(error);
       if (rollbackFailures.length > 0) {
         throw new Error(
@@ -247,7 +248,7 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
             `Inspect git status before continuing. Original error: ${originalMessage}`,
         );
       }
-      throw new Error(`Write failed; all started files were rolled back: ${originalMessage}`);
+      throw new Error(`Write failed; all applied files were rolled back: ${originalMessage}`);
     }
 
     return toolSuccess({
@@ -271,17 +272,15 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
       throw new Error(`Path changed during write validation: ${change.path}`);
     }
 
-    if (change.action === 'create') {
-      await this.#revalidateChange(change);
-      await writeFile(change.absolutePath, change.contentBuffer, { flag: 'wx' });
-      return;
-    }
-
     const temporaryPath = createTemporaryPath(change.absolutePath);
     try {
       await writeFile(temporaryPath, change.contentBuffer, { flag: 'wx' });
       await this.#revalidateChange(change);
-      await rename(temporaryPath, change.absolutePath);
+      if (change.action === 'create') {
+        await link(temporaryPath, change.absolutePath);
+      } else {
+        await rename(temporaryPath, change.absolutePath);
+      }
     } finally {
       await rm(temporaryPath, { force: true }).catch(() => undefined);
     }
