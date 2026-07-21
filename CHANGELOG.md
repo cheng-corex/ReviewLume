@@ -99,6 +99,7 @@
 
 ### Fixed
 
+- Activate ReviewLume after VS Code startup finishes so the MCP status bar is visible without first opening the Activity Bar view; startup activation does not start a tunnel or inspect repository contents.
 - Kept the packaged P0 extension entry point self-contained so a VSIX built with
   `--no-dependencies` does not fail on an unpackaged workspace module.
 - Made clean scripts and the VS Code build task work across Windows, macOS, and Linux.
