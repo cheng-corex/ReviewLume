@@ -37,10 +37,18 @@ interface RepositoryToolsOptions {
   readonly maxResultBytes?: number;
 }
 
+interface CollectedDiff {
+  readonly output: string;
+  readonly truncated: boolean;
+  readonly excludedSensitiveFiles: number;
+  readonly includedFiles: number;
+}
+
 const DEFAULT_MAX_RESULT_BYTES = 512 * 1024;
 const MAX_READ_BYTES = 256 * 1024;
 const MAX_SEARCH_FILE_BYTES = 1024 * 1024;
 const MAX_SEARCH_FILES = 5_000;
+const MAX_DIFF_FILES = 200;
 const DEFAULT_SEARCH_RESULTS = 40;
 const MAX_SEARCH_RESULTS = 100;
 
@@ -181,37 +189,52 @@ export class McpRepositoryTools {
     signal?: AbortSignal,
   ): Promise<McpToolCallResult> {
     const scope = readEnum(args.scope, ['working', 'staged', 'range'] as const, 'working');
-    const pathFilter = readOptionalString(args.path);
-    const suffix = pathFilter ? ['--', pathFilter] : [];
-    const safeFlags = ['--no-ext-diff', '--no-textconv', '--no-color'];
+    const pathFilter = normalizeOptionalFilePath(readOptionalString(args.path));
 
     let output: string;
     let baseRef: string | undefined;
     let headRef: string | undefined;
+    let truncated = false;
+    let excludedSensitiveFiles = 0;
+    let includedFiles = 0;
 
     if (scope === 'working') {
-      const unstaged = await this.#git(['diff', ...safeFlags, ...suffix], signal);
-      const staged = await this.#git(['diff', '--cached', ...safeFlags, ...suffix], signal);
+      const [unstaged, staged] = await Promise.all([
+        this.#collectDiff([], pathFilter, signal),
+        this.#collectDiff(['--cached'], pathFilter, signal),
+      ]);
       output = [
-        unstaged ? '## Unstaged changes\n' + unstaged : '',
-        staged ? '## Staged changes\n' + staged : '',
+        unstaged.output ? `## Unstaged changes\n${unstaged.output}` : '',
+        staged.output ? `## Staged changes\n${staged.output}` : '',
       ]
         .filter(Boolean)
         .join('\n');
+      truncated = unstaged.truncated || staged.truncated;
+      excludedSensitiveFiles =
+        unstaged.excludedSensitiveFiles + staged.excludedSensitiveFiles;
+      includedFiles = unstaged.includedFiles + staged.includedFiles;
     } else if (scope === 'staged') {
-      output = await this.#git(['diff', '--cached', ...safeFlags, ...suffix], signal);
+      const staged = await this.#collectDiff(['--cached'], pathFilter, signal);
+      output = staged.output;
+      truncated = staged.truncated;
+      excludedSensitiveFiles = staged.excludedSensitiveFiles;
+      includedFiles = staged.includedFiles;
     } else {
       baseRef = readString(args.baseRef, 'baseRef');
       headRef = readOptionalString(args.headRef) ?? 'HEAD';
       const verifiedBase = await this.#verifyCommit(baseRef, signal);
       const verifiedHead = await this.#verifyCommit(headRef, signal);
-      output = await this.#git(
-        ['diff', ...safeFlags, verifiedBase, verifiedHead, ...suffix],
+      const ranged = await this.#collectDiff(
+        [verifiedBase, verifiedHead],
+        pathFilter,
         signal,
       );
+      output = ranged.output;
+      truncated = ranged.truncated;
+      excludedSensitiveFiles = ranged.excludedSensitiveFiles;
+      includedFiles = ranged.includedFiles;
     }
 
-    const truncated = Buffer.byteLength(output, 'utf8') > this.#maxResultBytes;
     return toolSuccess({
       repository: this.#displayName,
       scope,
@@ -219,8 +242,62 @@ export class McpRepositoryTools {
       headRef,
       path: pathFilter,
       diff: truncateText(output, this.#maxResultBytes),
-      truncated,
+      includedFiles,
+      excludedSensitiveFiles,
+      truncated: truncated || Buffer.byteLength(output, 'utf8') > this.#maxResultBytes,
     });
+  }
+
+  async #collectDiff(
+    refArguments: readonly string[],
+    pathFilter: string | undefined,
+    signal?: AbortSignal,
+  ): Promise<CollectedDiff> {
+    const safeFlags = ['--no-ext-diff', '--no-textconv', '--no-color'];
+    const pathArguments = pathFilter ? [pathFilter] : [];
+    const namesOutput = await this.#git(
+      [
+        'diff',
+        ...safeFlags,
+        '--name-only',
+        '-z',
+        ...refArguments,
+        '--',
+        ...pathArguments,
+      ],
+      signal,
+    );
+    const changedFiles = namesOutput.split('\0').filter(Boolean);
+    const safeFiles = changedFiles.filter((file) => !isSensitivePath(file));
+    const selectedFiles = safeFiles.slice(0, MAX_DIFF_FILES);
+    const pieces: string[] = [];
+    let byteCount = 0;
+    let truncated = safeFiles.length > selectedFiles.length;
+
+    for (const file of selectedFiles) {
+      const normalizedFile = normalizeRepositoryRelativePath(file, 'Git diff path', true);
+      const diff = await this.#git(
+        ['diff', ...safeFlags, ...refArguments, '--', normalizedFile],
+        signal,
+      );
+      if (!diff) continue;
+      const nextBytes = Buffer.byteLength(diff, 'utf8');
+      if (byteCount + nextBytes > this.#maxResultBytes) {
+        const remainingBytes = Math.max(0, this.#maxResultBytes - byteCount);
+        if (remainingBytes > 0) pieces.push(truncateText(diff, remainingBytes));
+        truncated = true;
+        break;
+      }
+      pieces.push(diff);
+      byteCount += nextBytes;
+    }
+
+    return {
+      output: pieces.join('\n'),
+      truncated,
+      excludedSensitiveFiles: changedFiles.length - safeFiles.length,
+      includedFiles: pieces.length,
+    };
   }
 
   async #listFiles(
@@ -230,13 +307,17 @@ export class McpRepositoryTools {
     const prefix = normalizeOptionalPrefix(readOptionalString(args.prefix));
     const limit = readInteger(args.limit, 300, 1, 2_000);
     const output = await this.#git(['ls-files', '-co', '--exclude-standard', '-z'], signal);
-    const files = output
+    const eligible = output
       .split('\0')
       .filter(Boolean)
       .filter((file) => !isSensitivePath(file))
-      .filter((file) => !prefix || normalizeRepoPath(file).startsWith(prefix))
-      .slice(0, limit);
-    return toolSuccess({ repository: this.#displayName, files, truncated: files.length === limit });
+      .filter((file) => !prefix || normalizeRepoPath(file).startsWith(prefix));
+    const files = eligible.slice(0, limit);
+    return toolSuccess({
+      repository: this.#displayName,
+      files,
+      truncated: eligible.length > files.length,
+    });
   }
 
   async #readFile(args: Record<string, unknown>): Promise<McpToolCallResult> {
@@ -334,23 +415,22 @@ export class McpRepositoryTools {
   }
 
   async #resolveReadableFile(relativePath: string): Promise<string> {
-    if (path.isAbsolute(relativePath) || relativePath.includes('\0')) {
-      throw new Error('Only repository-relative paths are allowed.');
-    }
-    const normalized = normalizeRepoPath(relativePath);
-    if (!normalized || normalized === '.' || normalized.startsWith('../')) {
-      throw new Error('Path resolves outside the repository.');
-    }
-    if (normalized === '.git' || normalized.startsWith('.git/')) {
-      throw new Error('The .git directory is not readable through MCP.');
-    }
-    if (isSensitivePath(normalized)) throw new Error('Sensitive files are blocked.');
-
-    const candidate = path.resolve(this.#root, relativePath);
+    const normalized = normalizeRepositoryRelativePath(relativePath, 'File path', true);
+    const candidate = path.resolve(this.#root, normalized);
     const realRoot = (this.#realRoot ??= await realpath(this.#root));
-    const realCandidate = await realpath(candidate);
+    let realCandidate: string;
+    try {
+      realCandidate = await realpath(candidate);
+    } catch {
+      throw new Error('Requested file does not exist or is not readable.');
+    }
     const boundary = path.relative(realRoot, realCandidate);
-    if (boundary === '' || boundary === '..' || boundary.startsWith(`..${path.sep}`) || path.isAbsolute(boundary)) {
+    if (
+      boundary === '' ||
+      boundary === '..' ||
+      boundary.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(boundary)
+    ) {
       throw new Error('Path resolves outside the repository.');
     }
     return realCandidate;
@@ -388,7 +468,7 @@ const TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'get_diff',
     title: 'Read Git diff',
     description:
-      'Read working-tree, staged, or commit-range changes. For recent commit review, inspect recent_commits first and then request an explicit range.',
+      'Read working-tree, staged, or commit-range changes after excluding credential-like paths. For recent commit review, inspect recent_commits first and then request an explicit range.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -468,12 +548,16 @@ function toolError(message: string): McpToolCallResult {
 
 function asObject(value: unknown): Record<string, unknown> {
   if (value === undefined || value === null) return {};
-  if (typeof value !== 'object' || Array.isArray(value)) throw new Error('Tool arguments must be an object.');
+  if (typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('Tool arguments must be an object.');
+  }
   return value as Record<string, unknown>;
 }
 
 function readString(value: unknown, name: string): string {
-  if (typeof value !== 'string' || !value.trim()) throw new Error(`${name} must be a non-empty string.`);
+  if (typeof value !== 'string' || !value.trim()) {
+    throw new Error(`${name} must be a non-empty string.`);
+  }
   return value.trim();
 }
 
@@ -500,7 +584,7 @@ function readEnum<const T extends readonly string[]>(
   fallback: T[number],
 ): T[number] {
   if (value === undefined || value === null) return fallback;
-  if (typeof value !== 'string' || !allowed.includes(value)) {
+  if (typeof value !== 'string' || !allowed.includes(value as T[number])) {
     throw new Error(`Expected one of: ${allowed.join(', ')}.`);
   }
   return value as T[number];
@@ -516,6 +600,7 @@ function parseCommitLine(value: string): Record<string, string> {
 }
 
 function truncateText(value: string, maxBytes: number): string {
+  if (maxBytes <= 0) return '[TRUNCATED BY REVIEWLUME]';
   if (Buffer.byteLength(value, 'utf8') <= maxBytes) return value;
   let low = 0;
   let high = value.length;
@@ -531,13 +616,51 @@ function normalizeRepoPath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
+function isAbsoluteLike(value: string): boolean {
+  return (
+    path.isAbsolute(value) ||
+    path.posix.isAbsolute(normalizeRepoPath(value)) ||
+    /^[A-Za-z]:[\\/]/.test(value) ||
+    /^\\\\/.test(value)
+  );
+}
+
+function normalizeRepositoryRelativePath(
+  value: string,
+  label: string,
+  blockSensitive: boolean,
+): string {
+  if (isAbsoluteLike(value) || value.includes('\0')) {
+    throw new Error(`${label} must be repository-relative.`);
+  }
+  const normalized = path.posix.normalize(normalizeRepoPath(value));
+  if (
+    !normalized ||
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../')
+  ) {
+    throw new Error(`${label} resolves outside the repository.`);
+  }
+  if (normalized === '.git' || normalized.startsWith('.git/')) {
+    throw new Error('The .git directory is not readable through MCP.');
+  }
+  if (blockSensitive && isSensitivePath(normalized)) {
+    throw new Error('Sensitive files are blocked.');
+  }
+  return normalized;
+}
+
+function normalizeOptionalFilePath(value: string | undefined): string | undefined {
+  return value
+    ? normalizeRepositoryRelativePath(value, 'Git diff path', true)
+    : undefined;
+}
+
 function normalizeOptionalPrefix(value: string | undefined): string | undefined {
   if (!value) return undefined;
-  const normalized = normalizeRepoPath(value).replace(/\/+$/, '');
-  if (!normalized || normalized === '.' || normalized.startsWith('../') || path.isAbsolute(value)) {
-    throw new Error('Prefix must stay inside the repository.');
-  }
-  return normalized.endsWith('/') ? normalized : `${normalized}/`;
+  const normalized = normalizeRepositoryRelativePath(value, 'Prefix', false).replace(/\/+$/, '');
+  return `${normalized}/`;
 }
 
 function isSensitivePath(value: string): boolean {
@@ -563,6 +686,10 @@ function sanitizeRemoteUrl(value: string): string {
     parsed.password = '';
     return parsed.toString().replace('//@', '//');
   } catch {
+    const scpStyle = trimmed.match(/^(?:[^@/\s]+@)?([^:/\s]+):(.+)$/);
+    if (scpStyle && !/^[A-Za-z]:[\\/]/.test(trimmed)) {
+      return `ssh://${scpStyle[1]}/${scpStyle[2]}`;
+    }
     return trimmed.replace(
       /([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?::[^\s/@]*)?@/gi,
       '$1[REDACTED]@',
