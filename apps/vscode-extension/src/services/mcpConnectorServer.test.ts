@@ -121,7 +121,7 @@ describe('McpConnectorServer', () => {
       result: {
         protocolVersion: '2025-11-25',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { version: '0.1.11' },
+        serverInfo: { version: '0.1.17' },
       },
     });
 
