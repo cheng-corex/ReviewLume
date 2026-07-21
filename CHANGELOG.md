@@ -99,6 +99,7 @@
 
 ### Fixed
 
+- Keep `tools/call` independent from best-effort OutputChannel logging so extension-host reloads or a disposed log channel cannot turn valid read-only tool calls into HTTP 500 responses.
 - Activate ReviewLume after VS Code startup finishes so the MCP status bar is visible without first opening the Activity Bar view; startup activation does not start a tunnel or inspect repository contents.
 - Kept the packaged P0 extension entry point self-contained so a VSIX built with
   `--no-dependencies` does not fail on an unpackaged workspace module.
