@@ -76,9 +76,13 @@
     before being returned to the model.
   - Official `openai/tunnel-client` integration validates official help text and Tunnel ID format,
     runs `doctor --explain`, starts without a shell, waits for fresh loopback readiness, and opens
-    ChatGPT Connectors only after the OpenAI control plane reports the matching healthy Tunnel.
-  - Tunnel ID, official client path, and the normalized control-plane proxy are stored in VS Code
-    global state; the Runtime API Key is stored only in SecretStorage.
+    ChatGPT only after the OpenAI control plane reports the matching healthy Tunnel.
+  - Tunnel ID, official client path, normalized control-plane proxy, and ChatGPT browser preference
+    are stored in VS Code global state; the Runtime API Key is stored only in SecretStorage.
+  - ChatGPT can be opened in the system default browser, Microsoft Edge, or Google Chrome without
+    changing the operating-system default browser. The explicit browser launch never uses a shell.
+  - Normal connect and reopen actions go directly to a new ChatGPT chat. Connector settings remain
+    available only as an explicit Advanced action.
   - Control-plane proxy discovery supports saved state, dedicated and standard proxy environment
     variables, VS Code `http.proxy`, and Windows system proxy settings.
   - Only `CONTROL_PLANE_HTTP_PROXY` is passed to tunnel-client; generic proxy variables are removed
@@ -91,16 +95,17 @@
     raw HTTP logging, and generic proxy overrides are removed before the controlled environment is constructed.
   - Doctor diagnostics are redacted before display; long-running tunnel-client stdout/stderr is not
     captured, avoiding credential leakage across arbitrary output chunks.
-  - Status-bar actions provide one-click connect, configuration, loopback diagnostics, stop, and
-    Advanced local-debugging information.
+  - The status bar is the single visible ReviewLume entry point for P9. The redundant Activity Bar
+    container is no longer contributed; Advanced review features remain available through commands.
   - Existing Review Pack, response import, history, issue status, implementation, and re-review
     capabilities remain available as Advanced commands rather than the default workflow.
   - The earlier browser input-field bridge prototype is no longer registered as the P9 main flow.
 
 ### Fixed
 
+- Open the ChatGPT home route for a new conversation instead of reopening the connector detail modal after every successful connection.
 - Keep `tools/call` independent from best-effort OutputChannel logging so extension-host reloads or a disposed log channel cannot turn valid read-only tool calls into HTTP 500 responses.
-- Activate ReviewLume after VS Code startup finishes so the MCP status bar is visible without first opening the Activity Bar view; startup activation does not start a tunnel or inspect repository contents.
+- Activate ReviewLume after VS Code startup finishes so the MCP status bar is visible immediately; startup activation does not start a tunnel or inspect repository contents.
 - Kept the packaged P0 extension entry point self-contained so a VSIX built with
   `--no-dependencies` does not fail on an unpackaged workspace module.
 - Made clean scripts and the VS Code build task work across Windows, macOS, and Linux.
@@ -116,7 +121,6 @@
   and Review Pack manifests.
 - Prevented raw matched values and adjacent same-line secrets from entering scan results,
   previews, logs, or diagnostics.
-- Added the scan and export commands to the clickable Activity Bar action list.
 - Excluded generated `.reviewlume/exports/**` files from new review-selection sessions to
   prevent Review Packs from recursively including earlier Review Packs.
 - Unified ZIP export to the same review-specific directory as Markdown and both formats:
