@@ -1,10 +1,10 @@
 # P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 使用 Draft PR #21 最新一次四平台全绿 CI 及其 Windows VSIX 0.1.10 artifact。真实 Tunnel 和 ChatGPT 工具调用仍需在用户 Windows 环境执行。
+> 使用 Draft PR #21 最新一次四平台全绿 CI 及其 Windows VSIX 0.1.11 artifact。真实 Tunnel 和 ChatGPT 工具调用仍需在用户 Windows 环境执行。
 
 ## 验收前提
 
-- 使用 Draft PR #21 最新全绿 CI 的 Windows artifact 中的 VSIX 0.1.10。
+- 使用 Draft PR #21 最新全绿 CI 的 Windows artifact 中的 VSIX 0.1.11。
 - Windows VS Code 打开一个不含真实凭据的测试 Git repository。
 - VS Code Workspace Trust 已开启。
 - ChatGPT Plus 账号已开启开发者模式，并可创建自定义连接器。
@@ -49,12 +49,14 @@
 5. 确认进程环境通过 `env:` 引用构造 `X-ReviewLume-Token`，Header 配置本身不含 Token 明文。
 6. 在启动 VS Code 前临时设置测试用 `TUNNEL_CLIENT_CONFIG`、`MCP_COMMAND`、`OPENAI_ADMIN_KEY`、`ALLOW_REMOTE_UI=true` 或 `LOG_HTTP_RAW_UNSAFE=true`，确认 ReviewLume 启动的进程没有继承这些覆盖项。
 7. 确认标准 `HTTPS_PROXY`/`NO_PROXY` 等网络环境仍可按系统需要保留。
-8. 确认 doctor 的无凭据 GET `/mcp` 可达性探测得到 405，而不是 401；OAuth metadata 候选全部 404 时按“未声明 OAuth”通过。
-9. 确认 doctor 完成后长期进程写入新的 health URL，而不是复用 doctor 的旧文件内容。
-10. 故意使用错误 Tunnel ID 或 Runtime Key，确认 doctor/启动失败且状态栏显示失败，不保持“已连接”。
-11. 恢复正确配置后重新连接。
+8. 确认 doctor 的无凭据 GET `/mcp` 可达性探测得到 405，而不是 401。
+9. 确认 `/.well-known/oauth-protected-resource/mcp` 和 `/.well-known/oauth-protected-resource` 返回 200，正文只包含当前 loopback MCP `resource`，且不包含 `authorization_servers`。
+10. 确认 doctor 的 `oauth_metadata` 检查通过，并且没有启动 OAuth 登录或访问外部授权服务器。
+11. 确认 doctor 完成后长期进程写入新的 health URL，而不是复用 doctor 的旧文件内容。
+12. 故意使用错误 Tunnel ID 或 Runtime Key，确认 doctor/启动失败且状态栏显示失败，不保持“已连接”。
+13. 恢复正确配置后重新连接。
 
-通过标准：诊断面仅 loopback；凭据不在 argv；宿主环境不能注入额外 profile、MCP command、admin key、Cloudflared、Harpoon、远程 UI 或原始 HTTP 日志；失败安全停止。
+通过标准：诊断面仅 loopback；Protected Resource Metadata 不含仓库名、工具、Token 或 OAuth 授权服务器；凭据不在 argv；宿主环境不能注入额外 profile、MCP command、admin key、Cloudflared、Harpoon、远程 UI 或原始 HTTP 日志；失败安全停止。
 
 ## 4. ChatGPT 自定义连接器
 
@@ -105,12 +107,13 @@
 1. 确认本地 endpoint 为 `http://127.0.0.1:<随机端口>/mcp`。
 2. 确认未监听 `0.0.0.0`、局域网 IP 或公网 IP。
 3. 不带凭据 GET `/mcp`，确认返回 405，且不带 `WWW-Authenticate`，不返回工具或 repository 数据。
-4. 不带凭据 POST JSON-RPC，确认返回 401。
-5. 不带凭据 DELETE 或使用错误 Token，确认返回 401。
-6. 本地 Bearer 和官方 Tunnel 专用 Header 都能以正确 Token 完成 `ping`。
-7. 停止并重新启动，确认端口或 Token 至少一项发生变化，旧 Token 不可继续使用。
+4. 不带凭据 GET 两个标准 Protected Resource Metadata 路径，确认只返回当前 loopback `resource`。
+5. 不带凭据 POST JSON-RPC，确认返回 401。
+6. 不带凭据 DELETE 或使用错误 Token，确认返回 401。
+7. 本地 Bearer 和官方 Tunnel 专用 Header 都能以正确 Token 完成 `ping`。
+8. 停止并重新启动，确认端口或 Token 至少一项发生变化，旧 Token 不可继续使用。
 
-通过标准：服务仅 loopback；GET 只暴露无状态端点不支持 SSE 的 405；所有 JSON-RPC、会话终止和 repository 数据访问均需随机 Token；ChatGPT 连接器认证不会替代本地专用 Header。
+通过标准：服务仅 loopback；GET `/mcp` 只暴露无状态端点不支持 SSE 的 405；well-known 元数据只暴露 loopback resource；所有 JSON-RPC、会话终止和 repository 数据访问均需随机 Token；ChatGPT 连接器认证不会替代本地专用 Header。
 
 ## 7. 路径和敏感内容
 
