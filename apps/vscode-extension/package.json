@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -19,6 +19,7 @@
   "categories": ["Other", "Visualization"],
   "keywords": ["code review", "git diff", "ai review", "mcp", "privacy"],
   "activationEvents": [
+    "onStartupFinished",
     "onCommand:reviewlume.hello",
     "onCommand:reviewlume.createReviewPack",
     "onCommand:reviewlume.addRelatedFiles",
@@ -52,7 +53,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.12.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.13.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
