@@ -1,7 +1,15 @@
 import { createHash } from 'node:crypto';
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { mkdtemp, mkdir, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  readdir,
+  rm,
+  symlink,
+  writeFile,
+} from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { McpGitRunner, McpToolCallResult } from './mcpRepositoryTools';
 import {
@@ -111,6 +119,9 @@ describe('McpWritableRepositoryTools', () => {
     expect(await readFile(path.join(root, 'src', 'new.ts'), 'utf8')).toBe(
       'export const created = true;\n',
     );
+    expect((await readdir(path.join(root, 'src'))).some((name) => name.includes('reviewlume-write'))).toBe(
+      false,
+    );
     expect(confirmWrite).toHaveBeenCalledTimes(1);
     expect(confirmWrite.mock.calls[0]?.[0]).toMatchObject({
       repository: 'fixture',
@@ -160,6 +171,29 @@ describe('McpWritableRepositoryTools', () => {
     expect(confirmWrite).not.toHaveBeenCalled();
     expect(await readFile(path.join(root, 'src', 'example.ts'), 'utf8')).toBe(
       'export const value = 1;\n',
+    );
+  });
+
+  it('fails closed when a file changes while the confirmation is open', async () => {
+    confirmWrite.mockImplementationOnce(async () => {
+      await writeFile(path.join(root, 'src', 'example.ts'), 'export const external = true;\n');
+      return { approved: true };
+    });
+
+    const result = await tools.call('write_files', {
+      changes: [
+        {
+          path: 'src/example.ts',
+          expectedSha256: digest('export const value = 1;\n'),
+          content: 'export const value = 5;\n',
+        },
+      ],
+    });
+
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('changed while awaiting confirmation');
+    expect(await readFile(path.join(root, 'src', 'example.ts'), 'utf8')).toBe(
+      'export const external = true;\n',
     );
   });
 
