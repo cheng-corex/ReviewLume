@@ -42,6 +42,7 @@ describe('McpConnectorServer', () => {
       root,
       displayName: 'fixture',
       runner: new FakeRunner(),
+      contentGuard: { hasSensitiveContent: () => false },
     });
     server = new McpConnectorServer({ tools });
     const address = await server.start();
