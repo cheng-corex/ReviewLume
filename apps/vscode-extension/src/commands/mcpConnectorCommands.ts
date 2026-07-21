@@ -113,12 +113,12 @@ export function registerMcpConnectorCommands(
       tunnelId = await vscode.window.showInputBox({
         title: 'ReviewLume Secure MCP Tunnel',
         prompt: 'Paste the OpenAI tunnel ID. It starts with tunnel_.',
-        placeHolder: 'tunnel_0123456789abcdef0123456789abcdef',
+        placeHolder: 'tunnel_0123456789abcdefghijklmnopqrstuv',
         ignoreFocusOut: true,
         validateInput: (value) =>
           isValidTunnelId(value)
             ? undefined
-            : 'Tunnel ID must be tunnel_ followed by 32 lowercase hexadecimal characters.',
+            : 'Tunnel ID must be tunnel_ followed by 32 lowercase letters or digits.',
       });
       if (!tunnelId) return false;
     }
@@ -145,7 +145,7 @@ export function registerMcpConnectorCommands(
       });
       if (!runtimeApiKey) return false;
     } else {
-      runtimeApiKey = await context.secrets.get('reviewlume.secureMcpTunnel.runtimeApiKey');
+      runtimeApiKey = await secureTunnel.getStoredRuntimeApiKey();
       if (!runtimeApiKey) return false;
     }
 
