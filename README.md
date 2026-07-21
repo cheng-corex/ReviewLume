@@ -70,14 +70,17 @@ VS Code 状态栏提供 `ReviewLume MCP` 主入口。首次连接需要完成一
 ## Secure MCP Tunnel 安全处理
 
 - 只执行用户明确选择、PATH 中可用或机器设置指定的官方 `tunnel-client`；不静默下载、不通过 shell 启动；
+- 使用官方帮助文本识别客户端，并按官方规则接受 `tunnel_` 后 32 位小写字母或数字的 Tunnel ID；
 - Runtime API Key 使用 VS Code SecretStorage，不写入 repository、用户设置、命令参数、剪贴板或日志；
 - Tunnel ID 和官方二进制路径可保存在 VS Code globalState；
+- 启动前清除宿主环境中的 Tunnel profile、MCP command、admin key、Cloudflared、Harpoon、远程 UI 和原始 HTTP 日志覆盖项，只保留普通系统与网络环境；
 - 控制面密钥和本地 MCP Token 只通过环境变量传给子进程；
 - 本地 MCP 使用专用 `X-ReviewLume-Token`，避免与 ChatGPT 连接器认证头冲突；
 - tunnel-client 的健康监听和诊断 UI 固定为 loopback；
-- 启动前运行官方 doctor；失败时停止子进程，不保持半连接状态；
+- 启动前运行官方 doctor；失败时停止子进程，不保持半连接状态；doctor 完成后删除其 health URL，长期进程必须生成新的健康地址；
+- doctor 的完整诊断文本在返回前脱敏；长期 tunnel-client 的 stdout/stderr 不采集，避免凭据跨输出分块时绕过脱敏；
 - 关闭扩展或选择停止连接时，先停止隧道，再停止本地 MCP 并使短时 Token 失效；
-- 日志对 Runtime Key、MCP Token 和 Authorization 内容执行二次脱敏；不启用原始 HTTP 日志。
+- 不启用原始 HTTP 日志、远程诊断 UI、自动打开 UI 或 Harpoon payload 捕获。
 
 ## 仓库访问安全边界
 
