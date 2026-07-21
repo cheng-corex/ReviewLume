@@ -10,7 +10,7 @@ import { logError, logInfo, logWarn } from './logService';
 const RUNTIME_API_KEY_SECRET = 'reviewlume.secureMcpTunnel.runtimeApiKey';
 const TUNNEL_ID_STATE = 'reviewlume.secureMcpTunnel.tunnelId';
 const BINARY_PATH_STATE = 'reviewlume.secureMcpTunnel.binaryPath';
-const TUNNEL_ID_PATTERN = /^tunnel_[0-9a-f]{32}$/;
+const TUNNEL_ID_PATTERN = /^tunnel_[a-z0-9]{32}$/;
 const START_TIMEOUT_MS = 60_000;
 const DOCTOR_TIMEOUT_MS = 45_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
@@ -107,7 +107,7 @@ export class SecureMcpTunnelService {
       throw new Error('The selected file is not a working OpenAI tunnel-client executable.');
     }
     if (!isValidTunnelId(configuration.tunnelId)) {
-      throw new Error('Tunnel ID must match tunnel_ followed by 32 lowercase hexadecimal characters.');
+      throw new Error('Tunnel ID must match tunnel_ followed by 32 lowercase letters or digits.');
     }
     if (configuration.runtimeApiKey.trim().length < 10) {
       throw new Error('A Runtime API key is required. Do not use an admin key.');
@@ -298,8 +298,12 @@ export function normalizeHealthBaseUrl(value: string): string {
 
 export async function verifyTunnelClientBinary(binaryPath: string): Promise<boolean> {
   try {
-    const result = await execFileResult(binaryPath, ['--version'], process.env, 10_000);
-    return /tunnel-client/i.test(`${result.stdout}\n${result.stderr}`);
+    const result = await execFileResult(binaryPath, ['--help'], process.env, 10_000);
+    const output = `${result.stdout}\n${result.stderr}`;
+    return (
+      /Use:\s+tunnel-client/i.test(output) &&
+      /Tunnel client for the OpenAI MCP control plane/i.test(output)
+    );
   } catch {
     return false;
   }
