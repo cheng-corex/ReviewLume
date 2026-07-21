@@ -1,5 +1,9 @@
 import * as vscode from 'vscode';
 import { COMMANDS } from '../constants';
+import {
+  ChatGptBrowserService,
+  browserPreferenceLabel,
+} from '../services/chatGptBrowserService';
 import { McpConnectorService, type McpConnectionInfo } from '../services/mcpConnectorService';
 import { logError, logInfo } from '../services/logService';
 import {
@@ -11,11 +15,15 @@ import {
   isValidTunnelId,
 } from '../services/secureMcpTunnelService';
 
+const CHATGPT_NEW_CHAT_URL = 'https://chatgpt.com/';
+
 interface McpAction extends vscode.QuickPickItem {
   readonly action:
     | 'connect'
     | 'configure'
     | 'copy'
+    | 'choose-browser'
+    | 'open-chatgpt'
     | 'open-chatgpt-connectors'
     | 'open-tunnel-ui'
     | 'open-openai-tunnels'
@@ -33,6 +41,7 @@ export function registerMcpConnectorCommands(
   connector: McpConnectorService,
   secureTunnel: SecureMcpTunnelService,
 ): void {
+  const chatGptBrowser = new ChatGptBrowserService(context);
   const status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 40);
   status.name = 'ReviewLume MCP Connector';
   status.command = COMMANDS.MCP_CONNECTOR_MENU;
@@ -164,7 +173,22 @@ export function registerMcpConnectorCommands(
     return connection;
   };
 
+  const openChatGpt = async (): Promise<void> => {
+    await chatGptBrowser.openUrl(CHATGPT_NEW_CHAT_URL);
+  };
+
+  const chooseChatGptBrowser = async (): Promise<void> => {
+    const preference = await chatGptBrowser.chooseBrowser(true);
+    if (!preference) return;
+    await vscode.window.showInformationMessage(
+      `ReviewLume will open ChatGPT in ${browserPreferenceLabel(preference)}.`,
+    );
+  };
+
   const connect = async (): Promise<void> => {
+    const browserPreference = await chatGptBrowser.chooseBrowser(false);
+    if (!browserPreference) return;
+
     let configurationStatus = await secureTunnel.getConfigurationStatus();
     let binaryPath = await secureTunnel.discoverBinary();
     if (!binaryPath || !configurationStatus.tunnelId || !configurationStatus.hasRuntimeApiKey) {
@@ -181,17 +205,15 @@ export function registerMcpConnectorCommands(
     if (!connection) return;
     const tunnelState = await secureTunnel.start(connection);
     refreshStatus();
-    await vscode.env.clipboard.writeText(tunnelState.tunnelId ?? configurationStatus.tunnelId);
-    await openExternal(CHATGPT_CONNECTORS_URL);
-    await vscode.window.showInformationMessage(
-      `ReviewLume is connected through OpenAI Secure MCP Tunnel for ${connection.repository}. ` +
-        'The tunnel ID was copied. In ChatGPT, add a custom connector, choose Connection: Tunnel, and paste the ID.',
+    await chatGptBrowser.openUrl(CHATGPT_NEW_CHAT_URL);
+    const selection = await vscode.window.showInformationMessage(
+      `ReviewLume is connected for ${connection.repository}. ` +
+        `A new ChatGPT chat was opened in ${browserPreferenceLabel(browserPreference)}.`,
       'Open tunnel diagnostics',
-    ).then(async (selection) => {
-      if (selection === 'Open tunnel diagnostics' && tunnelState.uiUrl) {
-        await openExternal(tunnelState.uiUrl);
-      }
-    });
+    );
+    if (selection === 'Open tunnel diagnostics' && tunnelState.uiUrl) {
+      await openExternal(tunnelState.uiUrl);
+    }
   };
 
   const copy = async (): Promise<void> => {
@@ -224,20 +246,31 @@ export function registerMcpConnectorCommands(
   const showMenu = async (): Promise<void> => {
     const connection = connector.connection;
     const tunnelState = secureTunnel.state;
+    const browserLabel = await chatGptBrowser.getPreferenceLabel();
     const actions: McpAction[] = [
       {
         label: tunnelState.status === 'ready'
-          ? '$(check) Open ChatGPT Connectors'
+          ? '$(comment-discussion) Open New Chat in ChatGPT'
           : '$(radio-tower) Connect Current Repository to ChatGPT',
         description: tunnelState.status === 'ready'
-          ? `${connection?.repository ?? 'Repository'} · tunnel ready`
-          : 'Start local read-only MCP and the official OpenAI Secure MCP Tunnel',
-        action: tunnelState.status === 'ready' ? 'open-chatgpt-connectors' : 'connect',
+          ? `${connection?.repository ?? 'Repository'} · ${browserLabel}`
+          : 'Start local read-only MCP, the Secure MCP Tunnel, and a new ChatGPT chat',
+        action: tunnelState.status === 'ready' ? 'open-chatgpt' : 'connect',
+      },
+      {
+        label: '$(browser) Choose ChatGPT Browser',
+        description: `Current: ${browserLabel}`,
+        action: 'choose-browser',
       },
       {
         label: '$(gear) Configure Secure MCP Tunnel',
         description: 'Official tunnel-client, Tunnel ID, and Runtime API key',
         action: 'configure',
+      },
+      {
+        label: '$(extensions) Manage ChatGPT Connector (Advanced)',
+        description: 'Open connector settings only when the existing connector needs changes',
+        action: 'open-chatgpt-connectors',
       },
     ];
     if (tunnelState.status === 'ready' && tunnelState.uiUrl) {
@@ -297,8 +330,14 @@ export function registerMcpConnectorCommands(
       case 'copy':
         await copy();
         break;
+      case 'choose-browser':
+        await chooseChatGptBrowser();
+        break;
+      case 'open-chatgpt':
+        await openChatGpt();
+        break;
       case 'open-chatgpt-connectors':
-        await openExternal(CHATGPT_CONNECTORS_URL);
+        await chatGptBrowser.openUrl(CHATGPT_CONNECTORS_URL);
         break;
       case 'open-tunnel-ui':
         await openTunnelUi();
@@ -345,7 +384,9 @@ export function registerMcpConnectorCommands(
 async function chooseWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefined> {
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) {
-    await vscode.window.showErrorMessage('Open a folder inside a Git repository before starting ReviewLume MCP.');
+    await vscode.window.showErrorMessage(
+      'Open a folder inside a Git repository before starting ReviewLume MCP.',
+    );
     return undefined;
   }
 
@@ -384,7 +425,9 @@ async function copyConnectionInfo(connection: McpConnectionInfo): Promise<void> 
     2,
   );
   await vscode.env.clipboard.writeText(value);
-  logInfo(`Local MCP debugging information copied for ${connection.repository}; token omitted from logs`);
+  logInfo(
+    `Local MCP debugging information copied for ${connection.repository}; token omitted from logs`,
+  );
 }
 
 async function openExternal(value: string): Promise<void> {
