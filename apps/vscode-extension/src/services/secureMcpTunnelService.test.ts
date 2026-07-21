@@ -5,6 +5,7 @@ import {
   isValidTunnelId,
   normalizeHealthBaseUrl,
   redactTunnelOutput,
+  sanitizeTunnelEnvironment,
   type SecureMcpTunnelConfiguration,
 } from './secureMcpTunnelService';
 
@@ -52,6 +53,66 @@ describe('SecureMcpTunnelService helpers', () => {
     expect(env.MCP_EXTRA_HEADERS).not.toContain(connection.tunnelToken);
     expect(env.MCP_EXTRA_HEADERS).not.toContain(configuration.runtimeApiKey);
     expect(env.ALLOW_REMOTE_UI).toBe('false');
+    expect(env.OPEN_WEB_UI).toBe('false');
+    expect(env.LOG_HTTP_RAW_UNSAFE).toBe('false');
+    expect(env.HARPOON_CAPTURE_PAYLOADS).toBe('false');
+  });
+
+  it('removes ambient tunnel-client profiles, commands, keys, and unsafe logging overrides', () => {
+    const ambient = {
+      PATH: '/bin',
+      HTTPS_PROXY: 'http://proxy.example.test:8080',
+      TUNNEL_CLIENT_CONFIG: '/tmp/ambient.yaml',
+      TUNNEL_CLIENT_PROFILE: 'ambient-profile',
+      CONTROL_PLANE_TUNNEL_ID: 'tunnel_ambientambientambientambient12',
+      OPENAI_API_KEY: 'ambient-openai-key',
+      OPENAI_ADMIN_KEY: 'ambient-admin-key',
+      MCP_COMMAND: 'command=sh -c unexpected,channel=main',
+      MCP_SERVER_URL: 'https://unexpected.example/mcp',
+      MCP_EXTRA_HEADERS: 'X-Ambient: secret',
+      CLOUDFLARED_TUNNEL_TOKEN: 'ambient-cloudflared-token',
+      HARPOON_TARGETS: 'label=unexpected,url=http://127.0.0.1:1',
+      ALLOW_REMOTE_UI: 'true',
+      OPEN_WEB_UI: 'true',
+      LOG_FILE: '/tmp/ambient.log',
+      LOG_HTTP_RAW_UNSAFE: 'true',
+    } satisfies NodeJS.ProcessEnv;
+
+    const sanitized = sanitizeTunnelEnvironment(ambient);
+    expect(sanitized.PATH).toBe('/bin');
+    expect(sanitized.HTTPS_PROXY).toBe(ambient.HTTPS_PROXY);
+    expect(sanitized.TUNNEL_CLIENT_CONFIG).toBeUndefined();
+    expect(sanitized.TUNNEL_CLIENT_PROFILE).toBeUndefined();
+    expect(sanitized.CONTROL_PLANE_TUNNEL_ID).toBeUndefined();
+    expect(sanitized.OPENAI_API_KEY).toBeUndefined();
+    expect(sanitized.OPENAI_ADMIN_KEY).toBeUndefined();
+    expect(sanitized.MCP_COMMAND).toBeUndefined();
+    expect(sanitized.MCP_SERVER_URL).toBeUndefined();
+    expect(sanitized.MCP_EXTRA_HEADERS).toBeUndefined();
+    expect(sanitized.CLOUDFLARED_TUNNEL_TOKEN).toBeUndefined();
+    expect(sanitized.HARPOON_TARGETS).toBeUndefined();
+    expect(sanitized.ALLOW_REMOTE_UI).toBeUndefined();
+    expect(sanitized.OPEN_WEB_UI).toBeUndefined();
+    expect(sanitized.LOG_FILE).toBeUndefined();
+    expect(sanitized.LOG_HTTP_RAW_UNSAFE).toBeUndefined();
+
+    const env = buildTunnelEnvironment(
+      ambient,
+      configuration,
+      connection,
+      '/tmp/health.url',
+    );
+    expect(env.PATH).toBe('/bin');
+    expect(env.HTTPS_PROXY).toBe(ambient.HTTPS_PROXY);
+    expect(env.CONTROL_PLANE_TUNNEL_ID).toBe(configuration.tunnelId);
+    expect(env.MCP_SERVER_URL).toBe(connection.endpointUrl);
+    expect(env.MCP_COMMAND).toBeUndefined();
+    expect(env.OPENAI_ADMIN_KEY).toBeUndefined();
+    expect(env.CLOUDFLARED_TUNNEL_TOKEN).toBeUndefined();
+    expect(env.HARPOON_TARGETS).toBeUndefined();
+    expect(env.LOG_FILE).toBeUndefined();
+    expect(env.ALLOW_REMOTE_UI).toBe('false');
+    expect(env.OPEN_WEB_UI).toBe('false');
     expect(env.LOG_HTTP_RAW_UNSAFE).toBe('false');
   });
 
