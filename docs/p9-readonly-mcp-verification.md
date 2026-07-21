@@ -1,10 +1,10 @@
 # P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 使用 Draft PR #21 最新四平台全绿 CI 及其 Windows VSIX 0.1.15 artifact。自动化测试负责协议、安全边界、浏览器启动解析和打包；真实 ChatGPT 工具调用仍需在用户 Windows 环境完成。
+> 使用 Draft PR #21 最新四平台全绿 CI 及其 Windows VSIX 0.1.16 artifact。自动化测试负责协议、安全边界、浏览器启动解析、取消异常识别和打包；真实 ChatGPT 工具调用仍需在用户 Windows 环境完成。
 
 ## 当前验收基线
 
-- VSIX：0.1.15。
+- VSIX：0.1.16。
 - 官方客户端：`openai/tunnel-client` v0.0.10 Windows amd64。
 - ChatGPT Personal workspace 已创建并授权 ReviewLume Tunnel 连接器。
 - ReviewLume 一次连接只绑定一个 Trusted Workspace 中的 Git repository。
@@ -21,19 +21,22 @@
 
 ## 1. 安装、启动激活与界面收口
 
-1. 安装 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.15，并完全退出 VS Code。
+1. 安装 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.16，并完全退出 VS Code。
 2. 正常双击打开 VS Code，确认启动完成后底部直接出现 `ReviewLume MCP` 状态项。
 3. 确认左侧 Activity Bar 不再出现 ReviewLume 专用操作栏。
 4. 确认自动激活只注册状态栏、命令和必要服务；不会自动启动 Tunnel、打开 ChatGPT、读取 Git diff 或扫描 repository。
 5. 打开一个不含真实凭据的测试 Git repository，确认 Workspace Trust 已开启。
 6. P8 Review Pack、历史、问题状态、实施提示和二次复核继续通过命令面板或 Review Panel 使用。
+7. 打开 ReviewLume 状态栏菜单或浏览器选择框后执行 Extension Host reload，确认用户取消或重载不会弹出红色 `Canceled` 错误通知。
 
 通过标准：
 
 - P9 只有底部状态栏这一处常驻主入口；
 - 不再需要先点击左侧栏才能初始化；
 - 删除左侧栏不影响命令注册和 P8 Advanced 能力；
-- 启动激活不会主动建立网络连接或读取项目内容。
+- 启动激活不会主动建立网络连接或读取项目内容；
+- 明确的 VS Code 取消异常被视为正常取消，不写成操作失败，也不显示错误通知；
+- 代理、配置、浏览器启动、Tunnel 和 MCP 等真实运行错误仍必须正常显示。
 
 ## 2. 首次配置、代理自动发现与持久化
 
@@ -170,7 +173,7 @@ MCP 不得执行或间接触发：
 
 1. 选择 `Stop Secure MCP Connection`。
 2. 确认 Tunnel 和本地 MCP 均停止，旧 endpoint/Token 不可用。
-3. 在连接状态关闭 Extension Host，确认没有残留进程。
+3. 在连接状态关闭 Extension Host，确认没有残留进程，也不出现误导性的 `Canceled` 错误通知。
 4. 强制结束 tunnel-client，确认状态栏显示失败。
 5. 重新连接不需要再次输入 SecretStorage 中的 Runtime Key。
 6. 正常重启 VS Code 后不需要 PowerShell 启动脚本，保存的代理和浏览器选择会自动复用。
