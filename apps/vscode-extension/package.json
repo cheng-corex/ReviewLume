@@ -47,11 +47,12 @@
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && tsc -p tsconfig.bridge-protocol-vendor.json && tsc -p tsconfig.web-bridge-vendor.json && node -e \"const fs=require('node:fs');const path=require('node:path');fs.mkdirSync('dist/webview/media',{recursive:true});for(const f of ['reviewPanel.js','reviewPanel.css','reviewPanelTheme.css'])fs.copyFileSync('src/webview/media/'+f,'dist/webview/media/'+f);const zodDir=path.dirname(require.resolve('zod/package.json'));fs.cpSync(zodDir,'dist/node_modules/zod',{recursive:true})\" && node -e \"const m=require('./dist/vendor/web-bridge/index.js');if(typeof m.LocalBridgeServer!=='function')throw new Error('LocalBridgeServer export missing')\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.build.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && node -e \"const fs=require('node:fs');const path=require('node:path');fs.mkdirSync('dist/webview/media',{recursive:true});for(const f of ['reviewPanel.js','reviewPanel.css','reviewPanelTheme.css'])fs.copyFileSync('src/webview/media/'+f,'dist/webview/media/'+f);const zodDir=path.dirname(require.resolve('zod/package.json'));fs.cpSync(zodDir,'dist/node_modules/zod',{recursive:true})\"",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
+    "verify:package-contents": "node scripts/validate-package-contents.mjs",
     "prepackage": "pnpm build",
     "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.16.vsix",
     "pretest": "pnpm build"
@@ -143,5 +144,9 @@
   "repository": {
     "type": "git",
     "url": "https://github.com/cheng-corex/ReviewLume.git"
+  },
+  "homepage": "https://github.com/cheng-corex/ReviewLume#readme",
+  "bugs": {
+    "url": "https://github.com/cheng-corex/ReviewLume/issues"
   }
 }
