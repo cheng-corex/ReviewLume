@@ -40,7 +40,23 @@ jobs:
         run: pnpm lint
 
       - name: Type check
-        run: pnpm typecheck
+        id: typecheck
+        continue-on-error: true
+        shell: bash
+        run: pnpm typecheck > typecheck.log 2>&1
+
+      - name: Upload typecheck diagnostics
+        if: steps.typecheck.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: typecheck-${{ matrix.os }}-node-${{ matrix.node-version }}
+          path: typecheck.log
+          if-no-files-found: error
+
+      - name: Fail after typecheck diagnostics
+        if: steps.typecheck.outcome == 'failure'
+        shell: bash
+        run: exit 1
 
       - name: Test
         run: pnpm test
