@@ -95,10 +95,14 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.1.12');
+    expect(content.version).toBe('0.1.13');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
+  });
+
+  it('activates after startup so the status bar does not depend on opening the Activity Bar view', () => {
+    expect(readPkg().activationEvents).toContain('onStartupFinished');
   });
 
   const expectedCommands = [
