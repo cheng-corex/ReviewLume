@@ -74,16 +74,19 @@
     sensitive credential paths, oversized files, and symbolic-link escapes.
   - File content, diffs, search results, and commit titles pass through the existing SecretScanner
     before being returned to the model.
-  - Official `openai/tunnel-client` integration runs `doctor --explain`, starts the tunnel without
-    a shell, waits for loopback readiness, and opens ChatGPT Connectors.
+  - Official `openai/tunnel-client` integration validates official help text and Tunnel ID format,
+    runs `doctor --explain`, starts without a shell, waits for fresh loopback readiness, and opens
+    ChatGPT Connectors.
   - Tunnel ID and official client path are stored in VS Code global state; the Runtime API Key is
-    stored only in SecretStorage and passed to the child through environment variables.
+    stored only in SecretStorage and passed through the child environment.
   - A dedicated `X-ReviewLume-Token` header protects the loopback MCP without conflicting with
     ChatGPT connector authentication; header configuration uses an environment reference.
-  - Tunnel diagnostics stay loopback-only, raw HTTP logging is disabled, and child output is
-    redacted for Runtime keys, local tokens, and Authorization values.
-  - Status-bar actions provide one-click connect, configuration, diagnostics, stop, and Advanced
-    local-debugging information.
+  - Ambient tunnel profiles, MCP commands, admin keys, Cloudflared, Harpoon, remote UI, log files,
+    and raw HTTP logging overrides are removed before the controlled environment is constructed.
+  - Doctor diagnostics are redacted before display; long-running tunnel-client stdout/stderr is not
+    captured, avoiding credential leakage across arbitrary output chunks.
+  - Status-bar actions provide one-click connect, configuration, loopback diagnostics, stop, and
+    Advanced local-debugging information.
   - Existing Review Pack, response import, history, issue status, implementation, and re-review
     capabilities remain available as Advanced commands rather than the default workflow.
   - The earlier browser input-field bridge prototype is no longer registered as the P9 main flow.
