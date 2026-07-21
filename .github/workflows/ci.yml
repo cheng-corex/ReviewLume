@@ -51,6 +51,9 @@ jobs:
       - name: Build
         run: pnpm build
 
+      - name: Validate VSIX contents
+        run: pnpm --filter reviewlume-vscode verify:package-contents
+
       - name: Package VSIX
         run: pnpm package:vscode
 
