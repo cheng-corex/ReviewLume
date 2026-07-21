@@ -10,8 +10,10 @@ import { logError, logInfo, logWarn } from './logService';
 const RUNTIME_API_KEY_SECRET = 'reviewlume.secureMcpTunnel.runtimeApiKey';
 const TUNNEL_ID_STATE = 'reviewlume.secureMcpTunnel.tunnelId';
 const BINARY_PATH_STATE = 'reviewlume.secureMcpTunnel.binaryPath';
+const CONTROL_PLANE_PROXY_STATE = 'reviewlume.secureMcpTunnel.controlPlaneProxy';
 const TUNNEL_ID_PATTERN = /^tunnel_[a-z0-9]{32}$/;
 const START_TIMEOUT_MS = 60_000;
+const CONTROL_PLANE_TIMEOUT_MS = 20_000;
 const DOCTOR_TIMEOUT_MS = 45_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const MAX_DIAGNOSTIC_CHARS = 4_000;
@@ -36,6 +38,10 @@ const CONTROLLED_ENV_NAMES = new Set([
   'LOG_FILE',
   'LOG_HTTP_RAW_UNSAFE',
   'REVIEWLUME_MCP_TOKEN',
+  'HTTP_PROXY',
+  'HTTPS_PROXY',
+  'ALL_PROXY',
+  'NO_PROXY',
 ]);
 
 export const OPENAI_TUNNELS_URL = 'https://platform.openai.com/settings/organization/tunnels';
@@ -52,6 +58,7 @@ export interface SecureMcpTunnelState {
   readonly tunnelId?: string;
   readonly healthBaseUrl?: string;
   readonly uiUrl?: string;
+  readonly proxyUrl?: string;
   readonly error?: string;
 }
 
@@ -64,14 +71,22 @@ export interface SecureMcpTunnelConfiguration {
 export interface SecureMcpTunnelConfigurationStatus {
   readonly binaryPath?: string;
   readonly tunnelId?: string;
+  readonly controlPlaneProxy?: string;
   readonly hasRuntimeApiKey: boolean;
 }
 
-/**
- * Supervises OpenAI's official tunnel-client process for one ReviewLume MCP endpoint.
- * Secrets are kept in VS Code SecretStorage and are passed to the child only through
- * environment variables. They are never included in argv, settings, clipboard, or logs.
- */
+export interface TunnelClientStatus {
+  readonly control_plane_tunnel_id?: unknown;
+  readonly tunnel_metadata_error?: unknown;
+  readonly channels?: unknown;
+}
+
+interface ProxyCandidate {
+  readonly value: string;
+  readonly source: string;
+}
+
+/** Supervises OpenAI's official tunnel-client for one read-only ReviewLume MCP endpoint. */
 export class SecureMcpTunnelService {
   readonly #context: vscode.ExtensionContext;
   readonly #listeners = new Set<() => void>();
@@ -97,6 +112,7 @@ export class SecureMcpTunnelService {
     return {
       binaryPath: await this.#getStoredBinaryPath(),
       tunnelId: this.#context.globalState.get<string>(TUNNEL_ID_STATE),
+      controlPlaneProxy: this.#context.globalState.get<string>(CONTROL_PLANE_PROXY_STATE),
       hasRuntimeApiKey: Boolean(await this.#context.secrets.get(RUNTIME_API_KEY_SECRET)),
     };
   }
@@ -117,11 +133,31 @@ export class SecureMcpTunnelService {
     );
 
     for (const candidate of candidates) {
-      if (await verifyTunnelClientBinary(candidate)) {
-        return candidate;
-      }
+      if (await verifyTunnelClientBinary(candidate)) return candidate;
     }
     return undefined;
+  }
+
+  async resolveControlPlaneProxy(): Promise<string | undefined> {
+    const stored = this.#context.globalState.get<string>(CONTROL_PLANE_PROXY_STATE);
+    if (stored) {
+      try {
+        return normalizeProxyUrl(stored);
+      } catch {
+        await this.#context.globalState.update(CONTROL_PLANE_PROXY_STATE, undefined);
+      }
+    }
+
+    const detected = await discoverControlPlaneProxy(process.env, readVsCodeProxy(), process.platform);
+    if (!detected) return undefined;
+    await this.#context.globalState.update(CONTROL_PLANE_PROXY_STATE, detected.value);
+    logInfo(`Secure MCP Tunnel proxy detected from ${detected.source}: ${detected.value}`);
+    return detected.value;
+  }
+
+  async saveControlPlaneProxy(value: string | undefined): Promise<void> {
+    const normalized = value?.trim() ? normalizeProxyUrl(value) : undefined;
+    await this.#context.globalState.update(CONTROL_PLANE_PROXY_STATE, normalized);
   }
 
   async saveConfiguration(configuration: SecureMcpTunnelConfiguration): Promise<void> {
@@ -153,7 +189,12 @@ export class SecureMcpTunnelService {
     await this.stop();
 
     const configuration = await this.#loadConfiguration();
-    this.#setState({ status: 'starting', tunnelId: configuration.tunnelId });
+    const controlPlaneProxy = await this.resolveControlPlaneProxy();
+    this.#setState({
+      status: 'starting',
+      tunnelId: configuration.tunnelId,
+      proxyUrl: controlPlaneProxy,
+    });
     const storageRoot = this.#context.globalStorageUri.fsPath;
     await mkdir(storageRoot, { recursive: true });
     const healthUrlFile = path.join(storageRoot, 'secure-mcp-tunnel-health.url');
@@ -165,6 +206,7 @@ export class SecureMcpTunnelService {
       configuration,
       connection,
       healthUrlFile,
+      controlPlaneProxy,
     );
 
     try {
@@ -184,13 +226,21 @@ export class SecureMcpTunnelService {
         if (this.#stopping) return;
         const message = `OpenAI tunnel-client exited unexpectedly (${code ?? signal ?? 'unknown'}).`;
         logWarn(message);
-        this.#setState({ status: 'failed', tunnelId: configuration.tunnelId, error: message });
+        this.#setState({
+          status: 'failed',
+          tunnelId: configuration.tunnelId,
+          proxyUrl: controlPlaneProxy,
+          error: message,
+        });
       });
 
-      const healthBaseUrl = await waitForTunnelReady(
-        healthUrlFile,
+      const healthBaseUrl = await waitForTunnelReady(healthUrlFile, child, START_TIMEOUT_MS);
+      await waitForTunnelControlPlane(
+        healthBaseUrl,
         child,
-        START_TIMEOUT_MS,
+        configuration.tunnelId,
+        CONTROL_PLANE_TIMEOUT_MS,
+        controlPlaneProxy,
       );
       const uiUrl = new URL('/ui#overview', healthBaseUrl).toString();
       this.#setState({
@@ -198,13 +248,21 @@ export class SecureMcpTunnelService {
         tunnelId: configuration.tunnelId,
         healthBaseUrl,
         uiUrl,
+        proxyUrl: controlPlaneProxy,
       });
-      logInfo(`Secure MCP Tunnel ready for ${connection.repository}; tunnel ID ${configuration.tunnelId}`);
+      logInfo(
+        `Secure MCP Tunnel ready for ${connection.repository}; tunnel ID ${configuration.tunnelId}`,
+      );
       return this.#state;
     } catch (error) {
       await this.#stopProcessOnly();
       const message = error instanceof Error ? error.message : 'Secure MCP Tunnel failed to start.';
-      this.#setState({ status: 'failed', tunnelId: configuration.tunnelId, error: message });
+      this.#setState({
+        status: 'failed',
+        tunnelId: configuration.tunnelId,
+        proxyUrl: controlPlaneProxy,
+        error: message,
+      });
       logError('Secure MCP Tunnel startup failed', error instanceof Error ? error : undefined);
       throw error;
     }
@@ -232,7 +290,9 @@ export class SecureMcpTunnelService {
     const tunnelId = this.#context.globalState.get<string>(TUNNEL_ID_STATE);
     const runtimeApiKey = await this.#context.secrets.get(RUNTIME_API_KEY_SECRET);
     if (!binaryPath || !tunnelId || !runtimeApiKey) {
-      throw new Error('Secure MCP Tunnel is not configured. Run ReviewLume: Configure Secure MCP Tunnel first.');
+      throw new Error(
+        'Secure MCP Tunnel is not configured. Run ReviewLume: Configure Secure MCP Tunnel first.',
+      );
     }
     return { binaryPath, tunnelId, runtimeApiKey };
   }
@@ -260,17 +320,85 @@ export function isValidTunnelId(value: string): boolean {
   return TUNNEL_ID_PATTERN.test(value.trim());
 }
 
+export function normalizeProxyUrl(value: string): string {
+  const trimmed = value.trim();
+  if (!trimmed) throw new Error('Proxy URL is empty.');
+  const withScheme = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `http://${trimmed}`;
+  const parsed = new URL(withScheme);
+  if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
+    throw new Error('Proxy URL must use HTTP or HTTPS.');
+  }
+  if (!parsed.hostname || !parsed.port) throw new Error('Proxy URL must include a host and port.');
+  if (parsed.username || parsed.password) {
+    throw new Error('Proxy credentials are not stored by ReviewLume.');
+  }
+  if ((parsed.pathname && parsed.pathname !== '/') || parsed.search || parsed.hash) {
+    throw new Error('Proxy URL must not contain a path, query, or fragment.');
+  }
+  return parsed.origin;
+}
+
+export function parseWindowsProxyServer(value: string): string | undefined {
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+  if (!trimmed.includes('=')) return normalizeProxyUrl(trimmed);
+  const entries = new Map<string, string>();
+  for (const item of trimmed.split(';')) {
+    const separator = item.indexOf('=');
+    if (separator <= 0) continue;
+    entries.set(item.slice(0, separator).trim().toLowerCase(), item.slice(separator + 1).trim());
+  }
+  const selected = entries.get('https') ?? entries.get('http');
+  return selected ? normalizeProxyUrl(selected) : undefined;
+}
+
+export async function discoverControlPlaneProxy(
+  environment: NodeJS.ProcessEnv,
+  vsCodeProxy: string | undefined,
+  platform: NodeJS.Platform,
+): Promise<ProxyCandidate | undefined> {
+  const environmentCandidates: readonly [string, string][] = [
+    ['CONTROL_PLANE_HTTP_PROXY', environment.CONTROL_PLANE_HTTP_PROXY ?? ''],
+    ['HTTPS_PROXY', environment.HTTPS_PROXY ?? environment.https_proxy ?? ''],
+    ['HTTP_PROXY', environment.HTTP_PROXY ?? environment.http_proxy ?? ''],
+  ];
+  for (const [source, candidate] of environmentCandidates) {
+    if (!candidate.trim()) continue;
+    try {
+      return { value: normalizeProxyUrl(candidate), source: `env:${source}` };
+    } catch {
+      // Ignore malformed ambient proxy values and continue discovery.
+    }
+  }
+
+  if (vsCodeProxy?.trim()) {
+    try {
+      return { value: normalizeProxyUrl(vsCodeProxy), source: 'vscode:http.proxy' };
+    } catch {
+      // Continue to the OS proxy.
+    }
+  }
+
+  if (platform !== 'win32') return undefined;
+  const windowsProxy = await readWindowsSystemProxy();
+  return windowsProxy ? { value: windowsProxy, source: 'windows:system-proxy' } : undefined;
+}
+
 export function buildTunnelEnvironment(
   baseEnvironment: NodeJS.ProcessEnv,
   configuration: SecureMcpTunnelConfiguration,
   connection: McpConnectionInfo,
   healthUrlFile: string,
+  controlPlaneProxy?: string,
 ): NodeJS.ProcessEnv {
   const environment = sanitizeTunnelEnvironment(baseEnvironment);
   return {
     ...environment,
     CONTROL_PLANE_API_KEY: configuration.runtimeApiKey,
     CONTROL_PLANE_TUNNEL_ID: configuration.tunnelId,
+    ...(controlPlaneProxy
+      ? { CONTROL_PLANE_HTTP_PROXY: normalizeProxyUrl(controlPlaneProxy) }
+      : {}),
     MCP_SERVER_URL: connection.endpointUrl,
     REVIEWLUME_MCP_TOKEN: connection.tunnelToken,
     MCP_EXTRA_HEADERS: 'X-ReviewLume-Token: env:REVIEWLUME_MCP_TOKEN',
@@ -330,7 +458,9 @@ export function normalizeHealthBaseUrl(value: string): string {
   ) {
     throw new Error('tunnel-client health URL is not loopback HTTP.');
   }
-  if (parsed.username || parsed.password) throw new Error('tunnel-client health URL contains credentials.');
+  if (parsed.username || parsed.password) {
+    throw new Error('tunnel-client health URL contains credentials.');
+  }
   return parsed.origin;
 }
 
@@ -341,6 +471,27 @@ export function isTunnelClientHelpOutput(output: string): boolean {
   );
 }
 
+export function validateTunnelRuntimeStatus(
+  status: TunnelClientStatus,
+  expectedTunnelId: string,
+): string | undefined {
+  if (status.control_plane_tunnel_id !== expectedTunnelId) {
+    return 'Tunnel diagnostics reported a different control-plane tunnel ID.';
+  }
+  if (typeof status.tunnel_metadata_error === 'string' && status.tunnel_metadata_error.trim()) {
+    return status.tunnel_metadata_error.trim();
+  }
+  if (!Array.isArray(status.channels)) return 'Tunnel diagnostics did not report MCP channels.';
+  const main = status.channels.find(
+    (channel): channel is Record<string, unknown> =>
+      Boolean(channel) && typeof channel === 'object' && (channel as Record<string, unknown>).name === 'main',
+  );
+  if (!main || main.enabled !== true || main.probe_status !== 'ok') {
+    return 'Tunnel main MCP channel is not enabled and healthy.';
+  }
+  return undefined;
+}
+
 export async function verifyTunnelClientBinary(binaryPath: string): Promise<boolean> {
   try {
     const result = await execFileResult(binaryPath, ['--help'], process.env, 10_000);
@@ -348,6 +499,43 @@ export async function verifyTunnelClientBinary(binaryPath: string): Promise<bool
   } catch {
     return false;
   }
+}
+
+async function readWindowsSystemProxy(): Promise<string | undefined> {
+  try {
+    const result = await execFileResult(
+      'reg.exe',
+      [
+        'query',
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
+        '/v',
+        'ProxyEnable',
+      ],
+      process.env,
+      5_000,
+    );
+    if (!/ProxyEnable\s+REG_DWORD\s+0x1\b/i.test(result.stdout)) return undefined;
+    const server = await execFileResult(
+      'reg.exe',
+      [
+        'query',
+        'HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Internet Settings',
+        '/v',
+        'ProxyServer',
+      ],
+      process.env,
+      5_000,
+    );
+    const match = server.stdout.match(/ProxyServer\s+REG_SZ\s+(.+)$/im);
+    return match?.[1] ? parseWindowsProxyServer(match[1]) : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function readVsCodeProxy(): string | undefined {
+  const value = vscode.workspace.getConfiguration('http').get<string>('proxy', '').trim();
+  return value || undefined;
 }
 
 async function runTunnelDoctor(
@@ -375,13 +563,7 @@ async function execFileResult(
     execFile(
       binaryPath,
       [...args],
-      {
-        env,
-        timeout,
-        windowsHide: true,
-        encoding: 'utf8',
-        maxBuffer: 1024 * 1024,
-      },
+      { env, timeout, windowsHide: true, encoding: 'utf8', maxBuffer: 1024 * 1024 },
       (error, stdout, stderr) => {
         if (error) {
           reject(new Error(`${error.message}\n${stderr || stdout}`));
@@ -421,7 +603,39 @@ async function waitForTunnelReady(
     }
     await delay(500);
   }
-  throw new Error(`OpenAI tunnel-client did not become ready within ${timeoutMs / 1000}s (last status ${lastStatus || 'unreachable'}).`);
+  throw new Error(
+    `OpenAI tunnel-client did not become ready within ${timeoutMs / 1000}s ` +
+      `(last status ${lastStatus || 'unreachable'}).`,
+  );
+}
+
+async function waitForTunnelControlPlane(
+  healthBaseUrl: string,
+  child: ChildProcess,
+  expectedTunnelId: string,
+  timeoutMs: number,
+  proxyUrl?: string,
+): Promise<void> {
+  const deadline = Date.now() + timeoutMs;
+  let lastError = 'Tunnel control-plane status is unavailable.';
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) {
+      throw new Error(
+        `OpenAI tunnel-client exited before the control plane became ready (code ${child.exitCode}).`,
+      );
+    }
+    try {
+      const status = await getJson<TunnelClientStatus>(new URL('/api/status', healthBaseUrl));
+      const validationError = validateTunnelRuntimeStatus(status, expectedTunnelId);
+      if (!validationError) return;
+      lastError = validationError;
+    } catch (error) {
+      lastError = error instanceof Error ? error.message : String(error);
+    }
+    await delay(500);
+  }
+  const proxyHint = proxyUrl ? ` Proxy: ${proxyUrl}.` : ' No control-plane proxy was detected.';
+  throw new Error(`OpenAI Tunnel control plane is not ready: ${lastError}.${proxyHint}`);
 }
 
 async function getHttpStatus(target: URL): Promise<number> {
@@ -435,6 +649,40 @@ async function getHttpStatus(target: URL): Promise<number> {
       },
     );
     request.once('timeout', () => request.destroy(new Error('Health check timed out.')));
+    request.once('error', reject);
+  });
+}
+
+async function getJson<T>(target: URL): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const request = http.get(
+      target,
+      { timeout: 3_000, headers: { Accept: 'application/json' } },
+      (response) => {
+        const chunks: Buffer[] = [];
+        let total = 0;
+        response.on('data', (chunk: Buffer) => {
+          total += chunk.length;
+          if (total > 256 * 1024) {
+            request.destroy(new Error('Tunnel status response is too large.'));
+            return;
+          }
+          chunks.push(chunk);
+        });
+        response.once('end', () => {
+          if (response.statusCode !== 200) {
+            reject(new Error(`Tunnel status returned HTTP ${response.statusCode ?? 0}.`));
+            return;
+          }
+          try {
+            resolve(JSON.parse(Buffer.concat(chunks).toString('utf8')) as T);
+          } catch {
+            reject(new Error('Tunnel status returned invalid JSON.'));
+          }
+        });
+      },
+    );
+    request.once('timeout', () => request.destroy(new Error('Tunnel status check timed out.')));
     request.once('error', reject);
   });
 }
