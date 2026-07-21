@@ -7,6 +7,7 @@ import { COMMANDS, VIEWS } from '../constants';
 
 interface PkgJson {
   name: string;
+  version: string;
   activationEvents: string[];
   main: string;
   repository: { url: string };
@@ -18,6 +19,9 @@ interface PkgJson {
   };
   contributes: {
     commands: Array<{ command: string; title: string }>;
+    configuration?: {
+      properties?: Record<string, { scope?: string; type?: string }>;
+    };
     viewsContainers?: {
       activitybar: Array<{ id: string; title: string; icon: string }>;
     };
@@ -52,6 +56,9 @@ const PUBLIC_COMMANDS = [
   COMMANDS.VIEW_RE_REVIEW_COMPARISON,
   COMMANDS.OPEN_REVIEW_PANEL,
   COMMANDS.MCP_CONNECTOR_MENU,
+  COMMANDS.CONNECT_SECURE_MCP_TUNNEL,
+  COMMANDS.CONFIGURE_SECURE_MCP_TUNNEL,
+  COMMANDS.OPEN_SECURE_MCP_TUNNEL_UI,
   COMMANDS.START_MCP_CONNECTOR,
   COMMANDS.COPY_MCP_CONNECTION_INFO,
   COMMANDS.STOP_MCP_CONNECTOR,
@@ -88,6 +95,7 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
+    expect(content.version).toBe('0.1.8');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
@@ -108,10 +116,13 @@ describe('reviewlume-vscode manifest', () => {
     { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
     { command: 'reviewlume.updateIssueStatus', title: 'Update Issue Status' },
     { command: 'reviewlume.openReviewPanel', title: 'Open Review Panel' },
-    { command: 'reviewlume.mcpConnectorMenu', title: 'MCP Connector' },
-    { command: 'reviewlume.startMcpConnector', title: 'Start Read-only MCP Connector' },
-    { command: 'reviewlume.copyMcpConnectionInfo', title: 'Copy MCP Connection Info' },
-    { command: 'reviewlume.stopMcpConnector', title: 'Stop MCP Connector' },
+    { command: 'reviewlume.mcpConnectorMenu', title: 'Secure MCP Connector' },
+    { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Repository to ChatGPT' },
+    { command: 'reviewlume.configureSecureMcpTunnel', title: 'Configure OpenAI Secure MCP Tunnel' },
+    { command: 'reviewlume.openSecureMcpTunnelUi', title: 'Open Secure MCP Tunnel Diagnostics' },
+    { command: 'reviewlume.startMcpConnector', title: 'Start Local Read-only MCP' },
+    { command: 'reviewlume.copyMcpConnectionInfo', title: 'Copy Local MCP Connection Info' },
+    { command: 'reviewlume.stopMcpConnector', title: 'Stop Secure MCP Connection' },
   ];
 
   for (const { command, title } of expectedCommands) {
@@ -125,6 +136,15 @@ describe('reviewlume-vscode manifest', () => {
       expect(content.activationEvents).toContain(`onCommand:${command}`);
     });
   }
+
+  it('keeps the tunnel-client path machine-local and does not define credential settings', () => {
+    const properties = readPkg().contributes.configuration?.properties ?? {};
+    expect(properties['reviewlume.mcp.tunnelClientPath']).toMatchObject({
+      type: 'string',
+      scope: 'machine',
+    });
+    expect(Object.keys(properties).some((key) => /api.?key|token|secret/i.test(key))).toBe(false);
+  });
 
   it('does not expose the superseded browser input bridge commands', () => {
     const content = readPkg();
@@ -159,8 +179,8 @@ describe('reviewlume-vscode manifest', () => {
     expect(chinese['command.openReviewPanel']).toContain('打开审核面板');
     expect(english['command.updateIssueStatus']).toContain('Update Issue Status');
     expect(chinese['command.updateIssueStatus']).toContain('更新问题状态');
-    expect(english['command.mcpConnectorMenu']).toContain('MCP Connector');
-    expect(chinese['command.mcpConnectorMenu']).toContain('MCP');
+    expect(english['command.connectSecureMcpTunnel']).toContain('ChatGPT');
+    expect(chinese['command.connectSecureMcpTunnel']).toContain('ChatGPT');
   });
 
   it('packages self-contained Git, scanner, Review Pack, report parser, and Webview runtimes', () => {
@@ -219,7 +239,7 @@ describe('extension activation', () => {
     testing.reset();
   });
 
-  it('registers the MCP primary flow and Advanced review commands without the browser prototype', () => {
+  it('registers the Secure MCP primary flow and Advanced review commands without the browser prototype', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
 
