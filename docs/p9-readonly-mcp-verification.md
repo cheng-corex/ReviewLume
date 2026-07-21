@@ -1,10 +1,10 @@
 # P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 使用 Draft PR #21 最新四平台全绿 CI 及其 Windows VSIX 0.1.13 artifact。自动化测试负责协议、安全边界和打包；真实 ChatGPT 工具调用仍需在用户 Windows 环境完成。
+> 使用 Draft PR #21 最新四平台全绿 CI 及其 Windows VSIX 0.1.14 artifact。自动化测试负责协议、安全边界和打包；真实 ChatGPT 工具调用仍需在用户 Windows 环境完成。
 
 ## 当前验收基线
 
-- VSIX：0.1.13。
+- VSIX：0.1.14。
 - 官方客户端：`openai/tunnel-client` v0.0.10 Windows amd64。
 - ChatGPT Personal workspace 已成功创建并进入 ReviewLume Tunnel 连接授权页面。
 - ReviewLume 一次连接只绑定一个 Trusted Workspace 中的 Git repository。
@@ -21,7 +21,7 @@
 
 ## 1. 安装、启动激活与首次配置
 
-1. 安装 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.13，并完全退出 VS Code。
+1. 安装 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.14，并完全退出 VS Code。
 2. 正常双击打开 VS Code，不点击左侧 ReviewLume 图标，确认启动完成后底部直接出现 `ReviewLume MCP` 状态项。
 3. 确认自动激活仅创建状态栏、命令和视图；不会自动启动 Tunnel、打开 ChatGPT、读取 Git diff 或扫描 repository。
 4. 打开一个不含真实凭据的测试 Git repository，确认 Workspace Trust 已开启。
@@ -43,7 +43,7 @@
 
 ## 2. 代理自动发现与持久化
 
-0.1.13 继承 0.1.12 的代理自动发现与持久化能力，不要求每次从命令行启动 VS Code。连接时按以下顺序发现 OpenAI 控制面代理：
+0.1.14 继承 0.1.12 的代理自动发现与持久化能力，不要求每次从命令行启动 VS Code。连接时按以下顺序发现 OpenAI 控制面代理：
 
 1. ReviewLume 上次保存的控制面代理；
 2. `CONTROL_PLANE_HTTP_PROXY`；
@@ -56,7 +56,7 @@
 
 验收：
 
-1. 当前带 `HTTPS_PROXY=http://127.0.0.1:10809` 的 VS Code 安装 0.1.13 后连接一次。
+1. 当前带 `HTTPS_PROXY=http://127.0.0.1:10809` 的 VS Code 安装 0.1.14 后连接一次。
 2. 打开 Tunnel Diagnostics，确认代理来源和 URL 正确。
 3. 停止连接并完全退出 VS Code。
 4. 不设置 PowerShell 环境变量，正常双击打开 VS Code。
@@ -96,7 +96,7 @@
 7. doctor 的 `oauth_metadata` 检查通过，不启动 OAuth 登录。
 8. doctor 结束后长期进程必须写入新的 health URL。
 
-## 5. ChatGPT 连接器与自主范围选择
+## 5. ChatGPT 连接器、自主范围选择与 tools/call 稳定性
 
 1. 在 ChatGPT 创建自定义连接器，Connection 选择 Tunnel，认证选择未授权。
 2. 选择 ReviewLume Tunnel 并完成连接授权。
@@ -107,7 +107,12 @@
 
 合理调用链应从 repository summary、Git status 和 recent commits 开始，再按需要调用 diff、搜索和文件读取。
 
-通过标准：用户不需要预先扫描、选择提交、导出审核包或导入回答；ChatGPT 根据指令和工具结果自行选择只读检查范围。
+通过标准：
+
+- 用户不需要预先扫描、选择提交、导出审核包或导入回答；ChatGPT 根据指令和工具结果自行选择只读检查范围；
+- Tunnel Diagnostics 中不再出现 `sending "tools/call": Internal Server Error`；
+- 扩展宿主重载、OutputChannel 关闭或日志记录失败不能改变工具调用结果；日志只是 best-effort observability；
+- 工具参数、仓库路径或敏感内容被拒绝时，应返回 MCP `isError` 结果，而不是 HTTP 500。
 
 所有工具 annotations 必须为：
 
