@@ -46,10 +46,12 @@ class RequestBodyTooLargeError extends Error {
 /**
  * Stateless Streamable HTTP MCP endpoint bound to loopback only.
  *
- * The endpoint deliberately exposes read-only repository tools and requires a
- * random token. Local/manual clients may use Authorization: Bearer; OpenAI's
- * tunnel-client uses the dedicated X-ReviewLume-Token header so connector
- * authentication cannot overwrite the loopback credential.
+ * Repository operations require a random token. An unauthenticated GET is
+ * deliberately answered with 405 so OpenAI tunnel-client can perform its
+ * reachability and optional OAuth probes without gaining access to MCP data.
+ * Local/manual clients may use Authorization: Bearer; OpenAI tunnel-client uses
+ * X-ReviewLume-Token so connector authentication cannot overwrite the local
+ * loopback credential.
  */
 export class McpConnectorServer {
   readonly #tools: McpRepositoryTools;
@@ -141,6 +143,17 @@ export class McpConnectorServer {
       return;
     }
 
+    // tunnel-client doctor performs an unauthenticated GET reachability probe.
+    // A 405 proves the loopback endpoint is reachable without exposing tools,
+    // repository metadata, auth challenges, or an SSE stream.
+    if (request.method === 'GET') {
+      response.setHeader('Allow', 'POST, DELETE');
+      this.#sendJson(response, 405, {
+        error: 'This stateless MCP endpoint does not expose SSE.',
+      });
+      return;
+    }
+
     if (
       !this.#isAuthorized(
         request.headers.authorization,
@@ -155,12 +168,6 @@ export class McpConnectorServer {
     if (!this.#consumeRateLimit()) {
       response.setHeader('Retry-After', '60');
       this.#sendJson(response, 429, { error: 'MCP request rate limit exceeded.' });
-      return;
-    }
-
-    if (request.method === 'GET') {
-      response.setHeader('Allow', 'POST, DELETE');
-      this.#sendJson(response, 405, { error: 'This stateless MCP endpoint does not expose SSE.' });
       return;
     }
 
@@ -225,7 +232,10 @@ export class McpConnectorServer {
     }
 
     if (Array.isArray(payload)) {
-      this.#sendRpcError(response, null, { code: -32600, message: 'JSON-RPC batches are not supported.' });
+      this.#sendRpcError(response, null, {
+        code: -32600,
+        message: 'JSON-RPC batches are not supported.',
+      });
       return;
     }
     if (!isJsonRpcRequest(payload)) {
@@ -244,7 +254,10 @@ export class McpConnectorServer {
   }
 
   async #handleNotification(request: JsonRpcRequest): Promise<void> {
-    if (request.method === 'notifications/initialized' || request.method === 'notifications/cancelled') {
+    if (
+      request.method === 'notifications/initialized' ||
+      request.method === 'notifications/cancelled'
+    ) {
       return;
     }
   }
@@ -265,7 +278,7 @@ export class McpConnectorServer {
           serverInfo: {
             name: 'reviewlume-readonly-repository',
             title: 'ReviewLume Read-only Repository',
-            version: '0.1.8',
+            version: '0.1.10',
             description: 'Read-only access to the single Git repository bound in VS Code.',
           },
           instructions:
@@ -320,7 +333,9 @@ export class McpConnectorServer {
       const parsed = new URL(origin);
       return (
         parsed.protocol === 'http:' &&
-        (parsed.hostname === '127.0.0.1' || parsed.hostname === 'localhost' || parsed.hostname === '[::1]')
+        (parsed.hostname === '127.0.0.1' ||
+          parsed.hostname === 'localhost' ||
+          parsed.hostname === '[::1]')
       );
     } catch {
       return false;
@@ -350,7 +365,11 @@ export class McpConnectorServer {
     response.setHeader('Referrer-Policy', 'no-referrer');
   }
 
-  #sendRpcResult(response: http.ServerResponse, id: string | number | null, result: unknown): void {
+  #sendRpcResult(
+    response: http.ServerResponse,
+    id: string | number | null,
+    result: unknown,
+  ): void {
     this.#sendJson(response, 200, { jsonrpc: '2.0', id, result });
   }
 
@@ -371,7 +390,10 @@ export class McpConnectorServer {
   }
 }
 
-async function readRequestBody(request: http.IncomingMessage, maxBytes: number): Promise<string> {
+async function readRequestBody(
+  request: http.IncomingMessage,
+  maxBytes: number,
+): Promise<string> {
   const chunks: Buffer[] = [];
   let total = 0;
   for await (const chunk of request) {
@@ -405,7 +427,9 @@ function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
 }
 
 function readRequestedProtocolVersion(params: unknown): string {
-  if (!params || typeof params !== 'object' || Array.isArray(params)) return CURRENT_PROTOCOL_VERSION;
+  if (!params || typeof params !== 'object' || Array.isArray(params)) {
+    return CURRENT_PROTOCOL_VERSION;
+  }
   const protocolVersion = (params as { readonly protocolVersion?: unknown }).protocolVersion;
   return typeof protocolVersion === 'string' ? protocolVersion : CURRENT_PROTOCOL_VERSION;
 }
