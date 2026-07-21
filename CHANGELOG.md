@@ -66,14 +66,24 @@
   - Scope changes remain subject to the existing sensitive-content scan, fingerprint,
     and export gates.
 - P9 ChatGPT read-only repository MCP:
-  - Loopback-only, bearer-authenticated Streamable HTTP MCP endpoint bound to one Git repository.
+  - Loopback-only, token-authenticated Streamable HTTP MCP endpoint bound to one Git repository.
   - Model-controlled tools for repository summary, Git status, recent commits, explicit diffs,
     file listing, bounded file reads, and bounded literal code search.
   - Tool annotations declare every operation read-only, non-destructive, idempotent, and closed-world.
   - Repository path validation rejects absolute paths, parent traversal, `.git`, binary files,
     sensitive credential paths, oversized files, and symbolic-link escapes.
-  - VS Code status-bar actions start/stop the connector and copy connection information for
-    OpenAI Secure MCP Tunnel without logging bearer tokens or repository content.
+  - File content, diffs, search results, and commit titles pass through the existing SecretScanner
+    before being returned to the model.
+  - Official `openai/tunnel-client` integration runs `doctor --explain`, starts the tunnel without
+    a shell, waits for loopback readiness, and opens ChatGPT Connectors.
+  - Tunnel ID and official client path are stored in VS Code global state; the Runtime API Key is
+    stored only in SecretStorage and passed to the child through environment variables.
+  - A dedicated `X-ReviewLume-Token` header protects the loopback MCP without conflicting with
+    ChatGPT connector authentication; header configuration uses an environment reference.
+  - Tunnel diagnostics stay loopback-only, raw HTTP logging is disabled, and child output is
+    redacted for Runtime keys, local tokens, and Authorization values.
+  - Status-bar actions provide one-click connect, configuration, diagnostics, stop, and Advanced
+    local-debugging information.
   - Existing Review Pack, response import, history, issue status, implementation, and re-review
     capabilities remain available as Advanced commands rather than the default workflow.
   - The earlier browser input-field bridge prototype is no longer registered as the P9 main flow.
