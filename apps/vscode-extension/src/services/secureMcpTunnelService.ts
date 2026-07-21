@@ -15,6 +15,28 @@ const START_TIMEOUT_MS = 60_000;
 const DOCTOR_TIMEOUT_MS = 45_000;
 const PROCESS_STOP_TIMEOUT_MS = 5_000;
 const MAX_DIAGNOSTIC_CHARS = 4_000;
+const CONTROLLED_ENV_PREFIXES = [
+  'TUNNEL_CLIENT_',
+  'CONTROL_PLANE_',
+  'MCP_',
+  'HEALTH_',
+  'ADMIN_UI_',
+  'CLOUDFLARED_',
+  'HARPOON_',
+  'PROXY_',
+] as const;
+const CONTROLLED_ENV_NAMES = new Set([
+  'OPENAI_API_KEY',
+  'OPENAI_ADMIN_KEY',
+  'ALLOW_REMOTE_UI',
+  'OPEN_WEB_UI',
+  'PID_FILE',
+  'LOG_LEVEL',
+  'LOG_FORMAT',
+  'LOG_FILE',
+  'LOG_HTTP_RAW_UNSAFE',
+  'REVIEWLUME_MCP_TOKEN',
+]);
 
 export const OPENAI_TUNNELS_URL = 'https://platform.openai.com/settings/organization/tunnels';
 export const OPENAI_RUNTIME_KEYS_URL =
@@ -147,16 +169,12 @@ export class SecureMcpTunnelService {
 
     try {
       await runTunnelDoctor(configuration.binaryPath, env, configuration, connection);
-      // Doctor may initialize the health listener. Never let the long-running
-      // process inherit a stale URL from the short-lived diagnostic process.
       await rm(healthUrlFile, { force: true });
 
       const child = spawn(configuration.binaryPath, ['run'], {
         env,
         shell: false,
         windowsHide: true,
-        // Do not capture long-running process output. Even a redactor cannot
-        // safely guarantee that a secret is not split across arbitrary chunks.
         stdio: ['ignore', 'ignore', 'ignore'],
       });
       this.#child = child;
@@ -248,21 +266,41 @@ export function buildTunnelEnvironment(
   connection: McpConnectionInfo,
   healthUrlFile: string,
 ): NodeJS.ProcessEnv {
+  const environment = sanitizeTunnelEnvironment(baseEnvironment);
   return {
-    ...baseEnvironment,
+    ...environment,
     CONTROL_PLANE_API_KEY: configuration.runtimeApiKey,
     CONTROL_PLANE_TUNNEL_ID: configuration.tunnelId,
     MCP_SERVER_URL: connection.endpointUrl,
     REVIEWLUME_MCP_TOKEN: connection.tunnelToken,
     MCP_EXTRA_HEADERS: 'X-ReviewLume-Token: env:REVIEWLUME_MCP_TOKEN',
     MCP_DISCOVERY_EXTRA_HEADERS: 'X-ReviewLume-Token: env:REVIEWLUME_MCP_TOKEN',
+    MCP_MAX_CONCURRENT_REQUESTS: '4',
     HEALTH_LISTEN_ADDR: '127.0.0.1:0',
     HEALTH_URL_FILE: healthUrlFile,
     LOG_LEVEL: 'info',
     LOG_FORMAT: 'struct-text',
-    ALLOW_REMOTE_UI: 'false',
     LOG_HTTP_RAW_UNSAFE: 'false',
+    ALLOW_REMOTE_UI: 'false',
+    OPEN_WEB_UI: 'false',
+    HARPOON_CAPTURE_PAYLOADS: 'false',
   };
+}
+
+export function sanitizeTunnelEnvironment(
+  baseEnvironment: NodeJS.ProcessEnv,
+): NodeJS.ProcessEnv {
+  const environment: NodeJS.ProcessEnv = { ...baseEnvironment };
+  for (const key of Object.keys(environment)) {
+    const normalized = key.toUpperCase();
+    if (
+      CONTROLLED_ENV_NAMES.has(normalized) ||
+      CONTROLLED_ENV_PREFIXES.some((prefix) => normalized.startsWith(prefix))
+    ) {
+      delete environment[key];
+    }
+  }
+  return environment;
 }
 
 export function redactTunnelOutput(
