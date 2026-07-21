@@ -12,6 +12,8 @@ export interface McpConnectionInfo extends McpConnectorAddress {
   readonly repository: string;
   readonly repositoryRoot: string;
   readonly authorizationHeader: string;
+  /** Dedicated loopback header value used by OpenAI tunnel-client. */
+  readonly tunnelToken: string;
 }
 
 /** Owns the read-only MCP endpoint for the repository selected in VS Code. */
@@ -63,6 +65,7 @@ export class McpConnectorService {
       repository,
       repositoryRoot: root,
       authorizationHeader: `Bearer ${address.bearerToken}`,
+      tunnelToken: address.bearerToken,
     };
     logInfo(`ReviewLume MCP connector started for ${repository} on loopback port ${address.port}`);
     return this.#connection;
