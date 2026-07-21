@@ -7,6 +7,7 @@ tsconfig.tsbuildinfo
 **/tsconfig.tsbuildinfo
 **/__tests__/**
 **/*.test.ts
+**/*.test.js
 **/*.map
 **/*.d.ts
 vitest.config*
@@ -16,3 +17,8 @@ coverage
 .prettierrc.json
 .prettierignore
 CHANGELOG.md
+dist/commands/browserBridgeCommands.js
+dist/services/browserBridgeService.js
+dist/views/**
+dist/vendor/web-bridge/**
+dist/node_modules/@reviewlume/bridge-protocol/**
