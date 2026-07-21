@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.16",
+  "version": "0.1.17",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -54,7 +54,7 @@
     "test": "vitest run",
     "verify:package-contents": "node scripts/validate-package-contents.mjs",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.16.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.17.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
@@ -92,6 +92,17 @@
           "maximum": 2097152,
           "default": 524288,
           "description": "%config.mcp.maxToolResultBytes.description%"
+        },
+        "reviewlume.mcp.writeAccess": {
+          "type": "string",
+          "scope": "window",
+          "enum": ["disabled", "confirmEachRequest"],
+          "enumDescriptions": [
+            "%config.mcp.writeAccess.disabled%",
+            "%config.mcp.writeAccess.confirmEachRequest%"
+          ],
+          "default": "disabled",
+          "description": "%config.mcp.writeAccess.description%"
         },
         "reviewlume.mcp.tunnelClientPath": {
           "type": "string",
