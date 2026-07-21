@@ -5,14 +5,21 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
 
 class FakeRunner implements McpGitRunner {
-  readonly calls: readonly string[][] = [];
+  readonly calls: string[][] = [];
 
   async run(options: { readonly args: readonly string[] }): Promise<{ readonly stdout: string }> {
-    (this.calls as string[][]).push([...options.args]);
+    this.calls.push([...options.args]);
     if (options.args[0] === 'ls-files') {
       return { stdout: ['src/example.ts', 'src/example.test.ts', '.env', ''].join('\0') };
     }
-    if (options.args[0] === 'diff') return { stdout: 'diff --git a/src/example.ts b/src/example.ts\n' };
+    if (options.args[0] === 'diff' && options.args.includes('--name-only')) {
+      return { stdout: ['src/example.ts', '.env', ''].join('\0') };
+    }
+    if (options.args[0] === 'diff') {
+      const requestedPath = options.args[options.args.length - 1];
+      if (requestedPath === '.env') return { stdout: 'SECRET=do-not-return\n' };
+      return { stdout: 'diff --git a/src/example.ts b/src/example.ts\n+export const value = 1;\n' };
+    }
     if (options.args[0] === 'status') return { stdout: '## main\n M src/example.ts\n' };
     if (options.args[0] === 'log') {
       return { stdout: '0123456789012345678901234567890123456789\tDev\t2026-07-21T00:00:00Z\tTest' };
@@ -78,6 +85,34 @@ describe('McpRepositoryTools', () => {
   it('blocks sensitive files and repository escapes', async () => {
     const sensitive = await tools.call('read_file', { path: '.env' });
     const escaped = await tools.call('read_file', { path: '../outside.txt' });
+
+    expect(sensitive.isError).toBe(true);
+    expect(sensitive.content[0].text).toContain('Sensitive files are blocked');
+    expect(escaped.isError).toBe(true);
+    expect(escaped.content[0].text).toContain('outside the repository');
+  });
+
+  it('filters sensitive paths before reading Git diff content', async () => {
+    const result = await tools.call('get_diff', { scope: 'working' });
+
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent).toMatchObject({
+      excludedSensitiveFiles: 2,
+      includedFiles: 2,
+      truncated: false,
+    });
+    expect(result.structuredContent?.diff).toContain('src/example.ts');
+    expect(result.structuredContent?.diff).not.toContain('do-not-return');
+    expect(
+      runner.calls.some(
+        (args) => args[0] === 'diff' && !args.includes('--name-only') && args.at(-1) === '.env',
+      ),
+    ).toBe(false);
+  });
+
+  it('rejects sensitive or escaping Git diff path filters', async () => {
+    const sensitive = await tools.call('get_diff', { scope: 'working', path: '.env' });
+    const escaped = await tools.call('get_diff', { scope: 'working', path: '../outside.ts' });
 
     expect(sensitive.isError).toBe(true);
     expect(sensitive.content[0].text).toContain('Sensitive files are blocked');
