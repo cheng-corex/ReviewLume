@@ -47,8 +47,9 @@ class RequestBodyTooLargeError extends Error {
  * Stateless Streamable HTTP MCP endpoint bound to loopback only.
  *
  * The endpoint deliberately exposes read-only repository tools and requires a
- * random bearer token. A supported MCP tunnel may forward this endpoint to
- * ChatGPT; the extension itself never opens a public listener.
+ * random token. Local/manual clients may use Authorization: Bearer; OpenAI's
+ * tunnel-client uses the dedicated X-ReviewLume-Token header so connector
+ * authentication cannot overwrite the loopback credential.
  */
 export class McpConnectorServer {
   readonly #tools: McpRepositoryTools;
@@ -140,7 +141,12 @@ export class McpConnectorServer {
       return;
     }
 
-    if (!this.#isAuthorized(request.headers.authorization)) {
+    if (
+      !this.#isAuthorized(
+        request.headers.authorization,
+        request.headers['x-reviewlume-token'],
+      )
+    ) {
       response.setHeader('WWW-Authenticate', 'Bearer realm="ReviewLume MCP"');
       this.#sendJson(response, 401, { error: 'Unauthorized.' });
       return;
@@ -259,7 +265,7 @@ export class McpConnectorServer {
           serverInfo: {
             name: 'reviewlume-readonly-repository',
             title: 'ReviewLume Read-only Repository',
-            version: '0.1.7',
+            version: '0.1.8',
             description: 'Read-only access to the single Git repository bound in VS Code.',
           },
           instructions:
@@ -321,9 +327,18 @@ export class McpConnectorServer {
     }
   }
 
-  #isAuthorized(value: string | undefined): boolean {
-    if (!value?.startsWith('Bearer ')) return false;
-    const provided = Buffer.from(value.slice('Bearer '.length), 'utf8');
+  #isAuthorized(
+    authorization: string | undefined,
+    tunnelHeader: string | readonly string[] | undefined,
+  ): boolean {
+    const candidate =
+      typeof tunnelHeader === 'string'
+        ? tunnelHeader
+        : authorization?.startsWith('Bearer ')
+          ? authorization.slice('Bearer '.length)
+          : undefined;
+    if (!candidate) return false;
+    const provided = Buffer.from(candidate, 'utf8');
     const expected = Buffer.from(this.#bearerToken, 'utf8');
     return provided.length === expected.length && timingSafeEqual(provided, expected);
   }
