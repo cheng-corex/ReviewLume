@@ -35,15 +35,23 @@ export const COMMANDS = {
   VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
-  /** Open the status-bar browser bridge action menu */
+  /** Open the primary read-only MCP action menu. */
+  MCP_CONNECTOR_MENU: 'reviewlume.mcpConnectorMenu',
+  /** Start a loopback-only MCP endpoint bound to one Git repository. */
+  START_MCP_CONNECTOR: 'reviewlume.startMcpConnector',
+  /** Copy endpoint and bearer-token information for Secure MCP Tunnel setup. */
+  COPY_MCP_CONNECTION_INFO: 'reviewlume.copyMcpConnectionInfo',
+  /** Stop the MCP endpoint and invalidate its bearer token. */
+  STOP_MCP_CONNECTOR: 'reviewlume.stopMcpConnector',
+  /** Legacy P9 prototype: open the browser bridge action menu. */
   BROWSER_BRIDGE_MENU: 'reviewlume.browserBridgeMenu',
-  /** Start the loopback-only browser bridge */
+  /** Legacy P9 prototype: start the loopback browser bridge. */
   START_BROWSER_BRIDGE: 'reviewlume.startBrowserBridge',
-  /** Create a short-lived browser-extension pairing code */
+  /** Legacy P9 prototype: create a browser-extension pairing code. */
   PAIR_BROWSER_EXTENSION: 'reviewlume.pairBrowserExtension',
-  /** Revoke all active browser-extension sessions */
+  /** Legacy P9 prototype: revoke browser-extension sessions. */
   REVOKE_BROWSER_SESSIONS: 'reviewlume.revokeBrowserSessions',
-  /** Queue a prompt for a paired browser extension without submitting it */
+  /** Legacy P9 prototype: queue a prompt for a browser extension. */
   SEND_PROMPT_TO_BROWSER: 'reviewlume.sendPromptToBrowser',
 } as const;
 
