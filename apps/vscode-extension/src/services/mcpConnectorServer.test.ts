@@ -72,11 +72,16 @@ describe('McpConnectorServer', () => {
     });
   });
 
-  it('returns 404 for optional OAuth protected-resource metadata probes', async () => {
-    const metadataUrl = new URL('/.well-known/oauth-protected-resource/mcp', endpointUrl);
+  it.each([
+    '/.well-known/oauth-protected-resource/mcp',
+    '/.well-known/oauth-protected-resource',
+  ])('exposes minimal non-OAuth protected resource metadata at %s', async (metadataPath) => {
+    const metadataUrl = new URL(metadataPath, endpointUrl);
     const result = await requestJson(metadataUrl.toString(), 'GET');
-    expect(result.status).toBe(404);
+    expect(result.status).toBe(200);
     expect(result.headers['www-authenticate']).toBeUndefined();
+    expect(result.body).toEqual({ resource: endpointUrl });
+    expect(result.body).not.toHaveProperty('authorization_servers');
   });
 
   it('requires the random bearer or dedicated tunnel token for JSON-RPC', async () => {
@@ -117,7 +122,7 @@ describe('McpConnectorServer', () => {
       result: {
         protocolVersion: '2025-11-25',
         capabilities: { tools: { listChanged: false } },
-        serverInfo: { version: '0.1.10' },
+        serverInfo: { version: '0.1.11' },
       },
     });
 
