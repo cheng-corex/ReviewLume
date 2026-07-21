@@ -61,7 +61,10 @@ jobs:
       - name: Enforce test result
         if: steps.tests.outcome == 'failure'
         shell: bash
-        run: exit 1
+        run: |
+          echo '=== test-output.log ==='
+          cat test-output.log || true
+          exit 1
 
       - name: Validate browser extension
         run: pnpm validate:browser-extension
