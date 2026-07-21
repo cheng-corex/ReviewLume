@@ -23,7 +23,7 @@ const required = [
   'extension/package.json',
   'extension/package.nls.json',
   'extension/package.nls.zh-cn.json',
-  'extension/README.md',
+  'extension/readme.md',
   'extension/LICENSE.txt',
   'extension/resources/icon.png',
   'extension/dist/extension.js',
@@ -43,6 +43,7 @@ const forbidden = files.filter(
     /(^|\/)\.env(?:\.|$)/u.test(file) ||
     /(^|\/)\.reviewlume(?:\/|$)/u.test(file) ||
     file.startsWith('extension/src/') ||
+    file.endsWith('.tsbuildinfo') ||
     /\.test\.js$/u.test(file) ||
     file === 'extension/dist/commands/browserBridgeCommands.js' ||
     file === 'extension/dist/services/browserBridgeService.js' ||
