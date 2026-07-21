@@ -3,12 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { activate } from '../extension';
-import { COMMANDS, VIEWS } from '../constants';
+import { COMMANDS } from '../constants';
 
 interface PkgJson {
   name: string;
+  version: string;
   activationEvents: string[];
   main: string;
+  icon?: string;
   repository: { url: string };
   capabilities?: {
     untrustedWorkspaces?: {
@@ -18,12 +20,11 @@ interface PkgJson {
   };
   contributes: {
     commands: Array<{ command: string; title: string }>;
-    viewsContainers?: {
-      activitybar: Array<{ id: string; title: string; icon: string }>;
+    configuration?: {
+      properties?: Record<string, { scope?: string; type?: string }>;
     };
-    views?: {
-      [containerId: string]: Array<{ type: string; id: string; name: string }>;
-    };
+    viewsContainers?: unknown;
+    views?: unknown;
   };
 }
 
@@ -33,6 +34,40 @@ interface VscodeTesting {
 }
 
 const testing = (vscode as unknown as { __testing: VscodeTesting }).__testing;
+
+const PUBLIC_COMMANDS = [
+  COMMANDS.HELLO,
+  COMMANDS.CREATE_REVIEW_PACK,
+  COMMANDS.ADD_RELATED_FILES,
+  COMMANDS.RECOMMEND_TEST_FILES,
+  COMMANDS.SCAN_SELECTED_FILES,
+  COMMANDS.EXPORT_REVIEW_PACK,
+  COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE,
+  COMMANDS.OPEN_REVIEW_HISTORY,
+  COMMANDS.IMPORT_REVIEW_RESPONSE,
+  COMMANDS.UPDATE_ISSUE_STATUS,
+  COMMANDS.GENERATE_IMPLEMENTATION_PROMPT,
+  COMMANDS.IMPORT_IMPLEMENTATION_SUMMARY,
+  COMMANDS.GENERATE_RE_REVIEW_PROMPT,
+  COMMANDS.IMPORT_RE_REVIEW_RESPONSE,
+  COMMANDS.VIEW_RE_REVIEW_COMPARISON,
+  COMMANDS.OPEN_REVIEW_PANEL,
+  COMMANDS.MCP_CONNECTOR_MENU,
+  COMMANDS.CONNECT_SECURE_MCP_TUNNEL,
+  COMMANDS.CONFIGURE_SECURE_MCP_TUNNEL,
+  COMMANDS.OPEN_SECURE_MCP_TUNNEL_UI,
+  COMMANDS.START_MCP_CONNECTOR,
+  COMMANDS.COPY_MCP_CONNECTION_INFO,
+  COMMANDS.STOP_MCP_CONNECTOR,
+] as const;
+
+const LEGACY_BROWSER_COMMANDS = [
+  COMMANDS.BROWSER_BRIDGE_MENU,
+  COMMANDS.START_BROWSER_BRIDGE,
+  COMMANDS.PAIR_BROWSER_EXTENSION,
+  COMMANDS.REVOKE_BROWSER_SESSIONS,
+  COMMANDS.SEND_PROMPT_TO_BROWSER,
+] as const;
 
 function listPackagedJavaScriptFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
@@ -57,9 +92,14 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
+    expect(content.version).toBe('0.1.16');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
+  });
+
+  it('activates after startup so the status bar does not depend on an Activity Bar view', () => {
+    expect(readPkg().activationEvents).toContain('onStartupFinished');
   });
 
   const expectedCommands = [
@@ -77,6 +117,22 @@ describe('reviewlume-vscode manifest', () => {
     { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
     { command: 'reviewlume.updateIssueStatus', title: 'Update Issue Status' },
     { command: 'reviewlume.openReviewPanel', title: 'Open Review Panel' },
+    { command: 'reviewlume.mcpConnectorMenu', title: 'Secure MCP Connector' },
+    { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Repository to ChatGPT' },
+    {
+      command: 'reviewlume.configureSecureMcpTunnel',
+      title: 'Configure OpenAI Secure MCP Tunnel',
+    },
+    {
+      command: 'reviewlume.openSecureMcpTunnelUi',
+      title: 'Open Secure MCP Tunnel Diagnostics',
+    },
+    { command: 'reviewlume.startMcpConnector', title: 'Start Local Read-only MCP' },
+    {
+      command: 'reviewlume.copyMcpConnectionInfo',
+      title: 'Copy Local MCP Connection Info',
+    },
+    { command: 'reviewlume.stopMcpConnector', title: 'Stop Secure MCP Connection' },
   ];
 
   for (const { command, title } of expectedCommands) {
@@ -91,19 +147,31 @@ describe('reviewlume-vscode manifest', () => {
     });
   }
 
-  it('contributes the Activity Bar view', () => {
+  it('keeps the tunnel-client path machine-local and does not define credential settings', () => {
+    const properties = readPkg().contributes.configuration?.properties ?? {};
+    expect(properties['reviewlume.mcp.tunnelClientPath']).toMatchObject({
+      type: 'string',
+      scope: 'machine',
+    });
+    expect(Object.keys(properties).some((key) => /api.?key|token|secret/i.test(key))).toBe(
+      false,
+    );
+  });
+
+  it('does not expose the superseded browser input bridge commands', () => {
     const content = readPkg();
-    expect(
-      content.contributes.viewsContainers?.activitybar.find(
-        (item) => item.id === VIEWS.CONTAINER,
-      )?.title,
-    ).toBe('ReviewLume');
-    expect(
-      content.contributes.views?.[VIEWS.CONTAINER]?.find(
-        (item) => item.id === VIEWS.MAIN_VIEW,
-      ),
-    ).toMatchObject({ type: 'tree', name: 'ReviewLume' });
-    expect(content.activationEvents).toContain(`onView:${VIEWS.MAIN_VIEW}`);
+    const contributed = new Set(content.contributes.commands.map((item) => item.command));
+    for (const command of LEGACY_BROWSER_COMMANDS) {
+      expect(contributed.has(command), command).toBe(false);
+      expect(content.activationEvents).not.toContain(`onCommand:${command}`);
+    }
+  });
+
+  it('does not contribute the redundant ReviewLume Activity Bar surface', () => {
+    const content = readPkg();
+    expect(content.contributes.viewsContainers).toBeUndefined();
+    expect(content.contributes.views).toBeUndefined();
+    expect(content.activationEvents.some((event) => event.startsWith('onView:'))).toBe(false);
   });
 
   it('includes English and Chinese NLS resources', () => {
@@ -115,6 +183,8 @@ describe('reviewlume-vscode manifest', () => {
     expect(chinese['command.openReviewPanel']).toContain('打开审核面板');
     expect(english['command.updateIssueStatus']).toContain('Update Issue Status');
     expect(chinese['command.updateIssueStatus']).toContain('更新问题状态');
+    expect(english['command.connectSecureMcpTunnel']).toContain('ChatGPT');
+    expect(chinese['command.connectSecureMcpTunnel']).toContain('ChatGPT');
   });
 
   it('packages self-contained Git, scanner, Review Pack, report parser, and Webview runtimes', () => {
@@ -123,15 +193,18 @@ describe('reviewlume-vscode manifest', () => {
       path.join(root, 'git-context', 'index.js'),
       path.join(root, 'secret-scanner', 'index.js'),
       path.join(root, 'review-pack', 'index.js'),
-      path.resolve(
-        __dirname,
-        '../../dist/node_modules/@reviewlume/report-parser/index.js',
-      ),
+      path.resolve(__dirname, '../../dist/node_modules/@reviewlume/report-parser/index.js'),
     ];
     for (const file of required) expect(fs.existsSync(file), file).toBe(true);
-    expect(fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8')).toContain('check-ignore');
-    expect(fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8')).toContain('HARD_BLOCK');
-    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain('REVIEW_REQUEST.md');
+    expect(fs.readFileSync(path.join(root, 'git-context', 'commandRunner.js'), 'utf8')).toContain(
+      'check-ignore',
+    );
+    expect(fs.readFileSync(path.join(root, 'secret-scanner', 'index.js'), 'utf8')).toContain(
+      'HARD_BLOCK',
+    );
+    expect(fs.readFileSync(path.join(root, 'review-pack', 'index.js'), 'utf8')).toContain(
+      'REVIEW_REQUEST.md',
+    );
     const mediaRoot = path.resolve(__dirname, '../../dist/webview/media');
     for (const file of ['reviewPanel.js', 'reviewPanel.css', 'reviewPanelTheme.css']) {
       expect(fs.existsSync(path.join(mediaRoot, file)), file).toBe(true);
@@ -160,8 +233,8 @@ describe('reviewlume-vscode manifest', () => {
     }
   });
 
-  it('has a non-empty icon file', () => {
-    const iconRelPath = readPkg().contributes.viewsContainers?.activitybar?.[0]?.icon;
+  it('has a non-empty marketplace icon file', () => {
+    const iconRelPath = readPkg().icon;
     expect(iconRelPath).toBeDefined();
     expect(fs.statSync(path.resolve(__dirname, '../..', iconRelPath!)).size).toBeGreaterThan(0);
   });
@@ -173,17 +246,17 @@ describe('extension activation', () => {
     testing.reset();
   });
 
-  it('registers P5 entry points without loading security runtimes during activation', () => {
+  it('registers the status-bar MCP flow and Advanced review commands without an Activity Bar tree', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
 
-    for (const command of Object.values(COMMANDS)) {
+    for (const command of PUBLIC_COMMANDS) {
       expect(testing.getRegisteredCommand(command), command).toBeDefined();
     }
-    expect(vscode.window.createTreeView).toHaveBeenCalledWith(
-      VIEWS.MAIN_VIEW,
-      expect.objectContaining({ showCollapseAll: true }),
-    );
+    for (const command of LEGACY_BROWSER_COMMANDS) {
+      expect(testing.getRegisteredCommand(command), command).toBeUndefined();
+    }
+    expect(vscode.window.createTreeView).not.toHaveBeenCalled();
   });
 
   it('keeps the P0 verification command working', () => {

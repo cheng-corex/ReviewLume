@@ -11,11 +11,13 @@ import { registerImportReReviewResponse } from './commands/importReReviewRespons
 import { registerUpdateIssueStatus } from './commands/updateIssueStatus';
 import { registerReviewLoopCommands } from './commands/reviewLoopCommands';
 import { registerViewReReviewComparison } from './commands/viewReReviewComparison';
+import { registerMcpConnectorCommands } from './commands/mcpConnectorCommands';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
+import { McpConnectorService } from './services/mcpConnectorService';
 import { ReviewScopeService } from './services/reviewScopeService';
 import { SecurityReviewService } from './services/securityReviewService';
-import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
+import { SecureMcpTunnelService } from './services/secureMcpTunnelService';
 import { refreshReviewPanel } from './webview/reviewPanel';
 
 /** Activates the ReviewLume VS Code extension. */
@@ -41,9 +43,15 @@ export function activate(context: vscode.ExtensionContext): void {
     undefined,
     reviewScopeService,
   );
+  const mcpConnectorService = new McpConnectorService();
+  const secureMcpTunnelService = new SecureMcpTunnelService(context);
+  context.subscriptions.push({
+    dispose: () => {
+      void secureMcpTunnelService.dispose().finally(() => mcpConnectorService.dispose());
+    },
+  });
 
   function refreshViews(): void {
-    treeProvider.refresh();
     refreshReviewPanel();
   }
 
@@ -51,17 +59,6 @@ export function activate(context: vscode.ExtensionContext): void {
     securityReviewService.invalidate();
     refreshViews();
   }
-
-  async function treeSelectionChanged(refreshSmartContext: boolean): Promise<void> {
-    if (refreshSmartContext) await reviewScopeService.refreshSmartContext();
-    selectionChanged();
-  }
-
-  const treeProvider = registerReviewLumeTreeView(
-    context,
-    fileSelectionService,
-    treeSelectionChanged,
-  );
 
   registerCreateReviewPack(
     context,
@@ -89,6 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerUpdateIssueStatus(context, fileSelectionService);
   registerReviewLoopCommands(context);
   registerViewReReviewComparison(context);
+  registerMcpConnectorCommands(context, mcpConnectorService, secureMcpTunnelService);
 
   logInfo('ReviewLume extension activated');
 }

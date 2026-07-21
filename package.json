@@ -10,6 +10,7 @@
     "lint": "pnpm -r lint",
     "typecheck": "tsc -b --pretty false",
     "test": "pnpm -r test",
+    "validate:browser-extension": "node browser-extension/scripts/validate.mjs",
     "format": "prettier --check .",
     "format:fix": "prettier --write .",
     "package:vscode": "pnpm --filter reviewlume-vscode package",

@@ -45,15 +45,21 @@ jobs:
       - name: Test
         run: pnpm test
 
+      - name: Validate browser extension
+        run: pnpm validate:browser-extension
+
       - name: Build
         run: pnpm build
 
       - name: Package VSIX
         run: pnpm package:vscode
 
-      - name: Upload VSIX artifact
+      - name: Upload VSIX candidate artifact
         uses: actions/upload-artifact@v4
         with:
           name: reviewlume-vscode-${{ matrix.os }}-node-${{ matrix.node-version }}
           path: reviewlume-vscode-*.vsix
           if-no-files-found: error
+
+      - name: Validate VSIX contents
+        run: pnpm --filter reviewlume-vscode verify:package-contents

@@ -35,6 +35,30 @@ export const COMMANDS = {
   VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
+  /** Open the primary read-only MCP action menu. */
+  MCP_CONNECTOR_MENU: 'reviewlume.mcpConnectorMenu',
+  /** One-click start: local MCP, official Secure MCP Tunnel, and ChatGPT connectors. */
+  CONNECT_SECURE_MCP_TUNNEL: 'reviewlume.connectSecureMcpTunnel',
+  /** Configure the official OpenAI tunnel-client and its runtime credentials. */
+  CONFIGURE_SECURE_MCP_TUNNEL: 'reviewlume.configureSecureMcpTunnel',
+  /** Open the local tunnel-client diagnostic UI after the tunnel is ready. */
+  OPEN_SECURE_MCP_TUNNEL_UI: 'reviewlume.openSecureMcpTunnelUi',
+  /** Start a loopback-only MCP endpoint bound to one Git repository. */
+  START_MCP_CONNECTOR: 'reviewlume.startMcpConnector',
+  /** Copy endpoint and bearer-token information for advanced local debugging. */
+  COPY_MCP_CONNECTION_INFO: 'reviewlume.copyMcpConnectionInfo',
+  /** Stop the MCP endpoint and official tunnel, invalidating local credentials. */
+  STOP_MCP_CONNECTOR: 'reviewlume.stopMcpConnector',
+  /** Legacy P9 prototype: open the browser bridge action menu. */
+  BROWSER_BRIDGE_MENU: 'reviewlume.browserBridgeMenu',
+  /** Legacy P9 prototype: start the loopback browser bridge. */
+  START_BROWSER_BRIDGE: 'reviewlume.startBrowserBridge',
+  /** Legacy P9 prototype: create a browser-extension pairing code. */
+  PAIR_BROWSER_EXTENSION: 'reviewlume.pairBrowserExtension',
+  /** Legacy P9 prototype: revoke browser-extension sessions. */
+  REVOKE_BROWSER_SESSIONS: 'reviewlume.revokeBrowserSessions',
+  /** Legacy P9 prototype: queue a prompt for a browser extension. */
+  SEND_PROMPT_TO_BROWSER: 'reviewlume.sendPromptToBrowser',
 } as const;
 
 /** View and view-container identifiers. */

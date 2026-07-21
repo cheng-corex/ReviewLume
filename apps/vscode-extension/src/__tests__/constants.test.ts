@@ -21,6 +21,18 @@ describe('constants', () => {
         IMPORT_RE_REVIEW_RESPONSE: 'reviewlume.importReReviewResponse',
         VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
         OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
+        MCP_CONNECTOR_MENU: 'reviewlume.mcpConnectorMenu',
+        CONNECT_SECURE_MCP_TUNNEL: 'reviewlume.connectSecureMcpTunnel',
+        CONFIGURE_SECURE_MCP_TUNNEL: 'reviewlume.configureSecureMcpTunnel',
+        OPEN_SECURE_MCP_TUNNEL_UI: 'reviewlume.openSecureMcpTunnelUi',
+        START_MCP_CONNECTOR: 'reviewlume.startMcpConnector',
+        COPY_MCP_CONNECTION_INFO: 'reviewlume.copyMcpConnectionInfo',
+        STOP_MCP_CONNECTOR: 'reviewlume.stopMcpConnector',
+        BROWSER_BRIDGE_MENU: 'reviewlume.browserBridgeMenu',
+        START_BROWSER_BRIDGE: 'reviewlume.startBrowserBridge',
+        PAIR_BROWSER_EXTENSION: 'reviewlume.pairBrowserExtension',
+        REVOKE_BROWSER_SESSIONS: 'reviewlume.revokeBrowserSessions',
+        SEND_PROMPT_TO_BROWSER: 'reviewlume.sendPromptToBrowser',
       });
     });
   });

@@ -1,7 +1,7 @@
 /**
  * Vitest setup: mock the `vscode` module so unit tests can exercise command,
  * workspace-state, logging, progress, file-picking, configuration, locale,
- * clipboard, and tree-view behavior without an Extension Host.
+ * clipboard, status-bar, and tree-view behavior without an Extension Host.
  */
 import { vi } from 'vitest';
 
@@ -26,6 +26,15 @@ vi.mock('vscode', () => {
   const clipboard = {
     readText: vi.fn(async () => ''),
     writeText: vi.fn(async () => undefined),
+  };
+  const statusBarItem = {
+    name: '',
+    command: undefined as unknown,
+    text: '',
+    tooltip: undefined as unknown,
+    show: vi.fn(),
+    hide: vi.fn(),
+    dispose: vi.fn(),
   };
 
   const testing = {
@@ -54,6 +63,13 @@ vi.mock('vscode', () => {
       checkboxHandler = undefined;
       clipboard.readText.mockReset().mockResolvedValue('');
       clipboard.writeText.mockReset().mockResolvedValue(undefined);
+      statusBarItem.name = '';
+      statusBarItem.command = undefined;
+      statusBarItem.text = '';
+      statusBarItem.tooltip = undefined;
+      statusBarItem.show.mockReset();
+      statusBarItem.hide.mockReset();
+      statusBarItem.dispose.mockReset();
     },
   };
 
@@ -67,6 +83,7 @@ vi.mock('vscode', () => {
     __testing: testing,
     window: {
       createOutputChannel: vi.fn(() => ({ appendLine: vi.fn(), dispose: vi.fn() })),
+      createStatusBarItem: vi.fn(() => statusBarItem),
       showInformationMessage: vi.fn(),
       showWarningMessage: vi.fn(),
       showErrorMessage: vi.fn(),
@@ -97,6 +114,7 @@ vi.mock('vscode', () => {
       clipboard,
     },
     ProgressLocation: { Notification: 15 },
+    StatusBarAlignment: { Left: 1, Right: 2 },
     workspace: {
       get workspaceFolders() {
         return workspaceState.folders.length > 0 ? workspaceState.folders : undefined;
