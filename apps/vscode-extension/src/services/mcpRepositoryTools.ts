@@ -11,6 +11,10 @@ export interface McpGitRunner {
   run(options: GitRunOptions): Promise<{ readonly stdout: string }>;
 }
 
+export interface McpContentGuard {
+  hasSensitiveContent(relativePath: string, content: string): boolean;
+}
+
 export interface McpToolDefinition {
   readonly name: string;
   readonly title: string;
@@ -34,6 +38,7 @@ interface RepositoryToolsOptions {
   readonly root: string;
   readonly displayName: string;
   readonly runner: McpGitRunner;
+  readonly contentGuard: McpContentGuard;
   readonly maxResultBytes?: number;
 }
 
@@ -78,6 +83,7 @@ export class McpRepositoryTools {
   readonly #root: string;
   readonly #displayName: string;
   readonly #runner: McpGitRunner;
+  readonly #contentGuard: McpContentGuard;
   readonly #maxResultBytes: number;
   #realRoot: string | undefined;
 
@@ -85,6 +91,7 @@ export class McpRepositoryTools {
     this.#root = path.resolve(options.root);
     this.#displayName = options.displayName;
     this.#runner = options.runner;
+    this.#contentGuard = options.contentGuard;
     this.#maxResultBytes = clampInteger(
       options.maxResultBytes ?? DEFAULT_MAX_RESULT_BYTES,
       64 * 1024,
@@ -123,7 +130,7 @@ export class McpRepositoryTools {
   }
 
   async #repositorySummary(signal?: AbortSignal): Promise<McpToolCallResult> {
-    const [branch, head, status, latestCommit] = await Promise.all([
+    const [branch, head, status, latestCommitOutput] = await Promise.all([
       this.#git(['rev-parse', '--abbrev-ref', 'HEAD'], signal),
       this.#git(['rev-parse', 'HEAD'], signal),
       this.#git(['status', '--short', '--branch', '--untracked-files=all'], signal),
@@ -141,6 +148,7 @@ export class McpRepositoryTools {
     }
 
     const statusLines = nonEmptyLines(status);
+    const latestCommit = this.#sanitizeCommit(parseCommitLine(latestCommitOutput));
     const result = {
       repository: this.#displayName,
       branch: branch.trim(),
@@ -148,7 +156,7 @@ export class McpRepositoryTools {
       remoteUrl,
       hasWorkingTreeChanges: statusLines.some((line) => !line.startsWith('##')),
       status: truncateText(status, this.#maxResultBytes),
-      latestCommit: parseCommitLine(latestCommit),
+      latestCommit,
       access: 'read-only',
     };
     return toolSuccess(result);
@@ -180,8 +188,15 @@ export class McpRepositoryTools {
       ],
       signal,
     );
-    const commits = nonEmptyLines(output).map(parseCommitLine);
+    const commits = nonEmptyLines(output).map(parseCommitLine).map((commit) => this.#sanitizeCommit(commit));
     return toolSuccess({ repository: this.#displayName, commits });
+  }
+
+  #sanitizeCommit(commit: Record<string, string>): Record<string, string> {
+    if (!this.#contentGuard.hasSensitiveContent('git/commit-message.txt', commit.subject ?? '')) {
+      return commit;
+    }
+    return { ...commit, subject: '[BLOCKED: sensitive content detected]' };
   }
 
   async #getDiff(
@@ -272,6 +287,7 @@ export class McpRepositoryTools {
     const selectedFiles = safeFiles.slice(0, MAX_DIFF_FILES);
     const pieces: string[] = [];
     let byteCount = 0;
+    let excludedSensitiveFiles = changedFiles.length - safeFiles.length;
     let truncated = safeFiles.length > selectedFiles.length;
 
     for (const file of selectedFiles) {
@@ -281,6 +297,10 @@ export class McpRepositoryTools {
         signal,
       );
       if (!diff) continue;
+      if (this.#contentGuard.hasSensitiveContent(normalizedFile, diff)) {
+        excludedSensitiveFiles += 1;
+        continue;
+      }
       const nextBytes = Buffer.byteLength(diff, 'utf8');
       if (byteCount + nextBytes > this.#maxResultBytes) {
         const remainingBytes = Math.max(0, this.#maxResultBytes - byteCount);
@@ -295,7 +315,7 @@ export class McpRepositoryTools {
     return {
       output: pieces.join('\n'),
       truncated,
-      excludedSensitiveFiles: changedFiles.length - safeFiles.length,
+      excludedSensitiveFiles,
       includedFiles: pieces.length,
     };
   }
@@ -335,10 +355,15 @@ export class McpRepositoryTools {
     if (looksBinary(buffer)) throw new Error('Binary files cannot be read.');
     const lines = buffer.toString('utf8').split(/\r?\n/);
     const selected = lines.slice(startLine - 1, endLine);
+    const selectedContent = selected.join('\n');
+    const normalizedPath = normalizeRepoPath(relativePath);
+    if (this.#contentGuard.hasSensitiveContent(normalizedPath, selectedContent)) {
+      throw new Error('Sensitive content was detected in the requested line range.');
+    }
     const content = selected.map((line, index) => `${startLine + index}: ${line}`).join('\n');
     return toolSuccess({
       repository: this.#displayName,
-      path: normalizeRepoPath(relativePath),
+      path: normalizedPath,
       startLine,
       endLine: Math.min(endLine, lines.length),
       totalLines: lines.length,
@@ -381,8 +406,10 @@ export class McpRepositoryTools {
         for (let index = 0; index < lines.length && matches.length < maxResults; index += 1) {
           const line = lines[index] ?? '';
           if (!line.toLocaleLowerCase().includes(needle)) continue;
+          const normalizedPath = normalizeRepoPath(relativePath);
+          if (this.#contentGuard.hasSensitiveContent(normalizedPath, line)) continue;
           matches.push({
-            path: normalizeRepoPath(relativePath),
+            path: normalizedPath,
             line: index + 1,
             snippet: line.trim().slice(0, 500),
           });
@@ -406,7 +433,7 @@ export class McpRepositoryTools {
       signal,
     );
     const commit = output.trim();
-    if (!/^[0-9a-f]{40,64}$/i.test(commit)) throw new Error(`Invalid commit reference: ${ref}`);
+    if (!/^[0-9a-f]{40,64}$/i.test(commit)) throw new Error('Invalid commit reference.');
     return commit;
   }
 
@@ -468,7 +495,7 @@ const TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'get_diff',
     title: 'Read Git diff',
     description:
-      'Read working-tree, staged, or commit-range changes after excluding credential-like paths. For recent commit review, inspect recent_commits first and then request an explicit range.',
+      'Read working-tree, staged, or commit-range changes after excluding credential-like paths and content. For recent commit review, inspect recent_commits first and then request an explicit range.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -505,7 +532,7 @@ const TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'read_file',
     title: 'Read repository file',
     description:
-      'Read a bounded line range from a non-sensitive text file inside the bound repository. Absolute paths, .git, symlink escapes, binary files, and credential-like files are rejected.',
+      'Read a bounded line range from a non-sensitive text file inside the bound repository. Absolute paths, .git, symlink escapes, binary files, credential-like files, and sensitive content are rejected.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
@@ -522,7 +549,7 @@ const TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
     name: 'search_code',
     title: 'Search repository code',
     description:
-      'Search non-ignored text files for a literal, case-insensitive string and return bounded matching lines. Use this to locate callers, tests, configuration, and related implementation before reading files.',
+      'Search non-ignored text files for a literal, case-insensitive string and return bounded, secret-scanned matching lines. Use this to locate callers, tests, configuration, and related implementation before reading files.',
     inputSchema: {
       type: 'object',
       additionalProperties: false,
