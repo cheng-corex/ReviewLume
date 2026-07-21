@@ -34,24 +34,27 @@ search_code + read_file
 
 ## P9：ChatGPT 只读项目 MCP
 
-VS Code 状态栏提供 `ReviewLume MCP` 主入口。首次连接需要完成一次官方 Secure MCP Tunnel 配置：
+VS Code 底部状态栏提供唯一常驻入口 `ReviewLume MCP`。扩展不再贡献重复的左侧 Activity Bar 操作栏；P8 高级功能继续从命令面板或 Review Panel 使用。
+
+首次连接需要完成一次官方 Secure MCP Tunnel 配置：
 
 1. 在 OpenAI Platform 创建或选择一个 Tunnel，并创建最小权限的 Runtime API Key；
 2. 从 `openai/tunnel-client` 官方 GitHub Releases 下载对应平台压缩包；
 3. 在 ReviewLume 中选择其中的 `tunnel-client` 可执行文件；
-4. 粘贴 Tunnel ID 和 Runtime API Key。Runtime Key 只保存在 VS Code SecretStorage 中。
+4. 粘贴 Tunnel ID 和 Runtime API Key。Runtime Key 只保存在 VS Code SecretStorage；
+5. 在 ChatGPT 创建一次自定义连接器，选择 **Connection: Tunnel** 并粘贴 Tunnel ID。
 
 之后每次只需选择 **Connect Current Repository to ChatGPT**。ReviewLume 会自动：
 
-1. 绑定当前 Trusted Workspace 中的一个 Git repository；
-2. 启动仅监听 `127.0.0.1` 随机端口的本地只读 MCP；
-3. 运行官方 `tunnel-client doctor --explain`；
-4. 启动 OpenAI Secure MCP Tunnel；
-5. 等待 loopback `/readyz` 健康检查通过；
-6. 复制非敏感的 Tunnel ID；
-7. 打开 ChatGPT Connectors 页面。
+1. 首次询问并保存 ChatGPT 浏览器：系统默认浏览器、Microsoft Edge 或 Google Chrome；
+2. 绑定当前 Trusted Workspace 中的一个 Git repository；
+3. 启动仅监听 `127.0.0.1` 随机端口的本地只读 MCP；
+4. 运行官方 `tunnel-client doctor --explain`；
+5. 启动 OpenAI Secure MCP Tunnel；
+6. 等待 loopback `/readyz` 和 `/api/status` 同时确认就绪；
+7. 在所选浏览器直接打开 `https://chatgpt.com/` 新对话。
 
-在 ChatGPT 创建自定义连接器时选择 **Connection: Tunnel**，粘贴 Tunnel ID。以后直接在 ChatGPT 中下达项目检查指令。
+正常连接不会再打开 ChatGPT Connectors 设置页或连接器详情弹框。需要修改连接器时，使用状态栏菜单中的 **Manage ChatGPT Connector (Advanced)**。需要修改浏览器时，使用 **Choose ChatGPT Browser**；选择会跨 VS Code 重启保存，但不会改变操作系统默认浏览器。
 
 当前工具：
 
@@ -72,7 +75,8 @@ VS Code 状态栏提供 `ReviewLume MCP` 主入口。首次连接需要完成一
 - 只执行用户明确选择、PATH 中可用或机器设置指定的官方 `tunnel-client`；不静默下载、不通过 shell 启动；
 - 使用官方帮助文本识别客户端，并按官方规则接受 `tunnel_` 后 32 位小写字母或数字的 Tunnel ID；
 - Runtime API Key 使用 VS Code SecretStorage，不写入 repository、用户设置、命令参数、剪贴板或日志；
-- Tunnel ID 和官方二进制路径可保存在 VS Code globalState；
+- Tunnel ID、官方二进制路径、控制面代理和 ChatGPT 浏览器偏好可保存在 VS Code globalState；
+- 显式启动 Edge 或 Chrome 时使用参数数组和 `shell: false`，不会执行用户项目内容或改变系统默认浏览器；
 - 启动前清除宿主环境中的 Tunnel profile、MCP command、admin key、Cloudflared、Harpoon、远程 UI 和原始 HTTP 日志覆盖项，只保留普通系统与网络环境；
 - 控制面密钥和本地 MCP Token 只通过环境变量传给子进程；
 - 本地 MCP 使用专用 `X-ReviewLume-Token`，避免与 ChatGPT 连接器认证头冲突；
@@ -110,7 +114,7 @@ P8 已实现的完整审核闭环继续保留，但不再是默认主流程：
 - 实施提示和修复摘要；
 - 二次复核和结果对比。
 
-这些命令在扩展中标记为 `Advanced`，适用于需要可审计报告或人工闭环管理的场景。
+这些命令可从 VS Code 命令面板或 Review Panel 使用，适用于需要可审计报告或人工闭环管理的场景。
 
 ## 已停止的浏览器填入原型
 
