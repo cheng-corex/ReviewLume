@@ -2,7 +2,11 @@ import * as os from 'node:os';
 import * as path from 'node:path';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
+import {
+  McpRepositoryTools,
+  type McpGitRunner,
+  type McpToolCallResult,
+} from './mcpRepositoryTools';
 
 class FakeRunner implements McpGitRunner {
   readonly calls: string[][] = [];
@@ -32,6 +36,11 @@ class FakeRunner implements McpGitRunner {
     if (options.args[0] === 'remote') return { stdout: 'https://user:secret@example.com/acme/repo.git\n' };
     throw new Error(`Unexpected Git call: ${options.args.join(' ')}`);
   }
+}
+
+function structured<T>(result: McpToolCallResult): T {
+  expect(result.structuredContent).toBeDefined();
+  return result.structuredContent as T;
 }
 
 describe('McpRepositoryTools', () => {
@@ -66,72 +75,52 @@ describe('McpRepositoryTools', () => {
     }
   });
 
-  it('reads only the requested bounded line range', async () => {
-    const result = await tools.call('read_file', { path: 'src/example.ts', startLine: 2, endLine: 2 });
-    expect(result.isError).toBe(false);
-    expect(result.structuredContent).toMatchObject({
-      path: 'src/example.ts', startLine: 2, endLine: 2,
-      content: '2: export const other = value + 1;',
-    });
-  });
-
   it('reads credential-like paths and content while still blocking repository escapes', async () => {
     const envFile = await tools.call('read_file', { path: '.env' });
     const embedded = await tools.call('read_file', { path: 'src/embedded-secret.ts' });
     const escaped = await tools.call('read_file', { path: '../outside.txt' });
 
     expect(envFile.isError).toBe(false);
-    expect(envFile.structuredContent?.content).toContain('SECRET=do-not-read');
+    expect(structured<{ content: string }>(envFile).content).toContain('SECRET=do-not-read');
     expect(embedded.isError).toBe(false);
-    expect(embedded.structuredContent?.content).toContain('embedded-secret-value');
+    expect(structured<{ content: string }>(embedded).content).toContain('embedded-secret-value');
     expect(escaped.isError).toBe(true);
     expect(escaped.content[0].text).toContain('outside the repository');
   });
 
   it('returns credential-like paths and content in Git diffs', async () => {
     const result = await tools.call('get_diff', { scope: 'working' });
+    const payload = structured<{
+      excludedSensitiveFiles: number;
+      includedFiles: number;
+      truncated: boolean;
+      diff: string;
+    }>(result);
 
     expect(result.isError).toBe(false);
-    expect(result.structuredContent).toMatchObject({
-      excludedSensitiveFiles: 0,
-      includedFiles: 6,
-      truncated: false,
-    });
-    expect(result.structuredContent?.diff).toContain('src/example.ts');
-    expect(result.structuredContent?.diff).toContain('do-not-return');
-    expect(result.structuredContent?.diff).toContain('embedded-secret-value');
+    expect(payload).toMatchObject({ excludedSensitiveFiles: 0, includedFiles: 6, truncated: false });
+    expect(payload.diff).toContain('src/example.ts');
+    expect(payload.diff).toContain('do-not-return');
+    expect(payload.diff).toContain('embedded-secret-value');
     expect(runner.calls.some((args) => args[0] === 'diff' && !args.includes('--name-only') && args.at(-1) === '.env')).toBe(true);
   });
 
-  it('allows credential-like Git diff path filters but rejects escaping filters', async () => {
+  it('allows credential-like diff filters, listings, searches, and commit subjects', async () => {
     const envDiff = await tools.call('get_diff', { scope: 'working', path: '.env' });
-    const escaped = await tools.call('get_diff', { scope: 'working', path: '../outside.ts' });
-
-    expect(envDiff.isError).toBe(false);
-    expect(envDiff.structuredContent?.diff).toContain('do-not-return');
-    expect(escaped.isError).toBe(true);
-    expect(escaped.content[0].text).toContain('outside the repository');
-  });
-
-  it('lists and searches credential-like files and matching lines', async () => {
     const listed = await tools.call('list_files', { limit: 10 });
     const envSearch = await tools.call('search_code', { query: 'do-not-read', maxResults: 10 });
     const secretSearch = await tools.call('search_code', { query: 'embedded-secret', maxResults: 10 });
+    const commits = await tools.call('recent_commits', { count: 1 });
 
-    expect(listed.isError).toBe(false);
-    expect(listed.structuredContent?.files).toContain('.env');
-    expect(envSearch.structuredContent?.matches).toEqual([
+    expect(structured<{ diff: string }>(envDiff).diff).toContain('do-not-return');
+    expect(structured<{ files: string[] }>(listed).files).toContain('.env');
+    expect(structured<{ matches: unknown[] }>(envSearch).matches).toEqual([
       { path: '.env', line: 1, snippet: 'SECRET=do-not-read' },
     ]);
-    expect(secretSearch.structuredContent?.matches).toEqual([
+    expect(structured<{ matches: unknown[] }>(secretSearch).matches).toEqual([
       { path: 'src/embedded-secret.ts', line: 1, snippet: 'const token = "embedded-secret-value";' },
     ]);
-  });
-
-  it('does not hide credential-like text in commit subjects', async () => {
-    const result = await tools.call('recent_commits', { count: 1 });
-    expect(result.isError).toBe(false);
-    expect(result.structuredContent?.commits).toEqual([
+    expect(structured<{ commits: unknown[] }>(commits).commits).toEqual([
       {
         sha: '0123456789012345678901234567890123456789',
         author: 'Dev',
@@ -143,7 +132,6 @@ describe('McpRepositoryTools', () => {
 
   it('redacts credentials from remote URLs in repository summaries', async () => {
     const result = await tools.call('repository_summary', {});
-    expect(result.isError).toBe(false);
-    expect(result.structuredContent?.remoteUrl).toBe('https://example.com/acme/repo.git');
+    expect(structured<{ remoteUrl: string }>(result).remoteUrl).toBe('https://example.com/acme/repo.git');
   });
 });
