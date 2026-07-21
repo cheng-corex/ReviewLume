@@ -103,6 +103,7 @@
 
 ### Fixed
 
+- Treat explicit VS Code command cancellation during Extension Host reload as a silent cancellation instead of showing a misleading `Canceled` error notification; operational failures continue to surface.
 - Open the ChatGPT home route for a new conversation instead of reopening the connector detail modal after every successful connection.
 - Keep `tools/call` independent from best-effort OutputChannel logging so extension-host reloads or a disposed log channel cannot turn valid read-only tool calls into HTTP 500 responses.
 - Activate ReviewLume after VS Code startup finishes so the MCP status bar is visible immediately; startup activation does not start a tunnel or inspect repository contents.
