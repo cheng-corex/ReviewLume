@@ -37,11 +37,17 @@ export const COMMANDS = {
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
   /** Open the primary read-only MCP action menu. */
   MCP_CONNECTOR_MENU: 'reviewlume.mcpConnectorMenu',
+  /** One-click start: local MCP, official Secure MCP Tunnel, and ChatGPT connectors. */
+  CONNECT_SECURE_MCP_TUNNEL: 'reviewlume.connectSecureMcpTunnel',
+  /** Configure the official OpenAI tunnel-client and its runtime credentials. */
+  CONFIGURE_SECURE_MCP_TUNNEL: 'reviewlume.configureSecureMcpTunnel',
+  /** Open the local tunnel-client diagnostic UI after the tunnel is ready. */
+  OPEN_SECURE_MCP_TUNNEL_UI: 'reviewlume.openSecureMcpTunnelUi',
   /** Start a loopback-only MCP endpoint bound to one Git repository. */
   START_MCP_CONNECTOR: 'reviewlume.startMcpConnector',
-  /** Copy endpoint and bearer-token information for Secure MCP Tunnel setup. */
+  /** Copy endpoint and bearer-token information for advanced local debugging. */
   COPY_MCP_CONNECTION_INFO: 'reviewlume.copyMcpConnectionInfo',
-  /** Stop the MCP endpoint and invalidate its bearer token. */
+  /** Stop the MCP endpoint and official tunnel, invalidating local credentials. */
   STOP_MCP_CONNECTOR: 'reviewlume.stopMcpConnector',
   /** Legacy P9 prototype: open the browser bridge action menu. */
   BROWSER_BRIDGE_MENU: 'reviewlume.browserBridgeMenu',
