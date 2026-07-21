@@ -3,13 +3,14 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'fs';
 import * as path from 'path';
 import { activate } from '../extension';
-import { COMMANDS, VIEWS } from '../constants';
+import { COMMANDS } from '../constants';
 
 interface PkgJson {
   name: string;
   version: string;
   activationEvents: string[];
   main: string;
+  icon?: string;
   repository: { url: string };
   capabilities?: {
     untrustedWorkspaces?: {
@@ -22,12 +23,8 @@ interface PkgJson {
     configuration?: {
       properties?: Record<string, { scope?: string; type?: string }>;
     };
-    viewsContainers?: {
-      activitybar: Array<{ id: string; title: string; icon: string }>;
-    };
-    views?: {
-      [containerId: string]: Array<{ type: string; id: string; name: string }>;
-    };
+    viewsContainers?: unknown;
+    views?: unknown;
   };
 }
 
@@ -95,13 +92,13 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.1.14');
+    expect(content.version).toBe('0.1.15');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
   });
 
-  it('activates after startup so the status bar does not depend on opening the Activity Bar view', () => {
+  it('activates after startup so the status bar does not depend on an Activity Bar view', () => {
     expect(readPkg().activationEvents).toContain('onStartupFinished');
   });
 
@@ -170,19 +167,11 @@ describe('reviewlume-vscode manifest', () => {
     }
   });
 
-  it('contributes the Activity Bar view', () => {
+  it('does not contribute the redundant ReviewLume Activity Bar surface', () => {
     const content = readPkg();
-    expect(
-      content.contributes.viewsContainers?.activitybar.find(
-        (item) => item.id === VIEWS.CONTAINER,
-      )?.title,
-    ).toBe('ReviewLume');
-    expect(
-      content.contributes.views?.[VIEWS.CONTAINER]?.find(
-        (item) => item.id === VIEWS.MAIN_VIEW,
-      ),
-    ).toMatchObject({ type: 'tree', name: 'ReviewLume' });
-    expect(content.activationEvents).toContain(`onView:${VIEWS.MAIN_VIEW}`);
+    expect(content.contributes.viewsContainers).toBeUndefined();
+    expect(content.contributes.views).toBeUndefined();
+    expect(content.activationEvents.some((event) => event.startsWith('onView:'))).toBe(false);
   });
 
   it('includes English and Chinese NLS resources', () => {
@@ -244,8 +233,8 @@ describe('reviewlume-vscode manifest', () => {
     }
   });
 
-  it('has a non-empty icon file', () => {
-    const iconRelPath = readPkg().contributes.viewsContainers?.activitybar?.[0]?.icon;
+  it('has a non-empty marketplace icon file', () => {
+    const iconRelPath = readPkg().icon;
     expect(iconRelPath).toBeDefined();
     expect(fs.statSync(path.resolve(__dirname, '../..', iconRelPath!)).size).toBeGreaterThan(0);
   });
@@ -257,7 +246,7 @@ describe('extension activation', () => {
     testing.reset();
   });
 
-  it('registers the Secure MCP primary flow and Advanced review commands without the browser prototype', () => {
+  it('registers the status-bar MCP flow and Advanced review commands without an Activity Bar tree', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
 
@@ -267,10 +256,7 @@ describe('extension activation', () => {
     for (const command of LEGACY_BROWSER_COMMANDS) {
       expect(testing.getRegisteredCommand(command), command).toBeUndefined();
     }
-    expect(vscode.window.createTreeView).toHaveBeenCalledWith(
-      VIEWS.MAIN_VIEW,
-      expect.objectContaining({ showCollapseAll: true }),
-    );
+    expect(vscode.window.createTreeView).not.toHaveBeenCalled();
   });
 
   it('keeps the P0 verification command working', () => {
