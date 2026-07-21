@@ -95,7 +95,7 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.1.13');
+    expect(content.version).toBe('0.1.14');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
