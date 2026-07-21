@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -17,7 +17,7 @@
     }
   },
   "categories": ["Other", "Visualization"],
-  "keywords": ["code review", "git diff", "ai review", "review pack", "privacy"],
+  "keywords": ["code review", "git diff", "ai review", "mcp", "privacy"],
   "activationEvents": [
     "onCommand:reviewlume.hello",
     "onCommand:reviewlume.createReviewPack",
@@ -35,11 +35,10 @@
     "onCommand:reviewlume.importReReviewResponse",
     "onCommand:reviewlume.viewReReviewComparison",
     "onCommand:reviewlume.openReviewPanel",
-    "onCommand:reviewlume.browserBridgeMenu",
-    "onCommand:reviewlume.startBrowserBridge",
-    "onCommand:reviewlume.pairBrowserExtension",
-    "onCommand:reviewlume.revokeBrowserSessions",
-    "onCommand:reviewlume.sendPromptToBrowser",
+    "onCommand:reviewlume.mcpConnectorMenu",
+    "onCommand:reviewlume.startMcpConnector",
+    "onCommand:reviewlume.copyMcpConnectionInfo",
+    "onCommand:reviewlume.stopMcpConnector",
     "onView:reviewlume.mainView"
   ],
   "main": "dist/extension.js",
@@ -50,7 +49,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.6.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.7.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
@@ -71,15 +70,21 @@
       { "command": "reviewlume.importReReviewResponse", "title": "%command.importReReviewResponse%" },
       { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" },
-      { "command": "reviewlume.browserBridgeMenu", "title": "ReviewLume: Browser Bridge Menu" },
-      { "command": "reviewlume.startBrowserBridge", "title": "%command.startBrowserBridge%" },
-      { "command": "reviewlume.pairBrowserExtension", "title": "%command.pairBrowserExtension%" },
-      { "command": "reviewlume.revokeBrowserSessions", "title": "%command.revokeBrowserSessions%" },
-      { "command": "reviewlume.sendPromptToBrowser", "title": "%command.sendPromptToBrowser%" }
+      { "command": "reviewlume.mcpConnectorMenu", "title": "%command.mcpConnectorMenu%" },
+      { "command": "reviewlume.startMcpConnector", "title": "%command.startMcpConnector%" },
+      { "command": "reviewlume.copyMcpConnectionInfo", "title": "%command.copyMcpConnectionInfo%" },
+      { "command": "reviewlume.stopMcpConnector", "title": "%command.stopMcpConnector%" }
     ],
     "configuration": {
       "title": "ReviewLume",
       "properties": {
+        "reviewlume.mcp.maxToolResultBytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 2097152,
+          "default": 524288,
+          "description": "%config.mcp.maxToolResultBytes.description%"
+        },
         "reviewlume.export.mode": {
           "type": "string",
           "enum": ["automatic", "askEveryTime"],
