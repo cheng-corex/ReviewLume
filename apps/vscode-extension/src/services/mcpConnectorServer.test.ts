@@ -30,6 +30,8 @@ interface HttpResult {
   readonly body: Record<string, unknown>;
 }
 
+type AuthenticationMode = 'bearer' | 'tunnel';
+
 describe('McpConnectorServer', () => {
   let root: string;
   let server: McpConnectorServer;
@@ -55,13 +57,24 @@ describe('McpConnectorServer', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it('requires the random bearer token', async () => {
+  it('requires the random bearer or dedicated tunnel token', async () => {
     const result = await postJson(endpointUrl, undefined, {
       jsonrpc: '2.0',
       id: 1,
       method: 'ping',
     });
     expect(result.status).toBe(401);
+  });
+
+  it('accepts the dedicated Secure MCP Tunnel header', async () => {
+    const result = await postJson(
+      endpointUrl,
+      bearerToken,
+      { jsonrpc: '2.0', id: 1, method: 'ping' },
+      'tunnel',
+    );
+    expect(result.status).toBe(200);
+    expect(result.body).toMatchObject({ jsonrpc: '2.0', id: 1, result: {} });
   });
 
   it('negotiates MCP and exposes only read-only repository tools', async () => {
@@ -125,10 +138,16 @@ async function postJson(
   endpointUrl: string,
   token: string | undefined,
   value: unknown,
+  authenticationMode: AuthenticationMode = 'bearer',
 ): Promise<HttpResult> {
   const target = new URL(endpointUrl);
   const body = JSON.stringify(value);
   return new Promise<HttpResult>((resolve, reject) => {
+    const tokenHeader = token
+      ? authenticationMode === 'tunnel'
+        ? { 'X-ReviewLume-Token': token }
+        : { Authorization: `Bearer ${token}` }
+      : {};
     const request = http.request(
       {
         hostname: target.hostname,
@@ -139,7 +158,7 @@ async function postJson(
           Accept: 'application/json',
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body, 'utf8'),
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...tokenHeader,
         },
       },
       (response) => {
