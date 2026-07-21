@@ -17,6 +17,7 @@ import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunne
 import { McpConnectorService } from './services/mcpConnectorService';
 import { ReviewScopeService } from './services/reviewScopeService';
 import { SecurityReviewService } from './services/securityReviewService';
+import { SecureMcpTunnelService } from './services/secureMcpTunnelService';
 import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
 import { refreshReviewPanel } from './webview/reviewPanel';
 
@@ -44,9 +45,10 @@ export function activate(context: vscode.ExtensionContext): void {
     reviewScopeService,
   );
   const mcpConnectorService = new McpConnectorService();
+  const secureMcpTunnelService = new SecureMcpTunnelService(context);
   context.subscriptions.push({
     dispose: () => {
-      void mcpConnectorService.dispose();
+      void secureMcpTunnelService.dispose().finally(() => mcpConnectorService.dispose());
     },
   });
 
@@ -97,7 +99,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerUpdateIssueStatus(context, fileSelectionService);
   registerReviewLoopCommands(context);
   registerViewReReviewComparison(context);
-  registerMcpConnectorCommands(context, mcpConnectorService);
+  registerMcpConnectorCommands(context, mcpConnectorService, secureMcpTunnelService);
 
   logInfo('ReviewLume extension activated');
 }
