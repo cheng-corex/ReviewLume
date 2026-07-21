@@ -22,8 +22,8 @@
 
 通过标准：
 
-- 非 `tunnel-client` 程序被拒绝；
-- Tunnel ID 格式错误被拒绝；
+- 非官方帮助文本的程序被拒绝；
+- Tunnel ID 不是 `tunnel_` 加 32 位小写字母或数字时被拒绝；
 - Runtime Key 只保存在 VS Code SecretStorage；
 - 设置中最多出现机器级官方二进制路径，不出现密钥。
 
@@ -38,17 +38,20 @@
 
 通过标准：一次操作完成本地 MCP 和官方 Secure MCP Tunnel 启动；一次连接只绑定一个 repository。
 
-## 3. tunnel-client 和健康边界
+## 3. tunnel-client、环境和健康边界
 
 1. 打开 `Open Tunnel Diagnostics`。
 2. 确认诊断 UI 地址是 `http://127.0.0.1:<随机端口>/ui` 或 `localhost`，不是公网地址。
 3. 确认 `/readyz` 返回 200。
 4. 确认 tunnel-client 进程参数只有 `run`，没有 Runtime Key、本地 Token 或 Authorization Header。
 5. 确认进程环境通过 `env:` 引用构造 `X-ReviewLume-Token`，Header 配置本身不含 Token 明文。
-6. 故意使用错误 Tunnel ID 或 Runtime Key，确认 doctor/启动失败且状态栏显示失败，不保持“已连接”。
-7. 恢复正确配置后重新连接。
+6. 在启动 VS Code 前临时设置测试用 `TUNNEL_CLIENT_CONFIG`、`MCP_COMMAND`、`OPENAI_ADMIN_KEY`、`ALLOW_REMOTE_UI=true` 或 `LOG_HTTP_RAW_UNSAFE=true`，确认 ReviewLume 启动的进程没有继承这些覆盖项。
+7. 确认标准 `HTTPS_PROXY`/`NO_PROXY` 等网络环境仍可按系统需要保留。
+8. 确认 doctor 完成后长期进程写入新的 health URL，而不是复用 doctor 的旧文件内容。
+9. 故意使用错误 Tunnel ID 或 Runtime Key，确认 doctor/启动失败且状态栏显示失败，不保持“已连接”。
+10. 恢复正确配置后重新连接。
 
-通过标准：诊断面仅 loopback；凭据不在 argv；失败安全停止。
+通过标准：诊断面仅 loopback；凭据不在 argv；宿主环境不能注入额外 profile、MCP command、admin key、Cloudflared、Harpoon、远程 UI 或原始 HTTP 日志；失败安全停止。
 
 ## 4. ChatGPT 自定义连接器
 
@@ -100,7 +103,7 @@
 2. 确认未监听 `0.0.0.0`、局域网 IP 或公网 IP。
 3. 不带 Authorization 或 `X-ReviewLume-Token` 调用 endpoint，确认返回 401。
 4. 使用错误 Token，确认返回 401。
-5. 本地 Bearer 和官方 Tunnel 专用 Header 都能以正确 Token完成 `ping`。
+5. 本地 Bearer 和官方 Tunnel 专用 Header 都能以正确 Token 完成 `ping`。
 6. 停止并重新启动，确认端口或 Token 至少一项发生变化，旧 Token 不可继续使用。
 
 通过标准：服务仅 loopback，随机 Token 不跨服务生命周期复用，ChatGPT 连接器认证不会替代本地专用 Header。
@@ -145,8 +148,10 @@
 - 大 diff 明确返回截断标记。
 - 搜索结果达到上限时明确标记截断。
 - 超大请求返回 413，非 JSON 请求返回 415。
-- 日志只出现安全的状态、repository 显示名、Tunnel ID 和工具名。
-- 日志不出现 Runtime Key、本地 Token、Authorization、查询词、文件正文、diff 或搜索结果。
+- ReviewLume 日志只出现安全状态、repository 显示名、Tunnel ID 和工具名。
+- doctor 错误诊断中不出现 Runtime Key、本地 Token 或 Authorization。
+- 长期 tunnel-client stdout/stderr 不被 ReviewLume 采集；诊断通过 loopback UI 查看。
+- 日志不出现查询词、文件正文、diff 或搜索结果。
 - repository 文档中的提示无法要求 ReviewLume 扩大权限或执行命令。
 
 ## 10. 停止、异常和重启
