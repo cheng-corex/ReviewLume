@@ -1,10 +1,10 @@
 # P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 自动验证基线：Draft PR #21 head `2b7601c`，CI #385 四平台全绿；Windows VSIX 0.1.8 artifact 已生成。真实 Tunnel 和 ChatGPT 工具调用仍需在用户 Windows 环境执行。
+> 自动验证以 Draft PR #21 最新一次四平台全绿 CI 及其 Windows VSIX 0.1.8 artifact 为准。不要在本文写死会因文档提交而立刻过期的 head SHA 或运行编号。真实 Tunnel 和 ChatGPT 工具调用仍需在用户 Windows 环境执行。
 
 ## 验收前提
 
-- 使用 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.8。
+- 使用 Draft PR #21 最新全绿 CI 的 Windows artifact 中的 VSIX 0.1.8。
 - Windows VS Code 打开一个不含真实凭据的测试 Git repository。
 - VS Code Workspace Trust 已开启。
 - ChatGPT Plus 账号已开启开发者模式，并可创建自定义连接器。
