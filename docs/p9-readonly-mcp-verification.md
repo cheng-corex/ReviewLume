@@ -1,10 +1,10 @@
 # P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 使用 Draft PR #21 最新四平台全绿 CI 及其 Windows VSIX 0.1.12 artifact。自动化测试负责协议、安全边界和打包；真实 ChatGPT 工具调用仍需在用户 Windows 环境完成。
+> 使用 Draft PR #21 最新四平台全绿 CI 及其 Windows VSIX 0.1.13 artifact。自动化测试负责协议、安全边界和打包；真实 ChatGPT 工具调用仍需在用户 Windows 环境完成。
 
 ## 当前验收基线
 
-- VSIX：0.1.12。
+- VSIX：0.1.13。
 - 官方客户端：`openai/tunnel-client` v0.0.10 Windows amd64。
 - ChatGPT Personal workspace 已成功创建并进入 ReviewLume Tunnel 连接授权页面。
 - ReviewLume 一次连接只绑定一个 Trusted Workspace 中的 Git repository。
@@ -19,18 +19,22 @@
   - `read_file`
   - `search_code`
 
-## 1. 安装与首次配置
+## 1. 安装、启动激活与首次配置
 
-1. 安装 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.12，并重新加载 VS Code。
-2. 打开一个不含真实凭据的测试 Git repository，确认 Workspace Trust 已开启。
-3. 点击状态栏 `ReviewLume MCP`，选择 `Configure Secure MCP Tunnel`。
-4. 选择官方 `tunnel-client.exe`。
-5. 粘贴 OpenAI Tunnel ID。
-6. 粘贴最小权限 Runtime API Key，确认不是 Admin Key。
-7. 检查 VS Code settings 和 repository，确认没有 Runtime Key、Token 或新增凭据文件。
+1. 安装 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.13，并完全退出 VS Code。
+2. 正常双击打开 VS Code，不点击左侧 ReviewLume 图标，确认启动完成后底部直接出现 `ReviewLume MCP` 状态项。
+3. 确认自动激活仅创建状态栏、命令和视图；不会自动启动 Tunnel、打开 ChatGPT、读取 Git diff 或扫描 repository。
+4. 打开一个不含真实凭据的测试 Git repository，确认 Workspace Trust 已开启。
+5. 点击状态栏 `ReviewLume MCP`，选择 `Configure Secure MCP Tunnel`。
+6. 选择官方 `tunnel-client.exe`。
+7. 粘贴 OpenAI Tunnel ID。
+8. 粘贴最小权限 Runtime API Key，确认不是 Admin Key。
+9. 检查 VS Code settings 和 repository，确认没有 Runtime Key、Token 或新增凭据文件。
 
 通过标准：
 
+- 状态栏不再依赖先打开 Activity Bar 视图；
+- 启动激活不会主动建立网络连接或读取项目内容；
 - 非官方帮助文本的程序被拒绝；
 - Tunnel ID 必须是 `tunnel_` 加 32 位小写字母或数字；
 - Runtime Key 只在 SecretStorage；
@@ -39,7 +43,7 @@
 
 ## 2. 代理自动发现与持久化
 
-0.1.12 不再要求每次从命令行启动 VS Code。连接时按以下顺序发现 OpenAI 控制面代理：
+0.1.13 继承 0.1.12 的代理自动发现与持久化能力，不要求每次从命令行启动 VS Code。连接时按以下顺序发现 OpenAI 控制面代理：
 
 1. ReviewLume 上次保存的控制面代理；
 2. `CONTROL_PLANE_HTTP_PROXY`；
@@ -52,7 +56,7 @@
 
 验收：
 
-1. 当前带 `HTTPS_PROXY=http://127.0.0.1:10809` 的 VS Code 安装 0.1.12 后连接一次。
+1. 当前带 `HTTPS_PROXY=http://127.0.0.1:10809` 的 VS Code 安装 0.1.13 后连接一次。
 2. 打开 Tunnel Diagnostics，确认代理来源和 URL 正确。
 3. 停止连接并完全退出 VS Code。
 4. 不设置 PowerShell 环境变量，正常双击打开 VS Code。
