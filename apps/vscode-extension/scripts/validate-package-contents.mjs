@@ -30,6 +30,7 @@ const required = [
   'extension/dist/commands/mcpConnectorCommands.js',
   'extension/dist/services/mcpConnectorServer.js',
   'extension/dist/services/mcpRepositoryTools.js',
+  'extension/dist/services/mcpWritableRepositoryTools.js',
   'extension/dist/services/secureMcpTunnelService.js',
 ];
 
