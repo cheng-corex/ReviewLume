@@ -214,7 +214,7 @@ describe('reviewlume-vscode manifest', () => {
     );
     const mediaRoot = path.resolve(__dirname, '../../dist/webview/media');
     for (const file of ['reviewPanel.js', 'reviewPanel.css', 'reviewPanelTheme.css']) {
-      expect(fs.existsSync(path.join(mediaRoot, file), file).toBe(true);
+      expect(fs.existsSync(path.join(mediaRoot, file)), file).toBe(true);
     }
   });
 
