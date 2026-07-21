@@ -10,7 +10,7 @@ import {
 
 const configuration: SecureMcpTunnelConfiguration = {
   binaryPath: '/tools/tunnel-client',
-  tunnelId: 'tunnel_0123456789abcdef0123456789abcdef',
+  tunnelId: 'tunnel_0123456789abcdefghijklmnopqrstuv',
   runtimeApiKey: 'runtime-key-value-123456789',
 };
 
@@ -55,7 +55,7 @@ describe('SecureMcpTunnelService helpers', () => {
     expect(env.LOG_HTTP_RAW_UNSAFE).toBe('false');
   });
 
-  it('redacts runtime and local credentials from tunnel diagnostics', () => {
+  it('redacts runtime and local credentials from doctor diagnostics', () => {
     const value = [
       configuration.runtimeApiKey,
       connection.tunnelToken,
