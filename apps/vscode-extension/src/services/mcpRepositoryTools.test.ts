@@ -39,7 +39,7 @@ class FakeRunner implements McpGitRunner {
 }
 
 function structured<T extends Record<string, unknown>>(result: McpToolCallResult): T {
-  expect(result.structuredContent).toBeDefined();
+  if (!result.structuredContent) throw new Error('Expected structured MCP content.');
   return result.structuredContent as T;
 }
 
