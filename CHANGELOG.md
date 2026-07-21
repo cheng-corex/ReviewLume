@@ -76,13 +76,19 @@
     before being returned to the model.
   - Official `openai/tunnel-client` integration validates official help text and Tunnel ID format,
     runs `doctor --explain`, starts without a shell, waits for fresh loopback readiness, and opens
-    ChatGPT Connectors.
-  - Tunnel ID and official client path are stored in VS Code global state; the Runtime API Key is
-    stored only in SecretStorage and passed through the child environment.
+    ChatGPT Connectors only after the OpenAI control plane reports the matching healthy Tunnel.
+  - Tunnel ID, official client path, and the normalized control-plane proxy are stored in VS Code
+    global state; the Runtime API Key is stored only in SecretStorage.
+  - Control-plane proxy discovery supports saved state, dedicated and standard proxy environment
+    variables, VS Code `http.proxy`, and Windows system proxy settings.
+  - Only `CONTROL_PLANE_HTTP_PROXY` is passed to tunnel-client; generic proxy variables are removed
+    so the local MCP and unrelated VS Code traffic are not redirected by ReviewLume.
+  - `/api/status` validation rejects mismatched Tunnel IDs, `tunnel_metadata_error`, and an unhealthy
+    main MCP channel instead of treating loopback `/readyz` alone as a successful connection.
   - A dedicated `X-ReviewLume-Token` header protects the loopback MCP without conflicting with
     ChatGPT connector authentication; header configuration uses an environment reference.
   - Ambient tunnel profiles, MCP commands, admin keys, Cloudflared, Harpoon, remote UI, log files,
-    and raw HTTP logging overrides are removed before the controlled environment is constructed.
+    raw HTTP logging, and generic proxy overrides are removed before the controlled environment is constructed.
   - Doctor diagnostics are redacted before display; long-running tunnel-client stdout/stderr is not
     captured, avoiding credential leakage across arbitrary output chunks.
   - Status-bar actions provide one-click connect, configuration, loopback diagnostics, stop, and
@@ -118,16 +124,6 @@
   - Reject symbolic-link escapes and non-regular history files.
   - Surface corrupt or incomplete records instead of silently hiding them.
   - Remove the incomplete fake ZIP reconstruction path; only exact historical content may be restored.
-  - Delete the matching managed export directory with a confirmed history deletion.
-  - Keep `.reviewlume/history/**` out of Git and future Review Pack selection.
-  - Avoid logging imported response content or user-controlled titles.
-
-## [0.1.0] - 2026-07-10
-
-### Added
-
-- P0: Engineering foundation.
-  - pnpm workspace with TypeScript project references.
-  - VS Code extension skeleton with `reviewlume.hello` command.
-  - Core packages: `@reviewlume/core`, `@reviewlume/git-context`, `@reviewlume/prompt-templates`,
-    `@reviewlume/review-pack`, `@reviewlume/secret-scanner`, and `@reviewlume/report-parser`.
+- Fixed official Windows tunnel-client help validation, unauthenticated reachability probing,
+  Protected Resource Metadata discovery, proxy persistence, and false-positive readiness reporting
+  during real Windows Secure MCP Tunnel acceptance.
