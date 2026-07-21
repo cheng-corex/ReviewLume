@@ -43,23 +43,7 @@ jobs:
         run: pnpm typecheck
 
       - name: Test
-        id: test
-        continue-on-error: true
-        shell: bash
-        run: pnpm test > test.log 2>&1
-
-      - name: Upload test diagnostics
-        if: steps.test.outcome == 'failure'
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-${{ matrix.os }}-node-${{ matrix.node-version }}
-          path: test.log
-          if-no-files-found: error
-
-      - name: Fail after test diagnostics
-        if: steps.test.outcome == 'failure'
-        shell: bash
-        run: exit 1
+        run: pnpm test
 
       - name: Validate browser extension
         run: pnpm validate:browser-extension
