@@ -131,23 +131,9 @@ export function createWriteConfirmationHandler(
   repository: string,
 ): (request: McpWriteConfirmationRequest) => Promise<McpWriteDecision> {
   return async (request): Promise<McpWriteDecision> => {
-    const dirtyDocuments = new Set(
-      vscode.workspace.textDocuments
-        .filter((document) => document.isDirty && document.uri.scheme === 'file')
-        .map((document) => normalizeFsPathForComparison(document.uri.fsPath)),
-    );
-    const dirtyFiles = request.files.filter((file) =>
-      dirtyDocuments.has(normalizeFsPathForComparison(file.absolutePath)),
-    );
-    if (dirtyFiles.length > 0) {
-      const paths = dirtyFiles.map((file) => file.path).join(', ');
-      await vscode.window.showErrorMessage(
-        `ReviewLume blocked the write because these files have unsaved editor changes: ${paths}. Save or revert them, then retry.`,
-      );
-      return {
-        approved: false,
-        message: 'Write blocked because one or more target files have unsaved VS Code changes.',
-      };
+    const dirtyBeforeConfirmation = findDirtyTargetFiles(request);
+    if (dirtyBeforeConfirmation.length > 0) {
+      return await rejectDirtyWrite(dirtyBeforeConfirmation);
     }
 
     const detail = [
@@ -165,9 +151,44 @@ export function createWriteConfirmationHandler(
       { modal: true, detail },
       'Apply changes',
     );
-    return selection === 'Apply changes'
-      ? { approved: true }
-      : { approved: false, message: 'The user declined the VS Code write confirmation.' };
+    if (selection !== 'Apply changes') {
+      return {
+        approved: false,
+        message: 'The user declined the VS Code write confirmation.',
+      };
+    }
+
+    const dirtyAfterConfirmation = findDirtyTargetFiles(request);
+    if (dirtyAfterConfirmation.length > 0) {
+      return await rejectDirtyWrite(dirtyAfterConfirmation);
+    }
+    return { approved: true };
+  };
+}
+
+function findDirtyTargetFiles(
+  request: McpWriteConfirmationRequest,
+): readonly McpWriteConfirmationRequest['files'][number][] {
+  const dirtyDocuments = new Set(
+    vscode.workspace.textDocuments
+      .filter((document) => document.isDirty && document.uri.scheme === 'file')
+      .map((document) => normalizeFsPathForComparison(document.uri.fsPath)),
+  );
+  return request.files.filter((file) =>
+    dirtyDocuments.has(normalizeFsPathForComparison(file.absolutePath)),
+  );
+}
+
+async function rejectDirtyWrite(
+  dirtyFiles: readonly McpWriteConfirmationRequest['files'][number][],
+): Promise<McpWriteDecision> {
+  const paths = dirtyFiles.map((file) => file.path).join(', ');
+  await vscode.window.showErrorMessage(
+    `ReviewLume blocked the write because these files have unsaved editor changes: ${paths}. Save or revert them, then retry.`,
+  );
+  return {
+    approved: false,
+    message: 'Write blocked because one or more target files have unsaved VS Code changes.',
   };
 }
 
