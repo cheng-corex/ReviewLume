@@ -16,6 +16,23 @@ export interface McpConnectionInfo extends McpConnectorAddress {
   readonly tunnelToken: string;
 }
 
+/**
+ * Wrap a best-effort observability callback so logging can never break an MCP tool call.
+ * This matters during extension-host reloads, when the OutputChannel may already be disposed
+ * while the tunnel is still draining an in-flight request.
+ */
+export function createSafeToolCallObserver(
+  observer: (toolName: string) => void,
+): (toolName: string) => void {
+  return (toolName: string): void => {
+    try {
+      observer(toolName);
+    } catch {
+      // Observability must never alter the read-only MCP protocol result.
+    }
+  };
+}
+
 /** Owns the read-only MCP endpoint for the repository selected in VS Code. */
 export class McpConnectorService {
   #server: McpConnectorServer | undefined;
@@ -55,7 +72,9 @@ export class McpConnectorService {
     });
     const server = new McpConnectorServer({
       tools,
-      onToolCall: (toolName) => logInfo(`MCP read-only tool invoked: ${toolName}`),
+      onToolCall: createSafeToolCallObserver((toolName) =>
+        logInfo(`MCP read-only tool invoked: ${toolName}`),
+      ),
     });
     const address = await server.start();
 
