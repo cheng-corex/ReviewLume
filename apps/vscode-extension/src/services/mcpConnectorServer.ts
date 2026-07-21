@@ -1,5 +1,5 @@
 import * as http from 'node:http';
-import { randomBytes } from 'node:crypto';
+import { randomBytes, timingSafeEqual } from 'node:crypto';
 import type { McpRepositoryTools, McpToolCallResult } from './mcpRepositoryTools';
 
 const CURRENT_PROTOCOL_VERSION = '2025-11-25';
@@ -34,6 +34,13 @@ interface JsonRpcError {
   readonly code: number;
   readonly message: string;
   readonly data?: unknown;
+}
+
+class RequestBodyTooLargeError extends Error {
+  constructor() {
+    super('MCP request body is too large.');
+    this.name = 'RequestBodyTooLargeError';
+  }
 }
 
 /**
@@ -133,7 +140,7 @@ export class McpConnectorServer {
       return;
     }
 
-    if (request.headers.authorization !== `Bearer ${this.#bearerToken}`) {
+    if (!this.#isAuthorized(request.headers.authorization)) {
       response.setHeader('WWW-Authenticate', 'Bearer realm="ReviewLume MCP"');
       this.#sendJson(response, 401, { error: 'Unauthorized.' });
       return;
@@ -169,6 +176,19 @@ export class McpConnectorServer {
       return;
     }
 
+    const contentType = request.headers['content-type'] ?? '';
+    if (!contentType.toLowerCase().startsWith('application/json')) {
+      this.#sendJson(response, 415, { error: 'Content-Type must be application/json.' });
+      return;
+    }
+
+    const declaredLength = parseContentLength(request.headers['content-length']);
+    if (declaredLength !== undefined && declaredLength > MAX_REQUEST_BYTES) {
+      request.resume();
+      this.#sendJson(response, 413, { error: 'MCP request body is too large.' });
+      return;
+    }
+
     const protocolHeader = request.headers['mcp-protocol-version'];
     if (
       typeof protocolHeader === 'string' &&
@@ -179,7 +199,17 @@ export class McpConnectorServer {
       return;
     }
 
-    const rawBody = await readRequestBody(request, MAX_REQUEST_BYTES);
+    let rawBody: string;
+    try {
+      rawBody = await readRequestBody(request, MAX_REQUEST_BYTES);
+    } catch (error) {
+      if (error instanceof RequestBodyTooLargeError) {
+        this.#sendJson(response, 413, { error: error.message });
+        return;
+      }
+      throw error;
+    }
+
     let payload: unknown;
     try {
       payload = JSON.parse(rawBody);
@@ -229,7 +259,7 @@ export class McpConnectorServer {
           serverInfo: {
             name: 'reviewlume-readonly-repository',
             title: 'ReviewLume Read-only Repository',
-            version: '0.1.0',
+            version: '0.1.7',
             description: 'Read-only access to the single Git repository bound in VS Code.',
           },
           instructions:
@@ -291,6 +321,13 @@ export class McpConnectorServer {
     }
   }
 
+  #isAuthorized(value: string | undefined): boolean {
+    if (!value?.startsWith('Bearer ')) return false;
+    const provided = Buffer.from(value.slice('Bearer '.length), 'utf8');
+    const expected = Buffer.from(this.#bearerToken, 'utf8');
+    return provided.length === expected.length && timingSafeEqual(provided, expected);
+  }
+
   #setSecurityHeaders(response: http.ServerResponse): void {
     response.setHeader('Cache-Control', 'no-store');
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -326,18 +363,30 @@ async function readRequestBody(request: http.IncomingMessage, maxBytes: number):
     const buffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
     total += buffer.length;
     if (total > maxBytes) {
-      request.destroy();
-      throw new Error('MCP request body is too large.');
+      request.resume();
+      throw new RequestBodyTooLargeError();
     }
     chunks.push(buffer);
   }
   return Buffer.concat(chunks).toString('utf8');
 }
 
+function parseContentLength(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : undefined;
+}
+
 function isJsonRpcRequest(value: unknown): value is JsonRpcRequest {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return false;
   const candidate = value as Partial<JsonRpcRequest>;
-  return candidate.jsonrpc === '2.0' && typeof candidate.method === 'string';
+  if (candidate.jsonrpc !== '2.0' || typeof candidate.method !== 'string') return false;
+  return (
+    candidate.id === undefined ||
+    candidate.id === null ||
+    typeof candidate.id === 'string' ||
+    typeof candidate.id === 'number'
+  );
 }
 
 function readRequestedProtocolVersion(params: unknown): string {
