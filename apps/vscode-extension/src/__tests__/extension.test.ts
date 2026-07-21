@@ -21,7 +21,15 @@ interface PkgJson {
   contributes: {
     commands: Array<{ command: string; title: string }>;
     configuration?: {
-      properties?: Record<string, { scope?: string; type?: string }>;
+      properties?: Record<
+        string,
+        {
+          scope?: string;
+          type?: string;
+          default?: unknown;
+          enum?: unknown[];
+        }
+      >;
     };
     viewsContainers?: unknown;
     views?: unknown;
@@ -92,7 +100,7 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid extension metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.1.16');
+    expect(content.version).toBe('0.1.17');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
@@ -127,7 +135,7 @@ describe('reviewlume-vscode manifest', () => {
       command: 'reviewlume.openSecureMcpTunnelUi',
       title: 'Open Secure MCP Tunnel Diagnostics',
     },
-    { command: 'reviewlume.startMcpConnector', title: 'Start Local Read-only MCP' },
+    { command: 'reviewlume.startMcpConnector', title: 'Start Local MCP' },
     {
       command: 'reviewlume.copyMcpConnectionInfo',
       title: 'Copy Local MCP Connection Info',
@@ -158,6 +166,16 @@ describe('reviewlume-vscode manifest', () => {
     );
   });
 
+  it('keeps write access disabled by default and scoped to the current window', () => {
+    const properties = readPkg().contributes.configuration?.properties ?? {};
+    expect(properties['reviewlume.mcp.writeAccess']).toMatchObject({
+      type: 'string',
+      scope: 'window',
+      default: 'disabled',
+      enum: ['disabled', 'confirmEachRequest'],
+    });
+  });
+
   it('does not expose the superseded browser input bridge commands', () => {
     const content = readPkg();
     const contributed = new Set(content.contributes.commands.map((item) => item.command));
@@ -185,6 +203,8 @@ describe('reviewlume-vscode manifest', () => {
     expect(chinese['command.updateIssueStatus']).toContain('更新问题状态');
     expect(english['command.connectSecureMcpTunnel']).toContain('ChatGPT');
     expect(chinese['command.connectSecureMcpTunnel']).toContain('ChatGPT');
+    expect(english['config.mcp.writeAccess.description']).toContain('write');
+    expect(chinese['config.mcp.writeAccess.description']).toContain('写入');
   });
 
   it('packages self-contained Git, scanner, Review Pack, report parser, and Webview runtimes', () => {
