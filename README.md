@@ -1,101 +1,130 @@
 # ReviewLume
 
-> 面向 VS Code 的隐私优先、只读优先、多网页 AI 兼容的代码最终审核助手。
+> 面向 VS Code 的隐私优先、只读优先的 ChatGPT 项目连接器。
 
-ReviewLume 用于把 Git 改动、关联源码、测试和验收要求整理成结构化审核包，再交给用户选择的浏览器 AI 助手进行最终代码审核。项目默认不读取浏览器 Cookie、不使用会话令牌、不调用网页内部接口，也不让网页模型直接操作本地终端或任意文件。
+ReviewLume 把当前 VS Code 中的一个 Git repository 以受控的只读 MCP 工具连接给 ChatGPT。用户直接在 ChatGPT 中提出审核指令，ChatGPT 再按需查看 Git 状态、最近提交、diff、相关源码、测试和配置，并直接给出问题与优化建议。
 
-## 产品定位
+ReviewLume 不提供终端、写文件、应用补丁或 Git 修改能力，也不读取浏览器 Cookie、Session、Token、密码或网页回答。
 
-ReviewLume 不是通用编码 Agent，也不是某一家 AI 服务的非官方 API 客户端。它专注于四件事：
+## 核心体验
 
-1. 精确收集本次代码改动及必要上下文。
-2. 在发送前扫描密钥、凭据和敏感文件。
-3. 生成可复用、可审计的最终审核任务。
-4. 将 AI 审核结果整理成结构化报告并追踪闭环。
+用户在 ChatGPT 中直接说：
 
-## 推荐工作流
+> 看一下当前项目最近的提交，有没有明显问题和优化点。
+
+ChatGPT 可以通过 ReviewLume 自动执行合理的只读检查链路：
 
 ```text
-实施模型完成开发
+repository_summary
     ↓
-日常审核模型检查 diff
+git_status + recent_commits
     ↓
-ReviewLume 生成最终审核包
+选择合理的 commit range
     ↓
-用户手动提交给浏览器 AI
+get_diff
     ↓
-ReviewLume 导入并整理审核结果
+search_code + read_file
     ↓
-实施模型修复问题
+检查相关实现、测试与配置
     ↓
-ReviewLume 生成二次复核任务
+直接在 ChatGPT 中给出建议
 ```
 
-## 浏览器桥接（P9）
+用户不需要先扫描、手动选文件、导出审核包、导入回答或执行多次复核。
 
-浏览器桥接是可选的本地辅助能力，用于把 ReviewLume 已生成的提示填入受支持网页的输入框。它不会替代原有的复制、粘贴、导出和回答导入流程。
+## P9：ChatGPT 只读项目 MCP
 
-- 本地服务只监听 `127.0.0.1` 的随机端口。
-- VS Code 状态栏提供 ChatGPT、Claude 和 Gemini 的一键连接入口：自动启动桥接、生成一次性短时配对码并打开本地安全交接页，不需要手动输入端口或配对码。
-- 配对数据只放在短时 URL fragment 中，不进入 HTTP 请求或服务端日志；浏览器扩展接收后立即清除 fragment，并只在会话存储中暂存交接信息。
-- 浏览器扩展采用 Manifest V3；AI 站点权限按站点单独请求，默认不持有站点访问权限。首次连接只需确认一次浏览器权限，已有权限时自动配对并打开目标站点。
-- 首批页面适配器支持 ChatGPT、Claude 和 Gemini 的公开输入页面。
-- 提示到达扩展后仍需用户点击“填入当前页面”；扩展只触发标准输入事件，绝不点击发送。
-- 不读取 Cookie、Session、Token、浏览历史或回答正文，不调用第三方 AI 内部接口。
-- 撤销会话或关闭 VS Code 扩展后，内存中的桥接会话失效。
+VS Code 状态栏提供 `ReviewLume MCP` 主入口：
 
-开发模式下可运行 `pnpm validate:browser-extension`，对 Manifest 权限、引用文件、JavaScript 语法以及禁止的自动发送和凭据读取原语执行专项校验。真实浏览器验收步骤见 [P9 人工验收清单](docs/p9-browser-bridge-verification.md)。
+1. 打开一个 Git 项目。
+2. 选择 `Start Read-only MCP`。
+3. ReviewLume 绑定当前 workspace folder 所属的一个 Git repository。
+4. 复制 MCP 连接信息。
+5. 通过 OpenAI Secure MCP Tunnel 把本地 endpoint 连接到 ChatGPT。
+6. 以后直接在 ChatGPT 中发审核指令。
 
-## 第一版范围
+当前工具：
 
-第一版只实现“保守模式”：
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+- `list_files`
+- `read_file`
+- `search_code`
 
-- 读取当前 Git 工作区和提交范围。
-- 选择需要纳入审核的文件。
-- 生成 Markdown 审核包。
-- 扫描敏感文件和疑似密钥。
-- 生成中文或英文审核提示。
-- 打开指定 AI 网页并复制提示。
-- 可选地通过显式、一键配对的本地浏览器桥接填入提示，但不自动发送。
-- 手动粘贴 AI 回答并导入。
-- 保存结构化审核报告与历史记录。
+每个工具都声明为 read-only、non-destructive 和 idempotent。ChatGPT 可以选择“需要读什么”，但不能改变“允许读什么”。
 
-第一版明确不实现：
+详细设计见 [P9 ChatGPT 只读项目 MCP 计划](docs/p9-readonly-mcp-plan.md)。
 
-- 自动登录 AI 网站。
-- 获取 Cookie、Session Token 或访问令牌。
-- 调用网页内部 Backend API。
-- 自动连续发送网页请求。
-- 自动点击网页发送按钮。
-- 自动采集或导入网页回答。
-- 自动执行 AI 返回的终端命令。
-- 让浏览器扩展读取任意本地文件。
-- 未经确认直接修改项目代码。
+## 安全边界
+
+- 一次连接只绑定一个 Git repository。
+- 只在 VS Code Trusted Workspace 中启动。
+- 本地服务只监听 `127.0.0.1` 随机端口。
+- 每次启动生成新的 bearer token；停止后立即失效。
+- 不允许绝对路径、`..`、`.git` 或 symlink 越出 repository。
+- 默认阻止 `.env`、私钥、证书、credentials 和 secrets 等敏感路径。
+- Git 仅允许受控的只读命令，并固定禁用 external diff 和 textconv。
+- 文件、diff、搜索结果、请求大小和调用频率均有限制。
+- 不记录 bearer token、文件正文、diff 正文或搜索结果。
+- 不提供 shell、终端、写文件、删除文件、Git 修改或补丁应用工具。
+- repository 文件和文档始终视为不可信输入。
+- 本地 endpoint 不得直接暴露到公网；ChatGPT 接入使用受支持的 Secure MCP Tunnel。
+
+## 高级功能
+
+P8 已实现的完整审核闭环继续保留，但不再是默认主流程：
+
+- Review Pack；
+- 敏感内容扫描；
+- AI 回答导入；
+- Review History；
+- issue 状态管理；
+- 实施提示和修复摘要；
+- 二次复核和结果对比。
+
+这些命令在扩展中标记为 `Advanced`，适用于需要可审计报告或人工闭环管理的场景。
+
+## 已停止的浏览器填入原型
+
+原 P9 浏览器扩展方案只能把预先生成的提示填入 ChatGPT、Claude 或 Gemini，不能让模型在回答过程中反复调用项目工具，因此不再作为主方案，也不再要求用户验收。
+
+旧实现暂时保留在 Draft PR 分支，用于提取安全设计；主扩展清单已停止注册浏览器配对和填入命令。说明见 [P9 浏览器填入桥接原型](docs/p9-browser-bridge-plan.md)。
+
+## 明确不实现
+
+- 自动登录 AI 网站；
+- 获取 Cookie、Session Token、浏览器密码或访问令牌；
+- 调用第三方 AI 内部接口或绕过额度；
+- 自动执行 AI 返回的命令；
+- 自动修改用户项目代码；
+- 自动应用补丁；
+- 把本地 repository 端口直接暴露到公网；
+- 一次连接跨越多个 Git repository。
 
 ## 文档阅读顺序
 
 1. [产品方案](docs/product-overview.md)
 2. [系统架构](docs/architecture.md)
 3. [安全与合规边界](docs/security-and-compliance.md)
-4. [审核包格式](docs/review-pack-format.md)
-5. [实施计划](docs/implementation-plan.md)
-6. [任务清单](docs/task-plan.md)
-7. [测试与验收](docs/test-and-verification.md)
-8. [发布指南](docs/publishing-guide.md)
-9. [用户指南](docs/user-guide.md)
-10. [P9 浏览器桥接实施计划](docs/p9-browser-bridge-plan.md)
-11. [P9 人工验收清单](docs/p9-browser-bridge-verification.md)
+4. [P9 ChatGPT 只读项目 MCP 计划](docs/p9-readonly-mcp-plan.md)
+5. [审核包格式（高级）](docs/review-pack-format.md)
+6. [实施计划](docs/implementation-plan.md)
+7. [任务清单](docs/task-plan.md)
+8. [测试与验收](docs/test-and-verification.md)
+9. [发布指南](docs/publishing-guide.md)
+10. [用户指南](docs/user-guide.md)
+11. [P9 浏览器填入桥接原型说明](docs/p9-browser-bridge-plan.md)
 
 ## 推荐技术栈
 
 - TypeScript
 - VS Code Extension API
+- Model Context Protocol（Streamable HTTP）
 - pnpm workspace
-- esbuild 或 Vite
-- Zod
-- simple-git 或受控的 Git 子进程封装
+- 受控 Git 子进程封装
 - Vitest
-- Manifest V3 浏览器扩展
 
 ## 许可建议
 
