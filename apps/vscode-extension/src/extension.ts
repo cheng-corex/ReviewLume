@@ -18,7 +18,6 @@ import { McpConnectorService } from './services/mcpConnectorService';
 import { ReviewScopeService } from './services/reviewScopeService';
 import { SecurityReviewService } from './services/securityReviewService';
 import { SecureMcpTunnelService } from './services/secureMcpTunnelService';
-import { registerReviewLumeTreeView } from './views/reviewLumeTreeProvider';
 import { refreshReviewPanel } from './webview/reviewPanel';
 
 /** Activates the ReviewLume VS Code extension. */
@@ -53,7 +52,6 @@ export function activate(context: vscode.ExtensionContext): void {
   });
 
   function refreshViews(): void {
-    treeProvider.refresh();
     refreshReviewPanel();
   }
 
@@ -61,17 +59,6 @@ export function activate(context: vscode.ExtensionContext): void {
     securityReviewService.invalidate();
     refreshViews();
   }
-
-  async function treeSelectionChanged(refreshSmartContext: boolean): Promise<void> {
-    if (refreshSmartContext) await reviewScopeService.refreshSmartContext();
-    selectionChanged();
-  }
-
-  const treeProvider = registerReviewLumeTreeView(
-    context,
-    fileSelectionService,
-    treeSelectionChanged,
-  );
 
   registerCreateReviewPack(
     context,
