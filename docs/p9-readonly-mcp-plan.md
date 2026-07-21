@@ -171,6 +171,8 @@ pnpm package:vscode
 
 ## 人工验收
 
+详细步骤见 [P9 ChatGPT 只读项目 MCP 人工验收清单](p9-readonly-mcp-verification.md)。核心验收包括：
+
 1. 在 Windows VS Code 中打开一个测试仓库。
 2. 启动 MCP，确认只监听 `127.0.0.1:<随机端口>`。
 3. 通过 Secure MCP Tunnel 连接 ChatGPT。
