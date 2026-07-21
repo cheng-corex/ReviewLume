@@ -2,7 +2,11 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { logInfo } from './logService';
 import { McpConnectorServer, type McpConnectorAddress } from './mcpConnectorServer';
-import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
+import {
+  McpRepositoryTools,
+  type McpContentGuard,
+  type McpGitRunner,
+} from './mcpRepositoryTools';
 
 export interface McpConnectionInfo extends McpConnectorAddress {
   readonly repository: string;
@@ -44,6 +48,7 @@ export class McpConnectorService {
       root,
       displayName: repository,
       runner,
+      contentGuard: createContentGuard(),
       maxResultBytes: configuredBytes,
     });
     const server = new McpConnectorServer({
@@ -91,4 +96,27 @@ function createGitRunner(): McpGitRunner {
     const runtime = require('../../../../packages/git-context/src/index') as GitContextRuntime;
     return new runtime.GitCommandRunner();
   }
+}
+
+function createContentGuard(): McpContentGuard {
+  type SecretScannerRuntime = typeof import('../../../../packages/secret-scanner/dist/index.js');
+  let runtime: SecretScannerRuntime;
+  try {
+    // Packaged VSIX runtime.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    runtime = require('../vendor/secret-scanner/index.js') as SecretScannerRuntime;
+  } catch (error) {
+    const code = (error as NodeJS.ErrnoException).code;
+    if (code !== 'MODULE_NOT_FOUND') throw error;
+    // Workspace test/development runtime before the vendor build has run.
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    runtime = require('../../../../packages/secret-scanner/src/index') as SecretScannerRuntime;
+  }
+  const scanner = new runtime.SecretScanner();
+  return {
+    hasSensitiveContent(relativePath: string, content: string): boolean {
+      const result = scanner.scan([{ path: relativePath, content }]);
+      return result.findings.some((finding) => finding.level !== 'INFO');
+    },
+  };
 }
