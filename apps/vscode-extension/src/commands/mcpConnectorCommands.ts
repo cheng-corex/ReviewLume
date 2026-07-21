@@ -361,6 +361,7 @@ export function registerMcpConnectorCommands(
     try {
       await operation();
     } catch (error) {
+      if (isCancellationError(error)) return;
       const message = error instanceof Error ? error.message : 'ReviewLume Secure MCP operation failed.';
       logError('ReviewLume Secure MCP operation failed', error instanceof Error ? error : undefined);
       await vscode.window.showErrorMessage(message);
@@ -378,6 +379,38 @@ export function registerMcpConnectorCommands(
     vscode.commands.registerCommand(COMMANDS.START_MCP_CONNECTOR, safely(startLocal)),
     vscode.commands.registerCommand(COMMANDS.COPY_MCP_CONNECTION_INFO, safely(copy)),
     vscode.commands.registerCommand(COMMANDS.STOP_MCP_CONNECTOR, safely(stop)),
+  );
+}
+
+export function isCancellationError(error: unknown): boolean {
+  if (typeof error === 'string') return isCancellationText(error);
+  if (!error || typeof error !== 'object') return false;
+
+  const candidate = error as { name?: unknown; message?: unknown; code?: unknown };
+  const name = typeof candidate.name === 'string' ? candidate.name.trim().toLowerCase() : '';
+  const message =
+    typeof candidate.message === 'string' ? candidate.message.trim().toLowerCase() : '';
+  const code = typeof candidate.code === 'string' ? candidate.code.trim().toLowerCase() : '';
+
+  return (
+    name === 'canceled' ||
+    name === 'cancelled' ||
+    name === 'cancelederror' ||
+    name === 'cancellationerror' ||
+    name === 'aborterror' ||
+    code === 'err_canceled' ||
+    code === 'err_cancelled' ||
+    isCancellationText(message)
+  );
+}
+
+function isCancellationText(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return (
+    normalized === 'canceled' ||
+    normalized === 'cancelled' ||
+    normalized === 'operation canceled' ||
+    normalized === 'operation cancelled'
   );
 }
 
