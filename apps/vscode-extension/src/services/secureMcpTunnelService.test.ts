@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { McpConnectionInfo } from './mcpConnectorService';
 import {
   buildTunnelEnvironment,
+  isTunnelClientHelpOutput,
   isValidTunnelId,
   normalizeHealthBaseUrl,
   redactTunnelOutput,
@@ -32,6 +33,25 @@ describe('SecureMcpTunnelService helpers', () => {
     expect(isValidTunnelId('tunnel_ABCDEF0123456789abcdef0123456789')).toBe(false);
     expect(isValidTunnelId('other_0123456789abcdef0123456789abcdef')).toBe(false);
     expect(isValidTunnelId('tunnel_0123')).toBe(false);
+  });
+
+  it('recognizes the official Cobra help layout emitted by tunnel-client on Windows', () => {
+    const windowsHelp = [
+      'Tunnel client for the OpenAI MCP control plane',
+      '',
+      'Usage:',
+      '  tunnel-client [command]',
+      '',
+      'Available Commands:',
+    ].join('\r\n');
+
+    expect(isTunnelClientHelpOutput(windowsHelp)).toBe(true);
+    expect(
+      isTunnelClientHelpOutput(
+        'Use: tunnel-client\nTunnel client for the OpenAI MCP control plane',
+      ),
+    ).toBe(true);
+    expect(isTunnelClientHelpOutput('Usage:\n  another-client [command]')).toBe(false);
   });
 
   it('passes secrets through environment variables and uses env references in headers', () => {
