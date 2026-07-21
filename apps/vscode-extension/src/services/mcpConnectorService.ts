@@ -3,10 +3,18 @@ import * as vscode from 'vscode';
 import { logInfo } from './logService';
 import { McpConnectorServer, type McpConnectorAddress } from './mcpConnectorServer';
 import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
+import {
+  McpWritableRepositoryTools,
+  type McpWriteConfirmationRequest,
+  type McpWriteDecision,
+} from './mcpWritableRepositoryTools';
+
+export type McpAccessMode = 'read-only' | 'confirmed-write';
 
 export interface McpConnectionInfo extends McpConnectorAddress {
   readonly repository: string;
   readonly repositoryRoot: string;
+  readonly accessMode: McpAccessMode;
   readonly authorizationHeader: string;
   /** Dedicated loopback header value used by OpenAI tunnel-client. */
   readonly tunnelToken: string;
@@ -52,19 +60,37 @@ export class McpConnectorService {
     ).stdout.trim();
     if (!root) throw new Error('The selected workspace folder is not inside a Git repository.');
 
-    if (this.#connection?.repositoryRoot === root) return this.#connection;
+    const writeAccess = vscode.workspace
+      .getConfiguration('reviewlume', workspaceFolder.uri)
+      .get<'disabled' | 'confirmEachRequest'>('mcp.writeAccess', 'disabled');
+    const accessMode: McpAccessMode =
+      writeAccess === 'confirmEachRequest' ? 'confirmed-write' : 'read-only';
+
+    if (
+      this.#connection?.repositoryRoot === root &&
+      this.#connection.accessMode === accessMode
+    ) {
+      return this.#connection;
+    }
     await this.stop();
 
     const repository = path.basename(root) || 'repository';
     const configuredBytes = vscode.workspace
-      .getConfiguration('reviewlume')
+      .getConfiguration('reviewlume', workspaceFolder.uri)
       .get<number>('mcp.maxToolResultBytes', 512 * 1024);
-    const tools = new McpRepositoryTools({
+    const commonOptions = {
       root,
       displayName: repository,
       runner,
       maxResultBytes: configuredBytes,
-    });
+    };
+    const tools =
+      accessMode === 'confirmed-write'
+        ? new McpWritableRepositoryTools({
+            ...commonOptions,
+            confirmWrite: createWriteConfirmationHandler(repository),
+          })
+        : new McpRepositoryTools(commonOptions);
     const server = new McpConnectorServer({
       tools,
       onToolCall: createSafeToolCallObserver((toolName) =>
@@ -78,10 +104,13 @@ export class McpConnectorService {
       ...address,
       repository,
       repositoryRoot: root,
+      accessMode,
       authorizationHeader: `Bearer ${address.bearerToken}`,
       tunnelToken: address.bearerToken,
     };
-    logInfo(`ReviewLume MCP connector started for ${repository} on loopback port ${address.port}`);
+    logInfo(
+      `ReviewLume MCP connector started for ${repository} in ${accessMode} mode on loopback port ${address.port}`,
+    );
     return this.#connection;
   }
 
@@ -96,6 +125,55 @@ export class McpConnectorService {
   async dispose(): Promise<void> {
     await this.stop();
   }
+}
+
+export function createWriteConfirmationHandler(
+  repository: string,
+): (request: McpWriteConfirmationRequest) => Promise<McpWriteDecision> {
+  return async (request): Promise<McpWriteDecision> => {
+    const dirtyDocuments = new Set(
+      vscode.workspace.textDocuments
+        .filter((document) => document.isDirty && document.uri.scheme === 'file')
+        .map((document) => normalizeFsPathForComparison(document.uri.fsPath)),
+    );
+    const dirtyFiles = request.files.filter((file) =>
+      dirtyDocuments.has(normalizeFsPathForComparison(file.absolutePath)),
+    );
+    if (dirtyFiles.length > 0) {
+      const paths = dirtyFiles.map((file) => file.path).join(', ');
+      await vscode.window.showErrorMessage(
+        `ReviewLume blocked the write because these files have unsaved editor changes: ${paths}. Save or revert them, then retry.`,
+      );
+      return {
+        approved: false,
+        message: 'Write blocked because one or more target files have unsaved VS Code changes.',
+      };
+    }
+
+    const detail = [
+      request.reason ? `Requested reason: ${request.reason}` : 'No reason was supplied by ChatGPT.',
+      '',
+      ...request.files.map(
+        (file) =>
+          `${file.action === 'create' ? 'Create' : 'Replace'} ${file.path} (${file.oldBytes} → ${file.newBytes} bytes)`,
+      ),
+      '',
+      'ReviewLume will not delete files, run commands, modify .git, commit, or push. The resulting working-tree diff remains uncommitted.',
+    ].join('\n');
+    const selection = await vscode.window.showWarningMessage(
+      `ChatGPT requests writing ${request.files.length} file${request.files.length === 1 ? '' : 's'} in ${repository}.`,
+      { modal: true, detail },
+      'Apply changes',
+    );
+    return selection === 'Apply changes'
+      ? { approved: true }
+      : { approved: false, message: 'The user declined the VS Code write confirmation.' };
+  };
+}
+
+function normalizeFsPathForComparison(value: string): string {
+  const resolved = path.resolve(value);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 }
 
 function createGitRunner(): McpGitRunner {
