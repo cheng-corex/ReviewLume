@@ -10,6 +10,10 @@ const SUPPORTED_PROTOCOL_VERSIONS = new Set([
 ]);
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const REQUESTS_PER_MINUTE = 120;
+const PROTECTED_RESOURCE_METADATA_PATHS = new Set([
+  '/.well-known/oauth-protected-resource/mcp',
+  '/.well-known/oauth-protected-resource',
+]);
 
 export interface McpConnectorAddress {
   readonly host: '127.0.0.1';
@@ -46,10 +50,12 @@ class RequestBodyTooLargeError extends Error {
 /**
  * Stateless Streamable HTTP MCP endpoint bound to loopback only.
  *
- * Repository operations require a random token. An unauthenticated GET is
- * deliberately answered with 405 so OpenAI tunnel-client can perform its
- * reachability and optional OAuth probes without gaining access to MCP data.
- * Local/manual clients may use Authorization: Bearer; OpenAI tunnel-client uses
+ * Repository operations require a random token. OpenAI tunnel-client may probe
+ * the endpoint and RFC 9728 metadata without credentials. Those public probes
+ * expose only the loopback MCP resource URL; they never expose tools, repository
+ * metadata, source content, or credentials.
+ *
+ * Local/manual clients may use Authorization: Bearer. OpenAI tunnel-client uses
  * X-ReviewLume-Token so connector authentication cannot overwrite the local
  * loopback credential.
  */
@@ -73,6 +79,7 @@ export class McpConnectorServer {
 
   async start(): Promise<McpConnectorAddress> {
     if (this.#address) return this.#address;
+
     const server = http.createServer((request, response) => {
       void this.#handleRequest(request, response).catch((error: unknown) => {
         if (response.headersSent) {
@@ -120,6 +127,7 @@ export class McpConnectorServer {
     this.#server = undefined;
     this.#address = undefined;
     if (!server) return;
+
     await new Promise<void>((resolve, reject) => {
       server.close((error) => (error ? reject(error) : resolve()));
       server.closeAllConnections();
@@ -133,13 +141,19 @@ export class McpConnectorServer {
     this.#setSecurityHeaders(response);
 
     const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
-    if (requestUrl.pathname !== '/mcp') {
-      this.#sendJson(response, 404, { error: 'Not found.' });
-      return;
-    }
 
     if (!this.#isAllowedOrigin(request.headers.origin)) {
       this.#sendJson(response, 403, { error: 'Origin is not allowed.' });
+      return;
+    }
+
+    if (PROTECTED_RESOURCE_METADATA_PATHS.has(requestUrl.pathname)) {
+      this.#handleProtectedResourceMetadata(request, response);
+      return;
+    }
+
+    if (requestUrl.pathname !== '/mcp') {
+      this.#sendJson(response, 404, { error: 'Not found.' });
       return;
     }
 
@@ -253,6 +267,28 @@ export class McpConnectorServer {
     await this.#handleRpcRequest(payload, response);
   }
 
+  #handleProtectedResourceMetadata(
+    request: http.IncomingMessage,
+    response: http.ServerResponse,
+  ): void {
+    if (request.method !== 'GET') {
+      response.setHeader('Allow', 'GET');
+      this.#sendJson(response, 405, { error: 'Method not allowed.' });
+      return;
+    }
+
+    const endpointUrl = this.#address?.endpointUrl;
+    if (!endpointUrl) {
+      this.#sendJson(response, 503, { error: 'MCP endpoint is not ready.' });
+      return;
+    }
+
+    // This is RFC 9728 Protected Resource Metadata without an OAuth
+    // authorization server. It lets tunnel-client validate a statically
+    // authenticated local MCP without starting an OAuth flow.
+    this.#sendJson(response, 200, { resource: endpointUrl });
+  }
+
   async #handleNotification(request: JsonRpcRequest): Promise<void> {
     if (
       request.method === 'notifications/initialized' ||
@@ -278,7 +314,7 @@ export class McpConnectorServer {
           serverInfo: {
             name: 'reviewlume-readonly-repository',
             title: 'ReviewLume Read-only Repository',
-            version: '0.1.10',
+            version: '0.1.11',
             description: 'Read-only access to the single Git repository bound in VS Code.',
           },
           instructions:
