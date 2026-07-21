@@ -7,9 +7,14 @@ import { McpConnectorServer } from './mcpConnectorServer';
 import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
 
 class FakeRunner implements McpGitRunner {
-  async run(options: { readonly args: readonly string[] }): Promise<{ readonly stdout: string }> {
+  async run(options: {
+    readonly args: readonly string[];
+  }): Promise<{ readonly stdout: string }> {
     if (options.args[0] === 'log') {
-      return { stdout: '0123456789012345678901234567890123456789\tDev\t2026-07-21T00:00:00Z\tTest' };
+      return {
+        stdout:
+          '0123456789012345678901234567890123456789\tDev\t2026-07-21T00:00:00Z\tTest',
+      };
     }
     if (options.args[0] === 'status') return { stdout: '## main\n' };
     if (options.args[0] === 'rev-parse' && options.args.includes('--abbrev-ref')) {
@@ -28,6 +33,7 @@ class FakeRunner implements McpGitRunner {
 interface HttpResult {
   readonly status: number;
   readonly body: Record<string, unknown>;
+  readonly headers: http.IncomingHttpHeaders;
 }
 
 type AuthenticationMode = 'bearer' | 'tunnel';
@@ -57,7 +63,23 @@ describe('McpConnectorServer', () => {
     await rm(root, { recursive: true, force: true });
   });
 
-  it('requires the random bearer or dedicated tunnel token', async () => {
+  it('allows the unauthenticated GET reachability probe without advertising OAuth', async () => {
+    const result = await requestJson(endpointUrl, 'GET');
+    expect(result.status).toBe(405);
+    expect(result.headers['www-authenticate']).toBeUndefined();
+    expect(result.body).toEqual({
+      error: 'This stateless MCP endpoint does not expose SSE.',
+    });
+  });
+
+  it('returns 404 for optional OAuth protected-resource metadata probes', async () => {
+    const metadataUrl = new URL('/.well-known/oauth-protected-resource/mcp', endpointUrl);
+    const result = await requestJson(metadataUrl.toString(), 'GET');
+    expect(result.status).toBe(404);
+    expect(result.headers['www-authenticate']).toBeUndefined();
+  });
+
+  it('requires the random bearer or dedicated tunnel token for JSON-RPC', async () => {
     const result = await postJson(endpointUrl, undefined, {
       jsonrpc: '2.0',
       id: 1,
@@ -95,6 +117,7 @@ describe('McpConnectorServer', () => {
       result: {
         protocolVersion: '2025-11-25',
         capabilities: { tools: { listChanged: false } },
+        serverInfo: { version: '0.1.10' },
       },
     });
 
@@ -104,12 +127,16 @@ describe('McpConnectorServer', () => {
       method: 'tools/list',
       params: {},
     });
-    const result = listed.body.result as { readonly tools: Array<Record<string, unknown>> };
+    const result = listed.body.result as {
+      readonly tools: Array<Record<string, unknown>>;
+    };
     expect(result.tools.map((tool) => tool.name)).toContain('repository_summary');
-    expect(result.tools.every((tool) => {
-      const annotations = tool.annotations as Record<string, unknown>;
-      return annotations.readOnlyHint === true && annotations.destructiveHint === false;
-    })).toBe(true);
+    expect(
+      result.tools.every((tool) => {
+        const annotations = tool.annotations as Record<string, unknown>;
+        return annotations.readOnlyHint === true && annotations.destructiveHint === false;
+      }),
+    ).toBe(true);
   });
 
   it('lets the model call repository tools after connection', async () => {
@@ -140,8 +167,18 @@ async function postJson(
   value: unknown,
   authenticationMode: AuthenticationMode = 'bearer',
 ): Promise<HttpResult> {
+  return requestJson(endpointUrl, 'POST', token, value, authenticationMode);
+}
+
+async function requestJson(
+  endpointUrl: string,
+  method: 'GET' | 'POST',
+  token?: string,
+  value?: unknown,
+  authenticationMode: AuthenticationMode = 'bearer',
+): Promise<HttpResult> {
   const target = new URL(endpointUrl);
-  const body = JSON.stringify(value);
+  const body = value === undefined ? undefined : JSON.stringify(value);
   return new Promise<HttpResult>((resolve, reject) => {
     const tokenHeader = token
       ? authenticationMode === 'tunnel'
@@ -152,12 +189,16 @@ async function postJson(
       {
         hostname: target.hostname,
         port: target.port,
-        path: target.pathname,
-        method: 'POST',
+        path: `${target.pathname}${target.search}`,
+        method,
         headers: {
           Accept: 'application/json',
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(body, 'utf8'),
+          ...(body === undefined
+            ? {}
+            : {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(body, 'utf8'),
+              }),
           ...tokenHeader,
         },
       },
@@ -170,6 +211,7 @@ async function postJson(
             resolve({
               status: response.statusCode ?? 0,
               body: text ? (JSON.parse(text) as Record<string, unknown>) : {},
+              headers: response.headers,
             });
           } catch (error) {
             reject(error);
