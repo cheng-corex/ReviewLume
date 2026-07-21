@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -36,6 +36,9 @@
     "onCommand:reviewlume.viewReReviewComparison",
     "onCommand:reviewlume.openReviewPanel",
     "onCommand:reviewlume.mcpConnectorMenu",
+    "onCommand:reviewlume.connectSecureMcpTunnel",
+    "onCommand:reviewlume.configureSecureMcpTunnel",
+    "onCommand:reviewlume.openSecureMcpTunnelUi",
     "onCommand:reviewlume.startMcpConnector",
     "onCommand:reviewlume.copyMcpConnectionInfo",
     "onCommand:reviewlume.stopMcpConnector",
@@ -49,7 +52,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.7.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.8.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
@@ -71,6 +74,9 @@
       { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" },
       { "command": "reviewlume.mcpConnectorMenu", "title": "%command.mcpConnectorMenu%" },
+      { "command": "reviewlume.connectSecureMcpTunnel", "title": "%command.connectSecureMcpTunnel%" },
+      { "command": "reviewlume.configureSecureMcpTunnel", "title": "%command.configureSecureMcpTunnel%" },
+      { "command": "reviewlume.openSecureMcpTunnelUi", "title": "%command.openSecureMcpTunnelUi%" },
       { "command": "reviewlume.startMcpConnector", "title": "%command.startMcpConnector%" },
       { "command": "reviewlume.copyMcpConnectionInfo", "title": "%command.copyMcpConnectionInfo%" },
       { "command": "reviewlume.stopMcpConnector", "title": "%command.stopMcpConnector%" }
@@ -84,6 +90,12 @@
           "maximum": 2097152,
           "default": 524288,
           "description": "%config.mcp.maxToolResultBytes.description%"
+        },
+        "reviewlume.mcp.tunnelClientPath": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.mcp.tunnelClientPath.description%"
         },
         "reviewlume.export.mode": {
           "type": "string",
