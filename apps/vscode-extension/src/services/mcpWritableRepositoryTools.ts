@@ -1,6 +1,15 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomBytes } from 'node:crypto';
 import * as path from 'node:path';
-import { lstat, mkdir, readFile, realpath, rm, stat, writeFile } from 'node:fs/promises';
+import {
+  lstat,
+  mkdir,
+  readFile,
+  realpath,
+  rename,
+  rm,
+  stat,
+  writeFile,
+} from 'node:fs/promises';
 import {
   McpRepositoryTools,
   type McpGitRunner,
@@ -128,13 +137,7 @@ const WRITE_TOOL_DEFINITIONS = [
   WRITE_FILES_DEFINITION,
 ] as unknown as readonly McpToolDefinition[];
 
-/**
- * Adds a deliberately narrow write surface to the existing repository reader.
- *
- * The model never receives shell, delete, Git mutation, or arbitrary filesystem
- * tools. Existing files use optimistic concurrency and every effective batch is
- * confirmed in VS Code before disk writes begin.
- */
+/** Adds a deliberately narrow, user-confirmed write surface to the repository reader. */
 export class McpWritableRepositoryTools extends McpRepositoryTools {
   readonly accessMode = 'confirmed-write' as const;
   readonly #root: string;
@@ -172,8 +175,7 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
   }
 
   async #readFileForEdit(args: Record<string, unknown>): Promise<McpToolCallResult> {
-    const relativePath = readString(args.path, 'path');
-    const target = await this.#resolveTarget(relativePath);
+    const target = await this.#resolveTarget(readString(args.path, 'path'));
     if (!target.exists) throw new Error('Requested file does not exist.');
 
     const fileStat = await stat(target.absolutePath);
@@ -194,9 +196,7 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
   }
 
   async #writeFiles(args: Record<string, unknown>): Promise<McpToolCallResult> {
-    const reason = readOptionalReason(args.reason);
-    const requested = readChanges(args.changes);
-    const prepared = await this.#prepareChanges(requested);
+    const prepared = await this.#prepareChanges(readChanges(args.changes));
     const effective = prepared.filter(
       (change) => !change.originalBuffer?.equals(change.contentBuffer),
     );
@@ -212,7 +212,7 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
 
     const decision = await this.#confirmWrite({
       repository: this.#displayName,
-      reason,
+      reason: readOptionalReason(args.reason),
       files: effective.map((change) => ({
         path: change.path,
         absolutePath: change.absolutePath,
@@ -232,22 +232,22 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
     }
 
     await this.#revalidateChanges(effective);
-    const applied: PreparedChange[] = [];
+    const started: PreparedChange[] = [];
     try {
       for (const change of effective) {
-        await mkdir(path.dirname(change.absolutePath), { recursive: true });
-        const target = await this.#resolveTarget(change.path);
-        if (target.absolutePath !== change.absolutePath) {
-          throw new Error(`Path changed during write validation: ${change.path}`);
-        }
-        await writeFile(change.absolutePath, change.contentBuffer);
-        applied.push(change);
+        started.push(change);
+        await this.#applyChange(change);
       }
     } catch (error) {
-      await this.#rollback(applied);
-      throw new Error(
-        `Write failed and applied files were rolled back: ${toSafeErrorMessage(error)}`,
-      );
+      const rollbackFailures = await this.#rollback(started);
+      const originalMessage = toSafeErrorMessage(error);
+      if (rollbackFailures.length > 0) {
+        throw new Error(
+          `Write failed and rollback was incomplete for ${rollbackFailures.join(', ')}. ` +
+            `Inspect git status before continuing. Original error: ${originalMessage}`,
+        );
+      }
+      throw new Error(`Write failed; all started files were rolled back: ${originalMessage}`);
     }
 
     return toolSuccess({
@@ -262,6 +262,29 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
       })),
       nextStep: 'Call get_diff with scope working to inspect the actual repository changes.',
     });
+  }
+
+  async #applyChange(change: PreparedChange): Promise<void> {
+    await mkdir(path.dirname(change.absolutePath), { recursive: true });
+    const target = await this.#resolveTarget(change.path);
+    if (target.absolutePath !== change.absolutePath) {
+      throw new Error(`Path changed during write validation: ${change.path}`);
+    }
+
+    if (change.action === 'create') {
+      await this.#revalidateChange(change);
+      await writeFile(change.absolutePath, change.contentBuffer, { flag: 'wx' });
+      return;
+    }
+
+    const temporaryPath = createTemporaryPath(change.absolutePath);
+    try {
+      await writeFile(temporaryPath, change.contentBuffer, { flag: 'wx' });
+      await this.#revalidateChange(change);
+      await rename(temporaryPath, change.absolutePath);
+    } finally {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
+    }
   }
 
   async #prepareChanges(requested: readonly RequestedChange[]): Promise<PreparedChange[]> {
@@ -328,33 +351,49 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
   }
 
   async #revalidateChanges(changes: readonly PreparedChange[]): Promise<void> {
-    for (const change of changes) {
-      const target = await this.#resolveTarget(change.path);
-      if (change.action === 'create') {
-        if (target.exists) {
-          throw new Error(`File appeared before write confirmation completed: ${change.path}`);
-        }
-        continue;
+    for (const change of changes) await this.#revalidateChange(change);
+  }
+
+  async #revalidateChange(change: PreparedChange): Promise<void> {
+    const target = await this.#resolveTarget(change.path);
+    if (change.action === 'create') {
+      if (target.exists) {
+        throw new Error(`File appeared before write confirmation completed: ${change.path}`);
       }
-      if (!target.exists) {
-        throw new Error(`File disappeared before write confirmation completed: ${change.path}`);
-      }
-      const current = await readFile(target.absolutePath);
-      if (sha256(current) !== change.expectedSha256?.toLowerCase()) {
-        throw new Error(`File changed while awaiting confirmation: ${change.path}`);
-      }
+      return;
+    }
+    if (!target.exists) {
+      throw new Error(`File disappeared before write confirmation completed: ${change.path}`);
+    }
+    const current = await readFile(target.absolutePath);
+    if (sha256(current) !== change.expectedSha256?.toLowerCase()) {
+      throw new Error(`File changed while awaiting confirmation: ${change.path}`);
     }
   }
 
-  async #rollback(changes: readonly PreparedChange[]): Promise<void> {
+  async #rollback(changes: readonly PreparedChange[]): Promise<string[]> {
+    const failures: string[] = [];
     for (const change of [...changes].reverse()) {
       try {
-        if (change.originalBuffer) await writeFile(change.absolutePath, change.originalBuffer);
-        else await rm(change.absolutePath, { force: true });
+        if (change.originalBuffer) {
+          await this.#replaceAtomically(change.absolutePath, change.originalBuffer);
+        } else {
+          await rm(change.absolutePath, { force: true });
+        }
       } catch {
-        // Preserve the original failure. Git diff and the returned error still expose
-        // any rollback failure for manual recovery without logging file contents.
+        failures.push(change.path);
       }
+    }
+    return failures;
+  }
+
+  async #replaceAtomically(targetPath: string, content: Buffer): Promise<void> {
+    const temporaryPath = createTemporaryPath(targetPath);
+    try {
+      await writeFile(temporaryPath, content, { flag: 'wx' });
+      await rename(temporaryPath, targetPath);
+    } finally {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
     }
   }
 
@@ -466,6 +505,13 @@ function readOptionalReason(value: unknown): string | undefined {
     .trim();
   if (normalized.length > 500) throw new Error('reason must not exceed 500 characters.');
   return normalized || undefined;
+}
+
+function createTemporaryPath(targetPath: string): string {
+  return path.join(
+    path.dirname(targetPath),
+    `.reviewlume-write-${randomBytes(12).toString('hex')}.tmp`,
+  );
 }
 
 function normalizeRepoPath(value: string): string {
