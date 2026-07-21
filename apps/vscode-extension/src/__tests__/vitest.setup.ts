@@ -1,7 +1,7 @@
 /**
  * Vitest setup: mock the `vscode` module so unit tests can exercise command,
  * workspace-state, logging, progress, file-picking, configuration, locale,
- * clipboard, status-bar, and tree-view behavior without an Extension Host.
+ * clipboard, status-bar, dirty-editor, and tree-view behavior without an Extension Host.
  */
 import { vi } from 'vitest';
 
@@ -14,11 +14,13 @@ vi.mock('vscode', () => {
     trusted: boolean;
     configuration: Map<string, unknown>;
     language: string;
+    textDocuments: unknown[];
   } = {
     folders: [],
     trusted: false,
     configuration: new Map(),
     language: 'en',
+    textDocuments: [],
   };
   const registeredCommands = new Map<string, CommandHandler>();
   let checkboxHandler: CheckboxHandler | undefined;
@@ -48,6 +50,9 @@ vi.mock('vscode', () => {
     setLanguage(language: string): void {
       workspaceState.language = language;
     },
+    setTextDocuments(documents: unknown[]): void {
+      workspaceState.textDocuments = documents;
+    },
     getRegisteredCommand(command: string): CommandHandler | undefined {
       return registeredCommands.get(command);
     },
@@ -59,6 +64,7 @@ vi.mock('vscode', () => {
       workspaceState.trusted = false;
       workspaceState.configuration.clear();
       workspaceState.language = 'en';
+      workspaceState.textDocuments = [];
       registeredCommands.clear();
       checkboxHandler = undefined;
       clipboard.readText.mockReset().mockResolvedValue('');
@@ -115,9 +121,13 @@ vi.mock('vscode', () => {
     },
     ProgressLocation: { Notification: 15 },
     StatusBarAlignment: { Left: 1, Right: 2 },
+    ConfigurationTarget: { Global: 1, Workspace: 2, WorkspaceFolder: 3 },
     workspace: {
       get workspaceFolders() {
         return workspaceState.folders.length > 0 ? workspaceState.folders : undefined;
+      },
+      get textDocuments() {
+        return workspaceState.textDocuments;
       },
       get isTrusted() {
         return workspaceState.trusted;
@@ -126,9 +136,12 @@ vi.mock('vscode', () => {
         get: <T>(key: string, defaultValue?: T): T | undefined => {
           const fullKey = `${section}.${key}`;
           return workspaceState.configuration.has(fullKey)
-            ? workspaceState.configuration.get(fullKey) as T
+            ? (workspaceState.configuration.get(fullKey) as T)
             : defaultValue;
         },
+        update: vi.fn(async (key: string, value: unknown) => {
+          workspaceState.configuration.set(`${section}.${key}`, value);
+        }),
       })),
       onDidChangeWorkspaceFolders: vi.fn(() => ({ dispose: vi.fn() })),
       onDidGrantWorkspaceTrust: vi.fn(() => ({ dispose: vi.fn() })),
@@ -140,7 +153,10 @@ vi.mock('vscode', () => {
       }),
       executeCommand: vi.fn(),
     },
-    Uri: { file: vi.fn((fsPath: string) => ({ fsPath })) },
+    Uri: {
+      file: vi.fn((fsPath: string) => ({ fsPath, scheme: 'file' })),
+      parse: vi.fn((value: string) => ({ value, scheme: value.split(':')[0] })),
+    },
     TreeItem: class MockTreeItem {
       label: string;
       collapsibleState: number;
@@ -161,7 +177,9 @@ vi.mock('vscode', () => {
     EventEmitter: MockEventEmitter,
     ThemeIcon: class MockThemeIcon {
       id: string;
-      constructor(id: string) { this.id = id; }
+      constructor(id: string) {
+        this.id = id;
+      }
     },
   };
 });
