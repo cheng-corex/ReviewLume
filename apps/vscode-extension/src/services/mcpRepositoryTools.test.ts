@@ -13,11 +13,14 @@ class FakeRunner implements McpGitRunner {
       return { stdout: ['src/example.ts', 'src/example.test.ts', '.env', ''].join('\0') };
     }
     if (options.args[0] === 'diff' && options.args.includes('--name-only')) {
-      return { stdout: ['src/example.ts', '.env', ''].join('\0') };
+      return { stdout: ['src/example.ts', 'src/embedded-secret.ts', '.env', ''].join('\0') };
     }
     if (options.args[0] === 'diff') {
       const requestedPath = options.args[options.args.length - 1];
       if (requestedPath === '.env') return { stdout: 'SECRET=do-not-return\n' };
+      if (requestedPath === 'src/embedded-secret.ts') {
+        return { stdout: '+const apiKey = "embedded-secret-value";\n' };
+      }
       return { stdout: 'diff --git a/src/example.ts b/src/example.ts\n+export const value = 1;\n' };
     }
     if (options.args[0] === 'status') return { stdout: '## main\n M src/example.ts\n' };
@@ -35,6 +38,12 @@ class FakeRunner implements McpGitRunner {
   }
 }
 
+const contentGuard = {
+  hasSensitiveContent(_relativePath: string, content: string): boolean {
+    return content.includes('embedded-secret');
+  },
+};
+
 describe('McpRepositoryTools', () => {
   let root: string;
   let runner: FakeRunner;
@@ -45,9 +54,15 @@ describe('McpRepositoryTools', () => {
     await mkdir(path.join(root, 'src'), { recursive: true });
     await writeFile(path.join(root, 'src', 'example.ts'), 'export const value = 1;\nexport const other = value + 1;\n');
     await writeFile(path.join(root, 'src', 'example.test.ts'), 'expect(value).toBe(1);\n');
+    await writeFile(path.join(root, 'src', 'embedded-secret.ts'), 'const token = "embedded-secret-value";\n');
     await writeFile(path.join(root, '.env'), 'SECRET=do-not-read\n');
     runner = new FakeRunner();
-    tools = new McpRepositoryTools({ root, displayName: 'fixture', runner });
+    tools = new McpRepositoryTools({
+      root,
+      displayName: 'fixture',
+      runner,
+      contentGuard,
+    });
   });
 
   afterEach(async () => {
@@ -82,27 +97,31 @@ describe('McpRepositoryTools', () => {
     });
   });
 
-  it('blocks sensitive files and repository escapes', async () => {
+  it('blocks sensitive files, content, and repository escapes', async () => {
     const sensitive = await tools.call('read_file', { path: '.env' });
+    const embedded = await tools.call('read_file', { path: 'src/embedded-secret.ts' });
     const escaped = await tools.call('read_file', { path: '../outside.txt' });
 
     expect(sensitive.isError).toBe(true);
     expect(sensitive.content[0].text).toContain('Sensitive files are blocked');
+    expect(embedded.isError).toBe(true);
+    expect(embedded.content[0].text).toContain('Sensitive content was detected');
     expect(escaped.isError).toBe(true);
     expect(escaped.content[0].text).toContain('outside the repository');
   });
 
-  it('filters sensitive paths before reading Git diff content', async () => {
+  it('filters sensitive paths and content before returning Git diffs', async () => {
     const result = await tools.call('get_diff', { scope: 'working' });
 
     expect(result.isError).toBe(false);
     expect(result.structuredContent).toMatchObject({
-      excludedSensitiveFiles: 2,
+      excludedSensitiveFiles: 4,
       includedFiles: 2,
       truncated: false,
     });
     expect(result.structuredContent?.diff).toContain('src/example.ts');
     expect(result.structuredContent?.diff).not.toContain('do-not-return');
+    expect(result.structuredContent?.diff).not.toContain('embedded-secret');
     expect(
       runner.calls.some(
         (args) => args[0] === 'diff' && !args.includes('--name-only') && args.at(-1) === '.env',
