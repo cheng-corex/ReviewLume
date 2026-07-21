@@ -79,6 +79,10 @@ export class SecureMcpTunnelService {
     };
   }
 
+  async getStoredRuntimeApiKey(): Promise<string | undefined> {
+    return this.#context.secrets.get(RUNTIME_API_KEY_SECRET);
+  }
+
   async discoverBinary(): Promise<string | undefined> {
     const configured = vscode.workspace
       .getConfiguration('reviewlume')
@@ -143,14 +147,20 @@ export class SecureMcpTunnelService {
 
     try {
       await runTunnelDoctor(configuration.binaryPath, env, configuration, connection);
+      // Doctor may initialize the health listener. Never let the long-running
+      // process inherit a stale URL from the short-lived diagnostic process.
+      await rm(healthUrlFile, { force: true });
+
       const child = spawn(configuration.binaryPath, ['run'], {
         env,
         shell: false,
         windowsHide: true,
-        stdio: ['ignore', 'pipe', 'pipe'],
+        // Do not capture long-running process output. Even a redactor cannot
+        // safely guarantee that a secret is not split across arbitrary chunks.
+        stdio: ['ignore', 'ignore', 'ignore'],
       });
       this.#child = child;
-      this.#attachProcessLogging(child, configuration, connection);
+      child.once('error', (error) => logError('OpenAI tunnel-client process error', error));
       child.once('exit', (code, signal) => {
         if (this.#child === child) this.#child = undefined;
         if (this.#stopping) return;
@@ -211,23 +221,6 @@ export class SecureMcpTunnelService {
 
   async #getStoredBinaryPath(): Promise<string | undefined> {
     return this.#context.globalState.get<string>(BINARY_PATH_STATE);
-  }
-
-  #attachProcessLogging(
-    child: ChildProcess,
-    configuration: SecureMcpTunnelConfiguration,
-    connection: McpConnectionInfo,
-  ): void {
-    const onData = (level: 'info' | 'warn') => (chunk: Buffer | string): void => {
-      const value = redactTunnelOutput(String(chunk), configuration, connection).trim();
-      if (!value) return;
-      const bounded = value.slice(-MAX_DIAGNOSTIC_CHARS);
-      if (level === 'info') logInfo(`tunnel-client: ${bounded}`);
-      else logWarn(`tunnel-client: ${bounded}`);
-    };
-    child.stdout?.on('data', onData('info'));
-    child.stderr?.on('data', onData('warn'));
-    child.once('error', (error) => logError('OpenAI tunnel-client process error', error));
   }
 
   async #stopProcessOnly(): Promise<void> {
