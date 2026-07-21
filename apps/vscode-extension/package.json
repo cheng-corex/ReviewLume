@@ -1,12 +1,13 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.14",
+  "version": "0.1.15",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
   "publisher": "reviewlume",
   "private": true,
+  "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.100.0"
   },
@@ -42,8 +43,7 @@
     "onCommand:reviewlume.openSecureMcpTunnelUi",
     "onCommand:reviewlume.startMcpConnector",
     "onCommand:reviewlume.copyMcpConnectionInfo",
-    "onCommand:reviewlume.stopMcpConnector",
-    "onView:reviewlume.mainView"
+    "onCommand:reviewlume.stopMcpConnector"
   ],
   "main": "dist/extension.js",
   "scripts": {
@@ -53,7 +53,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.14.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.15.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
@@ -123,16 +123,6 @@
           "description": "%config.export.autoUpdateGitignore.description%"
         }
       }
-    },
-    "viewsContainers": {
-      "activitybar": [
-        { "id": "reviewlume", "title": "ReviewLume", "icon": "resources/icon.png" }
-      ]
-    },
-    "views": {
-      "reviewlume": [
-        { "type": "tree", "id": "reviewlume.mainView", "name": "ReviewLume" }
-      ]
     }
   },
   "dependencies": {
