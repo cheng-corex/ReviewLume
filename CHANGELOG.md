@@ -65,19 +65,18 @@
   - Full Repository is rejected when it cannot fit into a single non-truncated Review Pack.
   - Scope changes remain subject to the existing sensitive-content scan, fingerprint,
     and export gates.
-- P9 optional browser bridge:
-  - Strict Zod bridge protocol with request hashes, nonces, expiries, replay protection,
-    review binding, payload limits, and authenticated prompt polling.
-  - Loopback-only local bridge on a random `127.0.0.1` port with one-time pairing codes,
-    short-lived in-memory sessions, extension-instance binding, CORS restrictions, and revocation.
-  - One-click VS Code actions for ChatGPT, Claude, and Gemini use a fragment-only local handoff,
-    avoiding manual bridge-address and pairing-code entry.
-  - Manifest V3 browser extension with minimal regular permissions and optional per-site host
-    permissions; first use keeps an explicit browser permission confirmation.
-  - Page adapters that only locate a confirmed visible composer and fill text after an explicit
-    user action; they never click or submit, read answers, or access cookies and session storage.
-  - Cross-platform CI validation for manifest safety, referenced files, JavaScript syntax,
-    prohibited auto-submit primitives, and prohibited credential/session reads.
+- P9 ChatGPT read-only repository MCP:
+  - Loopback-only, bearer-authenticated Streamable HTTP MCP endpoint bound to one Git repository.
+  - Model-controlled tools for repository summary, Git status, recent commits, explicit diffs,
+    file listing, bounded file reads, and bounded literal code search.
+  - Tool annotations declare every operation read-only, non-destructive, idempotent, and closed-world.
+  - Repository path validation rejects absolute paths, parent traversal, `.git`, binary files,
+    sensitive credential paths, oversized files, and symbolic-link escapes.
+  - VS Code status-bar actions start/stop the connector and copy connection information for
+    OpenAI Secure MCP Tunnel without logging bearer tokens or repository content.
+  - Existing Review Pack, response import, history, issue status, implementation, and re-review
+    capabilities remain available as Advanced commands rather than the default workflow.
+  - The earlier browser input-field bridge prototype is no longer registered as the P9 main flow.
 
 ### Fixed
 
@@ -117,10 +116,5 @@
 - P0: Engineering foundation.
   - pnpm workspace with TypeScript project references.
   - VS Code extension skeleton with `reviewlume.hello` command.
-  - Core packages: `@reviewlume/core`, `@reviewlume/git-context`,
-    `@reviewlume/review-pack`, `@reviewlume/secret-scanner`,
-    `@reviewlume/prompt-templates`, `@reviewlume/report-parser`.
-  - ESLint, Prettier, and Vitest configuration.
-  - GitHub Actions CI workflow.
-  - MIT License, SECURITY.md, and CHANGELOG.md.
-  - VSIX packaging with `@vscode/vsce`.
+  - Core packages: `@reviewlume/core`, `@reviewlume/git-context`, `@reviewlume/prompt-templates`,
+    `@reviewlume/review-pack`, `@reviewlume/secret-scanner`, and `@reviewlume/report-parser`.
