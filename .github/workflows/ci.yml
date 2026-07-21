@@ -37,7 +37,23 @@ jobs:
         run: pnpm install --frozen-lockfile
 
       - name: Lint
-        run: pnpm lint
+        id: lint
+        continue-on-error: true
+        shell: bash
+        run: pnpm lint > lint.log 2>&1
+
+      - name: Upload lint diagnostics
+        if: steps.lint.outcome == 'failure'
+        uses: actions/upload-artifact@v4
+        with:
+          name: lint-${{ matrix.os }}-node-${{ matrix.node-version }}
+          path: lint.log
+          if-no-files-found: error
+
+      - name: Fail after lint diagnostics
+        if: steps.lint.outcome == 'failure'
+        shell: bash
+        run: exit 1
 
       - name: Type check
         run: pnpm typecheck
