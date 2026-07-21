@@ -52,7 +52,6 @@ interface PreparedChange {
   readonly path: string;
   readonly absolutePath: string;
   readonly expectedSha256: string | null;
-  readonly content: string;
   readonly contentBuffer: Buffer;
   readonly originalBuffer: Buffer | undefined;
   readonly oldSha256: string | null;
@@ -246,7 +245,9 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
       }
     } catch (error) {
       await this.#rollback(applied);
-      throw new Error(`Write failed and applied files were rolled back: ${toSafeErrorMessage(error)}`);
+      throw new Error(
+        `Write failed and applied files were rolled back: ${toSafeErrorMessage(error)}`,
+      );
     }
 
     return toolSuccess({
@@ -274,7 +275,9 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
       paths.add(target.path);
 
       const contentBuffer = Buffer.from(request.content, 'utf8');
-      if (contentBuffer.includes(0)) throw new Error(`Binary content is not allowed: ${target.path}`);
+      if (contentBuffer.includes(0)) {
+        throw new Error(`Binary content is not allowed: ${target.path}`);
+      }
       if (contentBuffer.length > MAX_EDIT_FILE_BYTES) {
         throw new Error(`${target.path} exceeds the ${MAX_EDIT_FILE_BYTES}-byte edit limit.`);
       }
@@ -287,18 +290,24 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
       let oldSha256: string | null = null;
       if (target.exists) {
         const fileStat = await stat(target.absolutePath);
-        if (!fileStat.isFile()) throw new Error(`Only regular files can be replaced: ${target.path}`);
+        if (!fileStat.isFile()) {
+          throw new Error(`Only regular files can be replaced: ${target.path}`);
+        }
         if (fileStat.size > MAX_EDIT_FILE_BYTES) {
           throw new Error(`${target.path} exceeds the ${MAX_EDIT_FILE_BYTES}-byte edit limit.`);
         }
         originalBuffer = await readFile(target.absolutePath);
-        if (looksBinary(originalBuffer)) throw new Error(`Binary files cannot be replaced: ${target.path}`);
+        if (looksBinary(originalBuffer)) {
+          throw new Error(`Binary files cannot be replaced: ${target.path}`);
+        }
         oldSha256 = sha256(originalBuffer);
         if (!request.expectedSha256 || !SHA256_PATTERN.test(request.expectedSha256)) {
           throw new Error(`Existing file requires a valid expectedSha256: ${target.path}`);
         }
         if (request.expectedSha256.toLowerCase() !== oldSha256) {
-          throw new Error(`File changed since it was read; read it again before writing: ${target.path}`);
+          throw new Error(
+            `File changed since it was read; read it again before writing: ${target.path}`,
+          );
         }
       } else if (request.expectedSha256 !== null) {
         throw new Error(`New file must use expectedSha256: null: ${target.path}`);
@@ -308,7 +317,6 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
         path: target.path,
         absolutePath: target.absolutePath,
         expectedSha256: request.expectedSha256,
-        content: request.content,
         contentBuffer,
         originalBuffer,
         oldSha256,
@@ -323,10 +331,14 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
     for (const change of changes) {
       const target = await this.#resolveTarget(change.path);
       if (change.action === 'create') {
-        if (target.exists) throw new Error(`File appeared before write confirmation completed: ${change.path}`);
+        if (target.exists) {
+          throw new Error(`File appeared before write confirmation completed: ${change.path}`);
+        }
         continue;
       }
-      if (!target.exists) throw new Error(`File disappeared before write confirmation completed: ${change.path}`);
+      if (!target.exists) {
+        throw new Error(`File disappeared before write confirmation completed: ${change.path}`);
+      }
       const current = await readFile(target.absolutePath);
       if (sha256(current) !== change.expectedSha256?.toLowerCase()) {
         throw new Error(`File changed while awaiting confirmation: ${change.path}`);
@@ -362,9 +374,13 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
       current = path.join(current, parts[index] ?? '');
       try {
         const entry = await lstat(current);
-        if (entry.isSymbolicLink()) throw new Error('Symbolic links cannot be written through MCP.');
+        if (entry.isSymbolicLink()) {
+          throw new Error('Symbolic links cannot be written through MCP.');
+        }
         if (index < parts.length - 1 && !entry.isDirectory()) {
-          throw new Error(`Parent path is not a directory: ${parts.slice(0, index + 1).join('/')}`);
+          throw new Error(
+            `Parent path is not a directory: ${parts.slice(0, index + 1).join('/')}`,
+          );
         }
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code === 'ENOENT') break;
@@ -380,20 +396,22 @@ export class McpWritableRepositoryTools extends McpRepositoryTools {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
 
-    const parent = path.dirname(absolutePath);
-    let existingParent = parent;
-    while (true) {
+    let existingParent = path.dirname(absolutePath);
+    let parentFound = false;
+    for (let depth = 0; depth <= parts.length; depth += 1) {
       try {
         const realParent = await realpath(existingParent);
         assertInsideRepository(realRoot, realParent);
+        parentFound = true;
         break;
       } catch (error) {
         if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
         const next = path.dirname(existingParent);
-        if (next === existingParent) throw new Error('Writable parent directory was not found.');
+        if (next === existingParent) break;
         existingParent = next;
       }
     }
+    if (!parentFound) throw new Error('Writable parent directory was not found.');
     return { path: normalized, absolutePath, exists: false };
   }
 }
@@ -439,7 +457,13 @@ function readString(value: unknown, name: string): string {
 function readOptionalReason(value: unknown): string | undefined {
   if (value === undefined || value === null || value === '') return undefined;
   if (typeof value !== 'string') throw new Error('reason must be a string.');
-  const normalized = value.replace(/[\u0000-\u001f\u007f]/g, ' ').trim();
+  const normalized = [...value]
+    .map((character) => {
+      const codePoint = character.codePointAt(0) ?? 0;
+      return codePoint < 32 || codePoint === 127 ? ' ' : character;
+    })
+    .join('')
+    .trim();
   if (normalized.length > 500) throw new Error('reason must not exceed 500 characters.');
   return normalized || undefined;
 }
@@ -473,11 +497,7 @@ function normalizeRepositoryRelativePath(value: string, label: string): string {
 
 function assertInsideRepository(realRoot: string, candidate: string): void {
   const boundary = path.relative(realRoot, candidate);
-  if (
-    boundary === '..' ||
-    boundary.startsWith(`..${path.sep}`) ||
-    path.isAbsolute(boundary)
-  ) {
+  if (boundary === '..' || boundary.startsWith(`..${path.sep}`) || path.isAbsolute(boundary)) {
     throw new Error('Path resolves outside the repository.');
   }
 }
