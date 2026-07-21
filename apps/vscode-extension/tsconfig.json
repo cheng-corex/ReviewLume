@@ -8,12 +8,18 @@
     "verbatimModuleSyntax": false
   },
   "include": ["src"],
+  "exclude": [
+    "src/**/*.test.ts",
+    "src/__tests__/**",
+    "src/commands/browserBridgeCommands.ts",
+    "src/services/browserBridgeService.ts",
+    "src/views/**"
+  ],
   "references": [
     { "path": "../../packages/core" },
     { "path": "../../packages/git-context" },
     { "path": "../../packages/secret-scanner" },
     { "path": "../../packages/review-pack" },
-    { "path": "../../packages/report-parser" },
-    { "path": "../web-bridge" }
+    { "path": "../../packages/report-parser" }
   ]
 }
