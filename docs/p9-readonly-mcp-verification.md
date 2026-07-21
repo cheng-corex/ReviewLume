@@ -1,80 +1,111 @@
 # P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 使用 Draft PR #21 最新一次四平台全绿 CI 及其 Windows VSIX 0.1.11 artifact。真实 Tunnel 和 ChatGPT 工具调用仍需在用户 Windows 环境执行。
+> 使用 Draft PR #21 最新四平台全绿 CI 及其 Windows VSIX 0.1.12 artifact。自动化测试负责协议、安全边界和打包；真实 ChatGPT 工具调用仍需在用户 Windows 环境完成。
 
-## 验收前提
+## 当前验收基线
 
-- 使用 Draft PR #21 最新全绿 CI 的 Windows artifact 中的 VSIX 0.1.11。
-- Windows VS Code 打开一个不含真实凭据的测试 Git repository。
-- VS Code Workspace Trust 已开启。
-- ChatGPT Plus 账号已开启开发者模式，并可创建自定义连接器。
-- OpenAI Platform 已创建一个 Tunnel 和对应的最小权限 Runtime API Key。
-- 从 `openai/tunnel-client` 官方 Releases 下载 Windows 压缩包并完整解压。
-- 不把本地 MCP 端口直接发布到公网。
+- VSIX：0.1.12。
+- 官方客户端：`openai/tunnel-client` v0.0.10 Windows amd64。
+- ChatGPT Personal workspace 已成功创建并进入 ReviewLume Tunnel 连接授权页面。
+- ReviewLume 一次连接只绑定一个 Trusted Workspace 中的 Git repository。
+- 本地 MCP 只监听 `127.0.0.1` 随机端口。
+- Runtime API Key 只保存在 VS Code SecretStorage。
+- 只提供 7 个只读工具：
+  - `repository_summary`
+  - `git_status`
+  - `recent_commits`
+  - `get_diff`
+  - `list_files`
+  - `read_file`
+  - `search_code`
 
-## 1. 首次配置
+## 1. 安装与首次配置
 
-1. 点击状态栏 `ReviewLume MCP`。
-2. 选择 `Configure Secure MCP Tunnel`。
-3. 选择解压目录中的官方 `tunnel-client.exe`。
-4. 粘贴 OpenAI Tunnel ID。
-5. 粘贴 Runtime API Key，确认使用的是 Runtime Key 而不是 admin key。
-6. 关闭并重新打开设置，确认 VS Code settings 中没有 Runtime Key、Token 或 Secret 字段。
-7. 检查 repository，确认没有新增凭据文件。
+1. 安装 Draft PR #21 最新 Windows artifact 中的 VSIX 0.1.12，并重新加载 VS Code。
+2. 打开一个不含真实凭据的测试 Git repository，确认 Workspace Trust 已开启。
+3. 点击状态栏 `ReviewLume MCP`，选择 `Configure Secure MCP Tunnel`。
+4. 选择官方 `tunnel-client.exe`。
+5. 粘贴 OpenAI Tunnel ID。
+6. 粘贴最小权限 Runtime API Key，确认不是 Admin Key。
+7. 检查 VS Code settings 和 repository，确认没有 Runtime Key、Token 或新增凭据文件。
 
 通过标准：
 
 - 非官方帮助文本的程序被拒绝；
-- Tunnel ID 不是 `tunnel_` 加 32 位小写字母或数字时被拒绝；
-- Runtime Key 只保存在 VS Code SecretStorage；
-- 设置中最多出现机器级官方二进制路径，不出现密钥。
+- Tunnel ID 必须是 `tunnel_` 加 32 位小写字母或数字；
+- Runtime Key 只在 SecretStorage；
+- 二进制路径和代理地址均为机器级本地状态，不进入 repository；
+- 代理 URL 含账号密码、路径、查询或非 HTTP(S) 协议时被拒绝。
 
-## 2. 一键启动
+## 2. 代理自动发现与持久化
 
-1. 点击状态栏 `ReviewLume MCP`。
+0.1.12 不再要求每次从命令行启动 VS Code。连接时按以下顺序发现 OpenAI 控制面代理：
+
+1. ReviewLume 上次保存的控制面代理；
+2. `CONTROL_PLANE_HTTP_PROXY`；
+3. `HTTPS_PROXY`；
+4. `HTTP_PROXY`；
+5. VS Code `http.proxy`；
+6. Windows 当前用户系统代理注册表。
+
+首次从 `HTTPS_PROXY=http://127.0.0.1:10809` 启动并连接后，ReviewLume 会把规范化地址保存到 VS Code globalState。以后可正常双击启动 VS Code，只需代理软件仍在相同端口运行。
+
+验收：
+
+1. 当前带 `HTTPS_PROXY=http://127.0.0.1:10809` 的 VS Code 安装 0.1.12 后连接一次。
+2. 打开 Tunnel Diagnostics，确认代理来源和 URL 正确。
+3. 停止连接并完全退出 VS Code。
+4. 不设置 PowerShell 环境变量，正常双击打开 VS Code。
+5. 再次连接，确认仍使用保存的 `http://127.0.0.1:10809`。
+6. 确认子进程只设置 `CONTROL_PLANE_HTTP_PROXY`，不继承通用 `HTTP_PROXY`、`HTTPS_PROXY`、`ALL_PROXY` 或 `NO_PROXY`。
+
+通过标准：代理只作用于 OpenAI Tunnel 控制面；VS Code、Git、pnpm 和本地 `127.0.0.1` MCP 不被 ReviewLume 改为全局走代理。
+
+## 3. 一键启动与真实就绪判断
+
+1. 点击 `ReviewLume MCP`。
 2. 选择 `Connect Current Repository to ChatGPT`。
-3. 多根 workspace 时确认只选择一个 workspace folder。
-4. 观察状态栏依次出现启动中和已连接状态。
-5. 确认 ReviewLume 自动运行本地 MCP、`tunnel-client doctor --explain`、隧道启动和 readiness 检查。
-6. 确认 ChatGPT Connectors 页面自动打开，剪贴板中只有 Tunnel ID，没有 Runtime Key 或本地 Token。
+3. 多根 workspace 时只选择一个 workspace folder。
+4. 确认 ReviewLume 自动启动本地 MCP、运行 `tunnel-client doctor --explain`、启动长期 Tunnel 进程。
+5. 确认 `/readyz` 返回 200。
+6. 确认 ReviewLume 随后读取 loopback `/api/status`，并同时满足：
+   - `control_plane_tunnel_id` 与配置的 Tunnel ID 一致；
+   - 不存在非空 `tunnel_metadata_error`；
+   - `main` channel 为 enabled；
+   - `main.probe_status` 为 `ok`。
+7. 只有上述检查全部通过后，状态栏才显示已连接并打开 ChatGPT。
 
-通过标准：一次操作完成本地 MCP 和官方 Secure MCP Tunnel 启动；一次连接只绑定一个 repository。
+失败验收：
 
-## 3. tunnel-client、环境和健康边界
+- 关闭代理软件或设置不可达代理，确认 ReviewLume 明确报告 OpenAI 控制面未就绪；
+- `/readyz` 即使为 200，只要 `/api/status` 含 `tunnel_metadata_error`，不得显示 ready；
+- 恢复代理后重新连接能够成功。
 
-1. 打开 `Open Tunnel Diagnostics`。
-2. 确认诊断 UI 地址是 `http://127.0.0.1:<随机端口>/ui` 或 `localhost`，不是公网地址。
-3. 确认 `/readyz` 返回 200。
-4. 确认 tunnel-client 进程参数只有 `run`，没有 Runtime Key、本地 Token 或 Authorization Header。
-5. 确认进程环境通过 `env:` 引用构造 `X-ReviewLume-Token`，Header 配置本身不含 Token 明文。
-6. 在启动 VS Code 前临时设置测试用 `TUNNEL_CLIENT_CONFIG`、`MCP_COMMAND`、`OPENAI_ADMIN_KEY`、`ALLOW_REMOTE_UI=true` 或 `LOG_HTTP_RAW_UNSAFE=true`，确认 ReviewLume 启动的进程没有继承这些覆盖项。
-7. 确认标准 `HTTPS_PROXY`/`NO_PROXY` 等网络环境仍可按系统需要保留。
-8. 确认 doctor 的无凭据 GET `/mcp` 可达性探测得到 405，而不是 401。
-9. 确认 `/.well-known/oauth-protected-resource/mcp` 和 `/.well-known/oauth-protected-resource` 返回 200，正文只包含当前 loopback MCP `resource`，且不包含 `authorization_servers`。
-10. 确认 doctor 的 `oauth_metadata` 检查通过，并且没有启动 OAuth 登录或访问外部授权服务器。
-11. 确认 doctor 完成后长期进程写入新的 health URL，而不是复用 doctor 的旧文件内容。
-12. 故意使用错误 Tunnel ID 或 Runtime Key，确认 doctor/启动失败且状态栏显示失败，不保持“已连接”。
-13. 恢复正确配置后重新连接。
+## 4. tunnel-client 与本地协议边界
 
-通过标准：诊断面仅 loopback；Protected Resource Metadata 不含仓库名、工具、Token 或 OAuth 授权服务器；凭据不在 argv；宿主环境不能注入额外 profile、MCP command、admin key、Cloudflared、Harpoon、远程 UI 或原始 HTTP 日志；失败安全停止。
+1. Diagnostics UI 必须是 `http://127.0.0.1:<随机端口>/ui` 或 localhost。
+2. 长期进程参数只有 `run`，不含 Runtime Key、本地 Token 或 Authorization Header。
+3. `X-ReviewLume-Token` 使用 `env:` 引用，Header 配置不含 Token 明文。
+4. 宿主中的 `TUNNEL_CLIENT_CONFIG`、`MCP_COMMAND`、Admin Key、Cloudflared、Harpoon、远程 UI、日志文件和原始 HTTP 日志覆盖项必须被移除。
+5. doctor 无凭据 GET `/mcp` 返回 405，而不是 401。
+6. `/.well-known/oauth-protected-resource/mcp` 和 `/.well-known/oauth-protected-resource` 返回 200，只包含当前 loopback `resource`，不包含 `authorization_servers`。
+7. doctor 的 `oauth_metadata` 检查通过，不启动 OAuth 登录。
+8. doctor 结束后长期进程必须写入新的 health URL。
 
-## 4. ChatGPT 自定义连接器
+## 5. ChatGPT 连接器与自主范围选择
 
-1. 在 ChatGPT Connectors 页面创建自定义连接器。
-2. 选择 `Connection: Tunnel`。
-3. 粘贴 ReviewLume 已复制的 Tunnel ID。
-4. 扫描工具并确认只出现：
-   - `repository_summary`
-   - `git_status`
-   - `recent_commits`
-   - `get_diff`
-   - `list_files`
-   - `read_file`
-   - `search_code`
-5. 确认没有 shell、terminal、write、delete、patch、Git mutation 工具。
-6. 保存并在新对话中启用该连接器。
+1. 在 ChatGPT 创建自定义连接器，Connection 选择 Tunnel，认证选择未授权。
+2. 选择 ReviewLume Tunnel 并完成连接授权。
+3. 确认只发现 7 个只读工具，没有 shell、terminal、write、delete、patch 或 Git mutation。
+4. 在新对话启用 ReviewLume，发送：
 
-所有工具 annotations 应为：
+> 检查当前 VS Code 项目最近 5 个提交，自己选择合理的文件和测试范围，找出明确问题和优化建议。不要修改任何文件。
+
+合理调用链应从 repository summary、Git status 和 recent commits 开始，再按需要调用 diff、搜索和文件读取。
+
+通过标准：用户不需要预先扫描、选择提交、导出审核包或导入回答；ChatGPT 根据指令和工具结果自行选择只读检查范围。
+
+所有工具 annotations 必须为：
 
 ```json
 {
@@ -85,120 +116,40 @@
 }
 ```
 
-## 5. ChatGPT 自主范围选择
+## 6. 网络、鉴权、路径与敏感内容
 
-在 ChatGPT 中发送：
+- endpoint 只能是 `http://127.0.0.1:<随机端口>/mcp`。
+- 不得监听 `0.0.0.0`、局域网或公网 IP。
+- 无凭据 GET `/mcp` 返回 405，且不返回工具或 repository 数据。
+- 无凭据 POST/DELETE 或错误 Token 返回 401。
+- 停止并重启后旧端口或旧 Token 不可继续使用。
+- `../outside.txt`、绝对路径、`.git/config`、`.env`、私钥、证书、外部 symlink、二进制和超大文件必须拒绝。
+- 文件、diff、搜索结果和提交标题中的敏感值必须拒绝或脱敏。
+- 大结果必须有截断标记；超大请求返回 413，非 JSON 请求返回 415。
+- 日志不得包含 Runtime Key、本地 Token、Authorization、查询词、文件正文、diff 或搜索结果。
 
-> 看一下当前项目最近的提交，有没有明显问题和优化点。
+## 7. Git 只读边界
 
-观察工具调用链。合理链路应包含其中若干项：
+MCP 不得执行或间接触发：
 
-1. `repository_summary`；
-2. `git_status`；
-3. `recent_commits`；
-4. `get_diff`；
-5. `search_code`；
-6. `read_file`。
-
-通过标准：用户不需要在 VS Code 预先扫描、选择提交、选择文件、导出审核包或导入回答；ChatGPT 根据问题和工具结果继续读取必要上下文。
-
-## 6. 本地网络和鉴权边界
-
-1. 确认本地 endpoint 为 `http://127.0.0.1:<随机端口>/mcp`。
-2. 确认未监听 `0.0.0.0`、局域网 IP 或公网 IP。
-3. 不带凭据 GET `/mcp`，确认返回 405，且不带 `WWW-Authenticate`，不返回工具或 repository 数据。
-4. 不带凭据 GET 两个标准 Protected Resource Metadata 路径，确认只返回当前 loopback `resource`。
-5. 不带凭据 POST JSON-RPC，确认返回 401。
-6. 不带凭据 DELETE 或使用错误 Token，确认返回 401。
-7. 本地 Bearer 和官方 Tunnel 专用 Header 都能以正确 Token 完成 `ping`。
-8. 停止并重新启动，确认端口或 Token 至少一项发生变化，旧 Token 不可继续使用。
-
-通过标准：服务仅 loopback；GET `/mcp` 只暴露无状态端点不支持 SSE 的 405；well-known 元数据只暴露 loopback resource；所有 JSON-RPC、会话终止和 repository 数据访问均需随机 Token；ChatGPT 连接器认证不会替代本地专用 Header。
-
-## 7. 路径和敏感内容
-
-尝试通过 `read_file` 或 `get_diff` 访问：
-
-- `../outside.txt`；
-- 绝对路径；
-- `.git/config`；
-- `.env`；
-- 私钥或 `.pem`/`.p12`/`.pfx` 文件；
-- 指向 repository 外部的 symlink；
-- 二进制文件；
-- 超过文件大小上限的文本文件；
-- 普通 `.ts` 文件中临时放置的测试 Token/密码格式；
-- 包含敏感内容的 diff、搜索结果或提交标题。
-
-通过标准：全部拒绝或排除；错误中不泄漏文件正文、凭据、Token 或 repository 外部内容。
-
-## 8. Git 只读边界
-
-确认 MCP 工具不能执行或间接触发：
-
-- checkout；
-- reset；
-- clean；
-- add；
-- commit；
-- merge；
-- rebase；
-- push；
-- fetch；
+- checkout、reset、clean；
+- add、commit、merge、rebase、push、fetch；
 - 任意 shell 命令；
 - 写文件、删除文件或应用补丁。
 
-通过标准：MCP 工具列表中不存在写操作或通用命令执行入口。
-
-## 9. 内容、大小和日志边界
-
-- 大 diff 明确返回截断标记。
-- 搜索结果达到上限时明确标记截断。
-- 超大请求返回 413，非 JSON 请求返回 415。
-- ReviewLume 日志只出现安全状态、repository 显示名、Tunnel ID 和工具名。
-- doctor 错误诊断中不出现 Runtime Key、本地 Token 或 Authorization。
-- 长期 tunnel-client stdout/stderr 不被 ReviewLume 采集；诊断通过 loopback UI 查看。
-- 日志不出现查询词、文件正文、diff 或搜索结果。
-- repository 文档中的提示无法要求 ReviewLume 扩大权限或执行命令。
-
-## 10. 停止、异常和重启
+## 8. 停止、异常和重启
 
 1. 选择 `Stop Secure MCP Connection`。
-2. 确认 tunnel-client 先停止，本地 MCP 后停止。
-3. 使用旧 endpoint/Token 再次请求，确认不可用。
-4. 在连接状态关闭 VS Code Extension Host，确认隧道和本地 MCP 都退出。
-5. 强制结束 tunnel-client，确认状态栏显示失败而不是继续显示已连接。
-6. 重新启动时确认需要新的本地 Token，但不需要重新输入已保存在 SecretStorage 的 Runtime Key。
+2. 确认 Tunnel 和本地 MCP 均停止，旧 endpoint/Token 不可用。
+3. 在连接状态关闭 Extension Host，确认没有残留进程。
+4. 强制结束 tunnel-client，确认状态栏显示失败。
+5. 重新连接不需要再次输入 SecretStorage 中的 Runtime Key。
+6. 正常重启 VS Code 后不需要 PowerShell 启动脚本，保存的控制面代理会自动复用。
 
-通过标准：没有残留进程、半连接状态或持久化本地 Token。
+## 9. 原有高级功能回归
 
-## 11. 原有高级功能回归
-
-确认以下能力仍可通过命令面板使用，但不影响 MCP 主流程：
-
-- Review Pack；
-- 敏感内容扫描；
-- Review History；
-- 回答导入；
-- issue 状态；
-- 实施提示；
-- 二次复核。
-
-原浏览器填入桥接命令不应出现在命令面板或 activation events 中。
+以下能力继续保留为 Advanced，不影响 MCP 主流程：Review Pack、敏感内容扫描、Review History、回答导入、issue 状态、实施提示和二次复核。原浏览器填入桥接命令不得重新出现在命令面板或 activation events 中。
 
 ## 验收记录
 
-请记录：
-
-- Windows 版本；
-- VS Code 版本；
-- ReviewLume VSIX 版本；
-- ChatGPT 套餐/工作区类型；
-- ChatGPT 开发者模式状态；
-- tunnel-client 版本；
-- Tunnel ID 的脱敏后缀；
-- 测试 repository 类型；
-- 每项结果；
-- 必要的脱敏截图。
-
-不得在验收记录中粘贴 Runtime API Key、本地 MCP Token 或完整 Authorization Header。
+记录 Windows、VS Code、VSIX、ChatGPT 工作区、tunnel-client 版本、Tunnel ID 脱敏后缀、代理来源、测试 repository 和每项结果。不得记录 Runtime API Key、本地 MCP Token 或完整 Authorization Header。
