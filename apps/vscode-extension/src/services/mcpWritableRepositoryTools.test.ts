@@ -7,6 +7,7 @@ import type { McpGitRunner, McpToolCallResult } from './mcpRepositoryTools';
 import {
   McpWritableRepositoryTools,
   type McpWriteConfirmationRequest,
+  type McpWriteDecision,
 } from './mcpWritableRepositoryTools';
 
 class FakeRunner implements McpGitRunner {
@@ -24,16 +25,24 @@ function digest(value: string): string {
   return createHash('sha256').update(value).digest('hex');
 }
 
+function createConfirmationMock() {
+  return vi.fn(
+    async (_request: McpWriteConfirmationRequest): Promise<McpWriteDecision> => ({
+      approved: true,
+    }),
+  );
+}
+
 describe('McpWritableRepositoryTools', () => {
   let root: string;
-  let confirmWrite: ReturnType<typeof vi.fn<(request: McpWriteConfirmationRequest) => Promise<{ approved: boolean }>>>;
+  let confirmWrite: ReturnType<typeof createConfirmationMock>;
   let tools: McpWritableRepositoryTools;
 
   beforeEach(async () => {
     root = await mkdtemp(path.join(os.tmpdir(), 'reviewlume-mcp-write-'));
     await mkdir(path.join(root, 'src'), { recursive: true });
     await writeFile(path.join(root, 'src', 'example.ts'), 'export const value = 1;\n');
-    confirmWrite = vi.fn(async () => ({ approved: true }));
+    confirmWrite = createConfirmationMock();
     tools = new McpWritableRepositoryTools({
       root,
       displayName: 'fixture',
@@ -154,7 +163,7 @@ describe('McpWritableRepositoryTools', () => {
     );
   });
 
-  it('rejects deletion semantics, repository escapes, .git, and duplicate paths', async () => {
+  it('rejects repository escapes, .git, and duplicate paths', async () => {
     const cases = [
       tools.call('write_files', {
         changes: [{ path: '../outside.ts', expectedSha256: null, content: 'x' }],
@@ -178,10 +187,18 @@ describe('McpWritableRepositoryTools', () => {
   it('rejects symbolic-link writes that escape the repository', async () => {
     const outside = await mkdtemp(path.join(os.tmpdir(), 'reviewlume-mcp-outside-'));
     try {
-      await symlink(outside, path.join(root, 'linked'), process.platform === 'win32' ? 'junction' : 'dir');
+      await symlink(
+        outside,
+        path.join(root, 'linked'),
+        process.platform === 'win32' ? 'junction' : 'dir',
+      );
       const result = await tools.call('write_files', {
         changes: [
-          { path: 'linked/escaped.ts', expectedSha256: null, content: 'export const escaped = true;\n' },
+          {
+            path: 'linked/escaped.ts',
+            expectedSha256: null,
+            content: 'export const escaped = true;\n',
+          },
         ],
       });
 
