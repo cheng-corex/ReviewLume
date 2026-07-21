@@ -34,6 +34,37 @@ interface VscodeTesting {
 
 const testing = (vscode as unknown as { __testing: VscodeTesting }).__testing;
 
+const PUBLIC_COMMANDS = [
+  COMMANDS.HELLO,
+  COMMANDS.CREATE_REVIEW_PACK,
+  COMMANDS.ADD_RELATED_FILES,
+  COMMANDS.RECOMMEND_TEST_FILES,
+  COMMANDS.SCAN_SELECTED_FILES,
+  COMMANDS.EXPORT_REVIEW_PACK,
+  COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE,
+  COMMANDS.OPEN_REVIEW_HISTORY,
+  COMMANDS.IMPORT_REVIEW_RESPONSE,
+  COMMANDS.UPDATE_ISSUE_STATUS,
+  COMMANDS.GENERATE_IMPLEMENTATION_PROMPT,
+  COMMANDS.IMPORT_IMPLEMENTATION_SUMMARY,
+  COMMANDS.GENERATE_RE_REVIEW_PROMPT,
+  COMMANDS.IMPORT_RE_REVIEW_RESPONSE,
+  COMMANDS.VIEW_RE_REVIEW_COMPARISON,
+  COMMANDS.OPEN_REVIEW_PANEL,
+  COMMANDS.MCP_CONNECTOR_MENU,
+  COMMANDS.START_MCP_CONNECTOR,
+  COMMANDS.COPY_MCP_CONNECTION_INFO,
+  COMMANDS.STOP_MCP_CONNECTOR,
+] as const;
+
+const LEGACY_BROWSER_COMMANDS = [
+  COMMANDS.BROWSER_BRIDGE_MENU,
+  COMMANDS.START_BROWSER_BRIDGE,
+  COMMANDS.PAIR_BROWSER_EXTENSION,
+  COMMANDS.REVOKE_BROWSER_SESSIONS,
+  COMMANDS.SEND_PROMPT_TO_BROWSER,
+] as const;
+
 function listPackagedJavaScriptFiles(directory: string): string[] {
   return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
     if (entry.isDirectory() && entry.name === '__tests__') return [];
@@ -77,6 +108,10 @@ describe('reviewlume-vscode manifest', () => {
     { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
     { command: 'reviewlume.updateIssueStatus', title: 'Update Issue Status' },
     { command: 'reviewlume.openReviewPanel', title: 'Open Review Panel' },
+    { command: 'reviewlume.mcpConnectorMenu', title: 'MCP Connector' },
+    { command: 'reviewlume.startMcpConnector', title: 'Start Read-only MCP Connector' },
+    { command: 'reviewlume.copyMcpConnectionInfo', title: 'Copy MCP Connection Info' },
+    { command: 'reviewlume.stopMcpConnector', title: 'Stop MCP Connector' },
   ];
 
   for (const { command, title } of expectedCommands) {
@@ -90,6 +125,15 @@ describe('reviewlume-vscode manifest', () => {
       expect(content.activationEvents).toContain(`onCommand:${command}`);
     });
   }
+
+  it('does not expose the superseded browser input bridge commands', () => {
+    const content = readPkg();
+    const contributed = new Set(content.contributes.commands.map((item) => item.command));
+    for (const command of LEGACY_BROWSER_COMMANDS) {
+      expect(contributed.has(command), command).toBe(false);
+      expect(content.activationEvents).not.toContain(`onCommand:${command}`);
+    }
+  });
 
   it('contributes the Activity Bar view', () => {
     const content = readPkg();
@@ -115,6 +159,8 @@ describe('reviewlume-vscode manifest', () => {
     expect(chinese['command.openReviewPanel']).toContain('打开审核面板');
     expect(english['command.updateIssueStatus']).toContain('Update Issue Status');
     expect(chinese['command.updateIssueStatus']).toContain('更新问题状态');
+    expect(english['command.mcpConnectorMenu']).toContain('MCP Connector');
+    expect(chinese['command.mcpConnectorMenu']).toContain('MCP');
   });
 
   it('packages self-contained Git, scanner, Review Pack, report parser, and Webview runtimes', () => {
@@ -173,12 +219,15 @@ describe('extension activation', () => {
     testing.reset();
   });
 
-  it('registers P5 entry points without loading security runtimes during activation', () => {
+  it('registers the MCP primary flow and Advanced review commands without the browser prototype', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
 
-    for (const command of Object.values(COMMANDS)) {
+    for (const command of PUBLIC_COMMANDS) {
       expect(testing.getRegisteredCommand(command), command).toBeDefined();
+    }
+    for (const command of LEGACY_BROWSER_COMMANDS) {
+      expect(testing.getRegisteredCommand(command), command).toBeUndefined();
     }
     expect(vscode.window.createTreeView).toHaveBeenCalledWith(
       VIEWS.MAIN_VIEW,
