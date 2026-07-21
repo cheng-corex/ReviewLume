@@ -1,6 +1,6 @@
 # P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 自动验证以 Draft PR #21 最新一次四平台全绿 CI 及其 Windows VSIX 0.1.8 artifact 为准。不要在本文写死会因文档提交而立刻过期的 head SHA 或运行编号。真实 Tunnel 和 ChatGPT 工具调用仍需在用户 Windows 环境执行。
+> 使用 Draft PR #21 最新一次四平台全绿 CI 及其 Windows VSIX 0.1.8 artifact。真实 Tunnel 和 ChatGPT 工具调用仍需在用户 Windows 环境执行。
 
 ## 验收前提
 
