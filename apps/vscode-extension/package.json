@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.8",
+  "version": "0.1.9",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -52,7 +52,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.8.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.9.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
