@@ -15,6 +15,47 @@ describe('ChatGptBrowserService helpers', () => {
     expect(normalizeBrowserPreference(undefined)).toBeUndefined();
   });
 
+  it('uses a native Windows launcher for the system default browser', () => {
+    expect(
+      resolveBrowserLaunchCommands(
+        'default',
+        'win32',
+        {},
+        () => false,
+        'https://chatgpt.com/',
+      ),
+    ).toEqual([
+      {
+        command: 'rundll32.exe',
+        args: ['url.dll,FileProtocolHandler', 'https://chatgpt.com/'],
+      },
+    ]);
+  });
+
+  it('uses native default-browser launchers on macOS and Linux', () => {
+    expect(
+      resolveBrowserLaunchCommands(
+        'default',
+        'darwin',
+        {},
+        () => false,
+        'https://chatgpt.com/',
+      ),
+    ).toEqual([{ command: '/usr/bin/open', args: ['https://chatgpt.com/'] }]);
+    expect(
+      resolveBrowserLaunchCommands(
+        'default',
+        'linux',
+        {},
+        () => false,
+        'https://chatgpt.com/',
+      ),
+    ).toEqual([
+      { command: 'xdg-open', args: ['https://chatgpt.com/'] },
+      { command: 'gio', args: ['open', 'https://chatgpt.com/'] },
+    ]);
+  });
+
   it('prefers an installed Windows Edge executable and keeps the URL as one argument', () => {
     const programFiles = 'C:\\Program Files (x86)';
     const executable = path.join(
