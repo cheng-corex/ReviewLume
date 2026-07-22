@@ -22,7 +22,7 @@
   - `.gitignore` and repository-root `.reviewlumeignore` enforcement.
   - Real-path validation that rejects cross-repository paths, Git metadata, directories,
     and symbolic-link escapes.
-- P4 sensitive-content scanning:
+- P4 sensitive-content scanning for the P8 Advanced Review Pack workflow:
   - Filename, private-key, authorization/session, token, connection-string, JWT,
     high-entropy, and private-network rules.
   - HARD_BLOCK, BLOCK, WARN, and INFO policy levels with non-bypassable export gates.
@@ -70,19 +70,23 @@
   - Model-controlled tools for repository summary, Git status, recent commits, explicit diffs,
     file listing, bounded file reads, and bounded literal code search.
   - Tool annotations declare every operation read-only, non-destructive, idempotent, and closed-world.
-  - Repository path validation rejects absolute paths, parent traversal, `.git`, binary files,
-    sensitive credential paths, oversized files, and symbolic-link escapes.
-  - File content, diffs, search results, and commit titles pass through the existing SecretScanner
-    before being returned to the model.
+  - Repository path validation rejects absolute paths, parent traversal, `.git`, oversized files,
+    directories, binary files, and symbolic-link escapes.
+  - P9 MCP does **not** automatically block `.env`, credentials, secrets, private-key text,
+    production configuration, or tracked sensitive files, and it does not automatically run the
+    P8 SecretScanner on file content, diffs, search results, or commit subjects.
+  - `read_file` may read an explicitly addressed regular text file inside the repository, including
+    an ignored file; tracked sensitive files remain eligible for listing and search.
   - Official `openai/tunnel-client` integration validates official help text and Tunnel ID format,
     runs `doctor --explain`, starts without a shell, waits for fresh loopback readiness, and opens
     ChatGPT only after the OpenAI control plane reports the matching healthy Tunnel.
   - Tunnel ID, official client path, normalized control-plane proxy, and ChatGPT browser preference
     are stored in VS Code global state; the Runtime API Key is stored only in SecretStorage.
   - ChatGPT can be opened in the system default browser, Microsoft Edge, or Google Chrome without
-    changing the operating-system default browser. The explicit browser launch never uses a shell.
-  - Normal connect and reopen actions go directly to a new ChatGPT chat. Connector settings remain
-    available only as an explicit Advanced action.
+    changing the operating-system default browser. All browser launches use native commands with
+    the URL passed as a separate argument and never use a shell.
+  - Normal connect and reopen actions go directly to a new ChatGPT chat. Apps/Connectors settings
+    remain available only as an explicit Advanced action.
   - Control-plane proxy discovery supports saved state, dedicated and standard proxy environment
     variables, VS Code `http.proxy`, and Windows system proxy settings.
   - Only `CONTROL_PLANE_HTTP_PROXY` is passed to tunnel-client; generic proxy variables are removed
@@ -100,13 +104,19 @@
   - Existing Review Pack, response import, history, issue status, implementation, and re-review
     capabilities remain available as Advanced commands rather than the default workflow.
   - The earlier browser input-field bridge prototype is no longer registered as the P9 main flow.
+  - A public setup guide now documents OpenAI Tunnel creation, least-privilege Runtime API Key
+    creation, official tunnel-client download, ChatGPT app/connector setup, tool scanning, daily use,
+    revocation, and plan/workspace availability caveats.
 
 ### Fixed
 
 - Treat explicit VS Code command cancellation during Extension Host reload as a silent cancellation instead of showing a misleading `Canceled` error notification; operational failures continue to surface.
 - Open the ChatGPT home route for a new conversation instead of reopening the connector detail modal after every successful connection.
+- Open the system default browser with the operating system's native URL launcher instead of `vscode.env.openExternal`, removing the repeated Open/Cancel confirmation.
+- Distinguish the ReviewLume connector name from the actual repository identity so ChatGPT reports “current connected project” neutrally instead of treating a non-ReviewLume project name as a mismatch.
 - Keep `tools/call` independent from best-effort OutputChannel logging so extension-host reloads or a disposed log channel cannot turn valid read-only tool calls into HTTP 500 responses.
 - Activate ReviewLume after VS Code startup finishes so the MCP status bar is visible immediately; startup activation does not start a tunnel or inspect repository contents.
+- Correct public privacy, security, P9 verification, and publishing documentation so it no longer claims P9 automatically blocks sensitive paths or runs SecretScanner.
 - Kept the packaged P0 extension entry point self-contained so a VSIX built with
   `--no-dependencies` does not fail on an unpackaged workspace module.
 - Made clean scripts and the VS Code build task work across Windows, macOS, and Linux.
@@ -120,7 +130,7 @@
   silently presenting a failed inspection as a clean repository.
 - Preserved legal POSIX filenames containing backslashes in file selection, scanning,
   and Review Pack manifests.
-- Prevented raw matched values and adjacent same-line secrets from entering scan results,
+- Prevented raw matched values and adjacent same-line secrets from entering P8 scan results,
   previews, logs, or diagnostics.
 - Excluded generated `.reviewlume/exports/**` files from new review-selection sessions to
   prevent Review Packs from recursively including earlier Review Packs.

@@ -1,185 +1,222 @@
 # 测试与验收
 
-## 1. 测试层级
+## 1. 测试分层
 
-### 单元测试
+### 1.1 单元测试
 
-覆盖：
+P9 重点覆盖：
 
-- Git 参数构造。
-- 路径归一化。
-- repository 选择与边界判断。
-- ignore 规则。
-- secret scanner 分级与处置。
-- `workspaceId` 确定性生成。
-- `reviewId` 唯一性、格式和冲突重试。
-- Review Pack 序列化。
-- 导出文件与内部快照命名。
-- 报告解析。
-- schema 校验。
+- MCP initialize、tools/list 和 tools/call；
+- 7 个工具的 schema 和只读 annotations；
+- repository 身份与 ReviewLume 连接器名称区分；
+- Git 参数构造、allowlist、commit ref 和 remote URL 脱敏；
+- 绝对路径、盘符、UNC、`..`、`.git` 和 NUL 拒绝；
+- realpath、symlink、目录、二进制和文件大小边界；
+- diff、文件读取和搜索预算；
+- Bearer 与 `X-ReviewLume-Token` 鉴权；
+- Origin、Content-Type、请求体和速率限制；
+- Tunnel ID、官方客户端帮助文本和受控环境变量；
+- doctor 输出脱敏和 health URL 校验；
+- 浏览器偏好与 Windows/macOS/Linux 原生启动命令；
+- 用户取消与 operational error 区分；
+- OutputChannel 失败不影响 tools/call。
 
-### P8A 单元测试（新增 36 个）
+P8 Advanced 重点覆盖：
 
-**解析器（20 个）：**
-- JSON 问题清单解析、issues wrapper、findings wrapper。
-- Markdown 严重度标题和列表解析。
-- 编号列表解析。
-- 空输入和非问题文本返回 unstructured。
-- 严重度映射（包括别名和 unknown）。
-- 路径规范化、拒绝绝对路径。
-- 行号校验。
-- 超多问题 MAX_ISSUES 限制。
-- 稳定 ID 生成、重复解析 ID 不变、重复问题 ID 不冲突。
-- 指纹大小写和路径分隔符规范化。
+- Git 范围与 repository 选择；
+- 文件选择、ignore、realpath 和 symlink；
+- SecretScanner HARD_BLOCK/BLOCK/WARN/INFO；
+- Review Pack 序列化、预算和导出；
+- `workspaceId`、`reviewId` 和冲突重试；
+- 历史、回答导入、报告解析和原子写入；
+- issue 状态机、筛选、实施提示、修复摘要和二次复核。
 
-**ReportService（16 个）：**
-- 创建合法 report.json、unstructured 报告。
-- 原子写入无临时文件残留。
-- 读取：valid / missing / corrupt / unsupported-version / id-mismatch / stale-hash。
-- 重新解析替换现有报告。
-- 状态转换：合法转换成功、非法转换拒绝、issue 不存在拒绝。
-- 写入失败不损坏现有报告。
+### 1.2 集成测试
 
-**前值测试 +16 个（reportService.test.ts）**
+使用临时 Git repository 覆盖：
 
-### 集成测试
+- staged、unstaged、untracked 和 commit range；
+- 单根和多根工作区；
+- repository root discovery；
+- 中文、空格和特殊路径；
+- symlink 逃逸；
+- tracked 与 non-ignored untracked 枚举；
+- ignored 文件不会被普通枚举，但明确路径的普通文本文件可由 `read_file` 读取；
+- `.env`、credentials、secrets 等敏感命名文本文件不会被 P9 自动拒绝；
+- P8 Advanced SecretScanner 仍对 Review Pack 流程执行原有门禁；
+- MCP server 启停后旧端口和 Token 失效；
+- tunnel-client 环境不继承不允许的 Admin Key、raw logging 或远程 UI 配置。
 
-覆盖：
+所有隐私边界测试只能使用假密钥和虚构数据，不得提交真实凭据。
 
-- 临时 Git 仓库。
-- staged/unstaged/commit range。
-- 多根工作区包含一个、多个和零个 Git repositories。
-- 多 repository 场景要求用户明确选择。
-- 拒绝跨 repository 的 diff、commit range 和关联文件。
-- 中文路径和空格路径。
-- 大文件截断。
-- 符号链接逃逸。
-- Restricted Mode。
-- Webview 消息交互。
-- 历史目录 `<workspaceId>/<reviewId>` 创建和冲突处理。
+### 1.3 VSIX 内容测试
 
-### 端到端测试
+直接把生成的 VSIX 作为 ZIP 检查：
 
-使用 `@vscode/test-electron`：
+- manifest 版本、publisher、activation events 和命令；
+- README、LICENSE、图标和 NLS；
+- 必需 `dist` 与依赖；
+- 不包含 TypeScript 源码、编译测试、source map 或 `*.tsbuildinfo`；
+- 不包含 `.env`、测试密钥、Runtime API Key、本地 MCP Token、Authorization Header；
+- 不包含 `.reviewlume/` 历史、用户 repository 内容或本地绝对路径；
+- 不捆绑 `tunnel-client`；
+- 不包含已停用浏览器桥接运行时；
+- 记录 SHA-256。
 
-- 启动扩展。
-- 在单 repository 工作区创建 Review Pack。
-- 在多根工作区选择一个 repository 后创建 Review Pack。
-- 触发 HARD_BLOCK 并确认没有任何绕过入口。
-- 触发 BLOCK，完成脱敏前禁止导出。
-- 触发 WARN，逐项确认后允许导出。
-- 导入回答。
-- 查看历史。
-- 验证导出主文件为 `REVIEW_REQUEST.md`，内部历史快照为 `request.md`。
+## 2. P9 安全测试
 
-第二阶段使用 Playwright 测试浏览器扩展，但不要依赖真实 AI 站点；使用本地模拟页面验证适配器行为。
-
-## 2. 安全测试
+### 2.1 MCP 网络与鉴权
 
 必须覆盖：
 
-- `../` 路径穿越。
-- 绝对路径和设备路径输入。
-- 符号链接指向 repository 外。
-- 多根工作区中选择另一个 repository 的文件。
-- Webview 伪造消息。
-- 超大输入。
-- 二进制伪装成文本。
-- 恶意 Markdown 和 HTML。
-- AI 回复包含 Shell 命令。
-- AI 回复包含伪造本地路径。
-- 本地桥接错误 Origin。
-- 过期令牌和重放请求。
-- 关闭 secret scanner 后 HARD_BLOCK 仍然生效。
-- `blockOnHighRisk` 配置不能让 BLOCK 或 HARD_BLOCK 直接导出。
-- 日志、诊断包和 manifest 不包含原始秘密、绝对路径或带凭据 remote URL。
+- 仅绑定 `127.0.0.1`；
+- 随机端口和每次启动新 Token；
+- 无凭据 GET `/mcp` 返回 405，不泄露工具和 repository；
+- 无凭据或错误 Token 的 POST/DELETE 返回 401；
+- 错误 Origin、Content-Type、协议版本和超大请求被拒绝；
+- rate limit 生效；
+- Protected Resource Metadata 只暴露 loopback resource；
+- 停止后旧 endpoint 不可用。
 
-## 3. ID 与历史测试
+### 2.2 Repository、路径和 Git
 
-### workspaceId
+必须覆盖：
 
-- 同一规范化 remote URL 在不同本地路径下得到相同 ID。
-- remote URL 的等价写法经过规范化后得到相同 ID。
-- 无 remote 时，同一解析后 repository root 得到相同 ID。
-- ID 固定为 16 个小写十六进制字符。
-- 目录名中不出现 remote URL、用户名或绝对路径。
+- 一次连接一个 repository；
+- Restricted Mode 拒绝启动；
+- 多根工作区明确选择；
+- 绝对路径、盘符、UNC、`..`、`.git` 和 NUL；
+- 外部 symlink；
+- 目录、二进制和超大文件；
+- 非法 commit ref；
+- external diff/textconv 禁用；
+- Git mutation 命令不存在；
+- remote URL 用户名和密码不会返回。
 
-### reviewId
+### 2.3 实际隐私边界
 
-- 格式符合 `yyyyMMdd'T'HHmmss'Z'-[0-9a-f]{12}`。
-- 使用 UTC 时间。
-- 随机部分来自密码学安全随机源。
-- 模拟冲突时能够重新生成。
-- 标题、状态和复核轮次变化不会改变 ID。
+使用假数据验证并记录：
 
-### schema 与命名
+- P9 不运行 SecretScanner；
+- `.env`、credentials、secrets、私钥或生产配置式文件名不会仅因名称被拒绝；
+- tracked 敏感命名文件可进入 `list_files` 和 `search_code` 候选；
+- ignored 文件不进入普通枚举；
+- 调用方知道路径时，ignored 普通文本文件仍可由 `read_file` 读取；
+- diff、文件摘录、提交标题和搜索结果中的假秘密不会被宣传为自动脱敏；
+- 结果大小和行数预算仍生效；
+- ReviewLume 日志不记录查询词、文件正文、diff 或搜索结果；
+- README、PRIVACY、SECURITY 和 Marketplace 文案准确说明这些限制。
 
-- schema v1 可稳定序列化和反序列化。
-- 未知高版本 schema 给出明确错误，不静默覆盖。
-- 导出包使用 `REVIEW_REQUEST.md`。
-- 本地历史使用 `request.md`。
-- 首次导出包默认不包含 `response.md`、`review-report.md` 和 `resolution.md`。
+### 2.4 Tunnel 和凭据
 
-## 4. MVP 验收标准
+必须覆盖：
 
-### 功能
+- 只接受符合官方帮助文本的 `tunnel-client`；
+- Tunnel ID 格式；
+- Runtime API Key 只存 SecretStorage；
+- Key 和 Token 不进入 argv、settings JSON、repository、剪贴板或日志；
+- ambient Tunnel profile、MCP command、Admin Key、Cloudflared、Harpoon、远程 UI、日志文件和 raw HTTP logging 被清除；
+- 只传入允许的控制面代理；
+- doctor 失败不启动长期进程；
+- `/readyz` 与 `/api/status` 同时健康才报告 ready；
+- Tunnel ID 不匹配、metadata error 或 main channel 不健康时失败；
+- diagnostics UI 只监听 loopback。
 
-- 用户可选择 staged、unstaged 或 commit range。
-- 多根工作区中用户必须选择一个 repository。
-- 一次审核任务不会混入其他 repository 的内容。
-- 用户能准确看到将发送的全部内容。
-- 用户能排除任意普通文件。
-- HARD_BLOCK 内容永远不能导出。
-- BLOCK 内容在排除或脱敏并重新扫描前不能导出。
-- WARN 内容必须逐项确认。
-- 生成的 Markdown 在常见编辑器中可读。
-- 用户可导入回答并形成历史记录。
-- 导出与内部历史文件命名不会混淆。
+## 3. P8 Advanced 安全测试
 
-### 安全
+P8 Advanced 仍必须覆盖：
 
-- 不读取当前 repository 外文件。
-- 不读取浏览器凭据。
-- 不调用网页内部 API。
-- 不自动执行命令。
-- Restricted Mode 下禁用危险能力。
-- manifest、日志和诊断信息不泄露绝对路径、带凭据 remote URL 或原始秘密。
+- HARD_BLOCK 永远不能导出；
+- BLOCK 必须排除或脱敏后重新扫描；
+- WARN 逐项确认；
+- 关闭可选扫描设置不能绕过 HARD_BLOCK；
+- `blockOnHighRisk` 不能放行 BLOCK/HARD_BLOCK；
+- 范围或内容改变后旧扫描失效；
+- Review Pack 预览与最终导出一致；
+- 历史写入和删除只在管理目录内；
+- AI 回答中的命令、路径和补丁不被执行；
+- P8 SecretScanner 不被错误复用于或宣传为 P9 MCP 保护层。
 
-### 稳定性
+## 4. 四平台 CI
 
-- 无 Git 仓库时有明确提示。
-- 多个 Git repositories 时有明确选择界面。
-- Git 命令失败不会导致扩展崩溃。
-- 大仓库操作可取消。
-- 失败不会留下半写入历史。
-- ID 冲突不会覆盖既有历史。
+每个发布候选必须在以下矩阵通过：
 
-### 发布质量
+- Ubuntu Node 20；
+- Ubuntu Node 22；
+- Windows Node 22；
+- macOS Node 22。
 
-- `pnpm lint` 通过。
-- `pnpm typecheck` 通过。
-- `pnpm test` 通过。
-- VSIX 可安装和卸载。
-- 包内不包含源码映射中的本地绝对路径、测试数据密钥或无关文件。
+每个平台步骤：
 
-## 5. 人工验证清单
+1. checkout；
+2. pnpm setup；
+3. Node setup；
+4. frozen-lockfile install；
+5. lint；
+6. typecheck；
+7. test；
+8. 遗留浏览器扩展静态校验；
+9. build；
+10. VSIX package；
+11. artifact upload；
+12. VSIX contents validation。
 
-- [ ] Windows 路径。
-- [ ] macOS/Linux 路径。
-- [ ] 多根工作区只含一个 Git repository。
-- [ ] 多根工作区包含多个 Git repositories，能选择且不会跨仓库收集。
-- [ ] 非 Git 工作区。
-- [ ] 大 diff。
-- [ ] 仅新增文件。
-- [ ] 删除文件。
-- [ ] 重命名文件。
-- [ ] 二进制文件。
-- [ ] `.reviewlumeignore`。
-- [ ] HARD_BLOCK 无法绕过。
-- [ ] BLOCK 脱敏后重新扫描。
-- [ ] WARN 逐项确认。
-- [ ] 中英文界面。
-- [ ] 历史删除。
-- [ ] ID 冲突重试。
-- [ ] 导出文件和内部快照命名。
-- [ ] 完全离线使用。
+失败时必须读取具体 job log，区分代码、测试、环境、外部服务和权限原因。
+
+## 5. Windows + ChatGPT 人工验收
+
+### 5.1 安装和启动
+
+- [ ] 覆盖安装最终候选 VSIX。
+- [ ] 完全退出并重新启动 VS Code。
+- [ ] 状态栏出现 `ReviewLume MCP`，左侧无重复主入口。
+- [ ] 启动阶段不自动联网、不打开网页、不读取 repository。
+
+### 5.2 首次配置
+
+- [ ] 使用 OpenAI Platform Tunnel。
+- [ ] 使用最小权限 Runtime API Key，而非 Admin Key。
+- [ ] 选择官方 `tunnel-client`。
+- [ ] Runtime Key 不出现在 settings、repository、命令行或日志。
+- [ ] 代理发现和持久化正常。
+
+### 5.3 浏览器和 Tunnel
+
+- [ ] 系统默认浏览器直接打开 ChatGPT，不出现 Open/Cancel。
+- [ ] Edge/Chrome 不改变操作系统默认浏览器。
+- [ ] `/readyz` 和 `/api/status` 健康后才显示 ready。
+- [ ] Apps/Connectors 设置只由 Advanced 动作显式打开。
+- [ ] Extension Host reload 或取消不显示误导性的 `Canceled` 错误。
+
+### 5.4 ChatGPT 工具
+
+- [ ] 创建或启用 ReviewLume 自定义应用/连接器。
+- [ ] 扫描到 7 个只读工具。
+- [ ] 不存在 write、delete、shell、terminal、patch 或 Git mutation。
+- [ ] ChatGPT 中性报告当前项目名，不把 ReviewLume 当作 repository 名。
+- [ ] 最近提交、Git 状态、diff、源码和测试检查可完成。
+- [ ] 连续 tools/call 不出现 HTTP 500。
+- [ ] 工具定义变化后可通过刷新、重新扫描或重建应用更新。
+
+### 5.5 隐私和停止
+
+- [ ] 使用假 `.env` fixture 验证 P9 不自动拦截，公开警告准确。
+- [ ] 使用 P8 Advanced fixture 验证 SecretScanner 仍独立生效。
+- [ ] 停止连接后旧 endpoint/Token 失效。
+- [ ] 无残留 `tunnel-client` 进程。
+- [ ] 可在 OpenAI Platform 撤销 Runtime Key 或删除 Tunnel。
+- [ ] 可在 ChatGPT 禁用或删除 ReviewLume 应用。
+
+## 6. 发布门禁
+
+只有全部满足后才能发布：
+
+- 最新发布候选的四平台 CI 全绿；
+- VSIX 内容检查全绿；
+- Windows + ChatGPT 人工验收完成；
+- README、PRIVACY、SECURITY、配置指南、P9 计划、验收清单和发布指南与代码一致；
+- P9 不自动秘密扫描的限制已公开；
+- Marketplace Publisher ID 和版本号已确认；
+- 没有未处理的高风险问题；
+- GitHub prerelease 与 Marketplace 使用同一字节级 VSIX；
+- release notes 记录 commit、版本、支持范围、已知限制和 SHA-256。
