@@ -20,11 +20,7 @@ interface BrowserRuntime {
   readonly platform: NodeJS.Platform;
   readonly env: NodeJS.ProcessEnv;
   readonly fileExists: (value: string) => boolean;
-  readonly spawnProcess: (
-    command: string,
-    args: readonly string[],
-  ) => ChildProcess;
-  readonly openDefault: (url: string) => Promise<boolean>;
+  readonly spawnProcess: (command: string, args: readonly string[]) => ChildProcess;
 }
 
 const DEFAULT_RUNTIME: BrowserRuntime = {
@@ -38,7 +34,6 @@ const DEFAULT_RUNTIME: BrowserRuntime = {
       windowsHide: true,
       shell: false,
     }),
-  openDefault: async (url) => vscode.env.openExternal(vscode.Uri.parse(url)),
 };
 
 /** Opens ChatGPT in a user-selected browser without changing the system default browser. */
@@ -98,12 +93,6 @@ export class ChatGptBrowserService {
     const preference = await this.chooseBrowser(false);
     if (!preference) return undefined;
 
-    if (preference === 'default') {
-      const opened = await this.#runtime.openDefault(url);
-      if (!opened) throw new Error(`Could not open ${url} in the system default browser.`);
-      return preference;
-    }
-
     const candidates = resolveBrowserLaunchCommands(
       preference,
       this.#runtime.platform,
@@ -147,12 +136,30 @@ export function normalizeBrowserPreference(
 }
 
 export function resolveBrowserLaunchCommands(
-  preference: Exclude<ChatGptBrowserPreference, 'default'>,
+  preference: ChatGptBrowserPreference,
   platform: NodeJS.Platform,
   env: NodeJS.ProcessEnv,
   fileExists: (value: string) => boolean,
   url: string,
 ): BrowserLaunchCommand[] {
+  if (preference === 'default') {
+    if (platform === 'darwin') {
+      return [{ command: '/usr/bin/open', args: [url] }];
+    }
+    if (platform === 'win32') {
+      return [
+        {
+          command: 'rundll32.exe',
+          args: ['url.dll,FileProtocolHandler', url],
+        },
+      ];
+    }
+    return [
+      { command: 'xdg-open', args: [url] },
+      { command: 'gio', args: ['open', url] },
+    ];
+  }
+
   if (platform === 'darwin') {
     return [
       {
