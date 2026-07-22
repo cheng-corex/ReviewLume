@@ -1,33 +1,46 @@
 # 系统架构
 
-## 1. 总体架构
+## 1. 当前总体架构
+
+ReviewLume 当前默认主流程是只读 MCP，而不是浏览器输入框桥接：
 
 ```text
-┌──────────────────────────────────────┐
-│ ReviewLume VS Code Extension         │
-│                                      │
-│ Git Range  File Picker  Secret Scan  │
-│ Review Pack  Prompt  Report History  │
-└──────────────────┬───────────────────┘
-                   │ 可选：localhost 配对
-┌──────────────────▼───────────────────┐
-│ ReviewLume Web Bridge                │
-│                                      │
-│ 页面检测  填入提示  用户确认  导入回答 │
-└──────────────────┬───────────────────┘
-                   │
-┌──────────────────▼───────────────────┐
-│ Browser-based AI Assistant           │
-└──────────────────────────────────────┘
+┌─────────────────────────────────────────────┐
+│ ChatGPT Web                                 │
+│ Custom app / connector                     │
+│ repository_summary / git_status / ...      │
+└──────────────────────┬──────────────────────┘
+                       │ OpenAI managed connection
+┌──────────────────────▼──────────────────────┐
+│ OpenAI Secure MCP Tunnel control plane     │
+└──────────────────────┬──────────────────────┘
+                       │ outbound tunnel-client channel
+┌──────────────────────▼──────────────────────┐
+│ ReviewLume VS Code Extension               │
+│                                             │
+│ SecureMcpTunnelService                     │
+│ McpConnectorService + McpConnectorServer   │
+│ McpRepositoryTools                         │
+│ Status bar / browser launcher / diagnostics│
+└──────────────────────┬──────────────────────┘
+                       │ controlled read-only Git + fs
+┌──────────────────────▼──────────────────────┐
+│ One trusted Git repository                 │
+└─────────────────────────────────────────────┘
 ```
+
+P8 Review Pack、SecretScanner、历史、报告、问题状态和二次复核继续作为 Advanced 本地工作流存在，但不再是默认主入口。
+
+旧浏览器填入桥接原型不注册运行时命令，不读取网页输入框、Cookie、Session 或 ChatGPT 回答。
 
 ## 2. Monorepo 结构
 
 ```text
 reviewlume/
 ├─ apps/
-│  ├─ vscode-extension/
-│  └─ web-bridge/              # 第二阶段
+│  ├─ vscode-extension/          # 当前唯一主发布物
+│  ├─ browser-extension/         # 已停用原型，仅保留静态校验/历史代码
+│  └─ web-bridge/                # 已停用原型
 ├─ packages/
 │  ├─ core/
 │  ├─ git-context/
@@ -35,7 +48,7 @@ reviewlume/
 │  ├─ secret-scanner/
 │  ├─ prompt-templates/
 │  ├─ report-parser/
-│  └─ bridge-protocol/         # 第二阶段
+│  └─ bridge-protocol/           # 已停用浏览器桥接协议
 ├─ docs/
 ├─ tests/
 ├─ package.json
@@ -43,248 +56,357 @@ reviewlume/
 └─ tsconfig.base.json
 ```
 
-## 3. VS Code 扩展模块
+VS Code VSIX 不捆绑 `tunnel-client`。用户必须从 OpenAI 官方 Release 下载并明确选择客户端。
+
+## 3. P9 只读 MCP 模块
 
 ### 3.1 Extension Host
 
 职责：
 
-- 注册命令。
-- 管理配置。
-- 检查 Workspace Trust。
-- 调用 Git 和文件系统服务。
-- 打开审核面板。
+- 在 `onStartupFinished` 激活；
+- 初始化 ReviewLume OutputChannel；
+- 注册状态栏、MCP 命令和 P8 Advanced 命令；
+- 管理服务生命周期；
+- Extension Host 退出或重载时先停止 Tunnel，再停止本地 MCP。
 
-### 3.2 GitContextService
+激活阶段不会：
 
-只开放白名单操作：
+- 自动建立外部连接；
+- 自动启动 `tunnel-client`；
+- 自动打开 ChatGPT；
+- 自动读取 Git 状态、diff 或 repository 文件；
+- 自动运行 SecretScanner。
 
-- 当前工作区状态。
-- staged diff。
-- unstaged diff。
-- commit range diff。
-- changed file list。
-- 指定文件在目标提交的内容。
-
-禁止把用户输入直接拼接为 Shell 命令。优先使用参数数组调用 `git`。
-
-多根工作区和多仓库规则：
-
-- 一次审核任务只能绑定一个 Git repository。
-- 多根工作区中存在多个 repository 时，用户必须先明确选择本次审核的 repository。
-- diff、commit range、关联文件、历史记录和 Review Pack 都限定在已选择的 repository 内。
-- 第一版不生成跨 repository 的合并审核包；需要审核多个仓库时，分别创建多个审核任务。
-- 非 Git 工作区文件夹不能作为 Git 审核源，但可在明确提示后作为纯文件审核的后续扩展能力，MVP 不实现。
-
-### 3.3 FileSelectionService
-
-- 展示变更文件。
-- 推荐关联测试。
-- 允许用户手动添加文件。
-- 校验文件必须位于当前审核绑定的受信任 repository 内。
-- 用户明确选择的变更文件和关联文件继续遵守原有 `.gitignore`、`.reviewlumeignore` 与 realpath 边界，不因为 P7.5 自动上下文排除目录而被静默移除。
-- 自动上下文额外排除 `.git/`、`.reviewlume/`、依赖目录、构建产物、数据库与二进制文件。
-- 内置排除 `.reviewlume/exports/**` 与 `.reviewlume/history/**`，避免生成物递归进入后续审核。
-- 自动上下文使用可逆覆盖层；切回“仅变更”时移除自动文件，但保留用户显式选择。
-
-### 3.4 ReviewScopeService
-
-提供三种审核范围：
-
-- **仅变更**：变更文件与用户明确添加的关联文件。
-- **智能上下文**：默认模式，在仅变更基础上补充一层本地依赖、直接调用方、相关测试、类型伴随文件和项目配置。
-- **完整仓库**：包含当前 repository 中符合规则的全部 UTF-8 文本文件。
-
-约束：
-
-- 智能上下文不会递归遍历无限依赖图；自动文件数、读取文件数和总字节数均有硬上限。
-- 本地依赖只解析静态相对路径的 `import`、`export from`、`require` 和动态 `import()`；第一阶段不推断 TypeScript path alias。
-- 完整仓库先统计合规文件数与源文件字节数，再一次性应用选择；超限时保留原范围并明确阻止。
-- 完整仓库必须生成未截断 Review Pack。构建器报告任何 truncation 时禁止导出，不能把部分项目伪装成完整项目。
-- 范围切换会使旧扫描、旧预览和旧导出许可失效，用户必须重新扫描。
-
-### 3.5 SecretScanner
-
-扫描两类风险：
-
-1. 文件级风险：`.env`、证书、数据库、密钥文件。
-2. 内容级风险：API Key、Bearer Token、私钥、数据库连接串等。
-
-扫描结果分为：
-
-- HARD_BLOCK：确定的私钥正文、会话凭据、Cookie、Authorization 凭据和其他不可安全导出的秘密。第一版永远禁止加入审核包，不提供“仍然导出”选项。
-- BLOCK：高风险文件或确定性较高的密钥、Token、连接串。用户必须排除命中内容或完成脱敏后重新扫描，不能静默绕过。
-- WARN：疑似秘密、高熵字符串或可能包含内部数据的内容，需要逐项确认后才能加入。
-- INFO：仅用于提示范围、内部标识或普通隐私风险，不阻止导出。
-
-`reviewlume.secretScan.blockOnHighRisk` 只能控制 WARN 是否升级为阻止状态，不能关闭 HARD_BLOCK，也不能让 BLOCK 未经处理直接导出。
-
-### 3.6 ReviewPackBuilder
-
-把元数据、需求、diff、文件内容和测试信息写入标准 Markdown。必须支持大小预算和截断说明。
-
-P7.5 中：
-
-- Git diff 始终是审核重点，只针对选中的真实变更路径生成。
-- 自动上下文文件以完整文件内容加入，并在 manifest 中标记来源。
-- 智能上下文仍遵守普通 Review Pack 大小预算并显示截断信息。
-- 完整仓库不接受任何静默截断。
-
-### 3.7 ReviewPanel
-
-使用 Webview 展示：
-
-- 审核范围及自动上下文数量。
-- 文件清单与文件来源。
-- 敏感扫描结果。
-- Token/字符估算。
-- 最终提示预览。
-- 导出和复制操作。
-
-Webview 内容不能直接执行 Node.js API；所有消息必须经过 schema 验证。范围选择只接受固定的 `changes`、`smart`、`full` 值，文件系统枚举与路径推导全部由 Extension Host 完成。
-
-### 3.8 HistoryService
-
-- 在成功导出之后保存同一份已校验 Review Pack 的历史快照。
-- 使用严格 Zod schema 校验 `metadata.json`。
-- 使用 realpath、普通文件检查和符号链接检查保证路径仍位于当前 repository。
-- 原子写入 `metadata.json` 与 `request.md`，避免出现半条成功历史。
-- 识别完整、部分缺失和损坏历史，不静默隐藏坏记录。
-- 支持复制原始请求、打开受管导出、恢复精确 Markdown 和确认删除。
-- 无法从历史数据可靠还原原 ZIP 时不生成伪造或不完整 ZIP。
-
-### 3.9 ReportService（P8A）
+### 3.2 McpConnectorService
 
 职责：
 
-- 调用解析器将 AI 回答转换为结构化问题清单。
-- 读取和写入 `report.json`（独立于 `response.md`）。
-- 校验 `reviewId` 和 `sourceResponseHash`（SHA-256 of response.md）。
-- 原子写入（临时文件 + rename + 备份恢复）。
-- 返回明确状态：valid / missing / corrupt / stale-hash / unsupported-version / id-mismatch。
-- 提供纯函数状态转换校验（委托 `@reviewlume/report-parser`）。
+1. 检查 Workspace Trust；
+2. 解析所选 workspace folder 的 Git repository root；
+3. 一次只绑定一个 repository；
+4. 创建 `McpRepositoryTools`；
+5. 启动 `McpConnectorServer`；
+6. 保存当前连接的 repository 名称、root、loopback 端口和短时 Token；
+7. 停止时关闭 server 并使 Token 失效。
 
-P7 只保存用户主动导入的原始 `response.md`；P8A 在此基础上新增 `report.json` 结构化报告。
+Repository 名称来自 Git root 的目录名。ReviewLume 是连接器名称，不是要求 repository 必须叫 ReviewLume。
 
-### 3.10 ReportParser（@reviewlume/report-parser package）
+### 3.3 McpConnectorServer
 
-纯逻辑模块，不访问文件系统、VS Code API 或网络：
+实现无状态 Streamable HTTP JSON-RPC：
 
-- 解析优先级：JSON fenced block → Markdown 标题/列表 → 编号列表 → 表格 → unstructured。
-- 生成稳定唯一的问题 ID（ISSUE-16位hex），基于规范化字段的 SHA-256。
-- 定义状态机：open/fixed/rejected/needs-review 及合法转换。
-- 保守策略：解析失败不回滚原始回答，不自动判断问题正确性。
+- `initialize`
+- `notifications/initialized`
+- `ping`
+- `tools/list`
+- `tools/call`
+- `notifications/cancelled`
 
-## 4. 数据目录与标识
+网络与认证：
 
-当前版本使用 repository-local 目录，便于导出、浏览、删除和后续自动化按一次审核一个目录处理：
+- 仅监听 `127.0.0.1` 随机端口；
+- 每次启动生成新的高熵 Token；
+- 本地调试可使用 `Authorization: Bearer`；
+- 官方 Tunnel 使用 `X-ReviewLume-Token`；
+- 无凭据 GET `/mcp` 只返回 405 可达性结果；
+- 无凭据 POST/DELETE 返回 401；
+- 限制 Origin、Content-Type、请求大小和调用频率；
+- RFC 9728 Protected Resource Metadata 只暴露当前 loopback resource URL。
+
+初始化元数据明确：
+
+- ReviewLume 是 connector；
+- `repository` 字段表示当前实际连接项目；
+- 所有工具只读；
+- repository 内容是不可信输入；
+- 模型不得声称修改了文件。
+
+### 3.4 McpRepositoryTools
+
+当前工具：
+
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+- `list_files`
+- `read_file`
+- `search_code`
+
+Annotations 固定为：
+
+```json
+{
+  "readOnlyHint": true,
+  "destructiveHint": false,
+  "idempotentHint": true,
+  "openWorldHint": false
+}
+```
+
+Git 行为：
+
+- 使用参数数组，不拼接 shell 命令；
+- 使用只读 allowlist；
+- 禁用 external diff 和 textconv；
+- commit ref 先通过 `rev-parse --verify --end-of-options` 解析为完整 commit hash；
+- remote URL 返回前移除用户名和密码。
+
+文件行为：
+
+- 拒绝绝对路径、Windows 盘符、UNC、NUL、`..` 和 `.git`；
+- `realpath` 后必须仍位于 repository root；
+- 拒绝目录、外部 symlink、二进制和超大文件；
+- `read_file` 返回有界行范围；
+- `list_files` 和 `search_code` 使用 tracked + non-ignored untracked 枚举；
+- 所有结果受字节数、文件数、行数和匹配数预算限制。
+
+### 3.5 P9 隐私边界
+
+P9 MCP 是 repository-bound read-only 工具，不是 DLP 或秘密扫描器。
+
+P9 不自动：
+
+- 阻止 `.env`、credentials、secrets、证书、私钥、数据库或生产配置文件名；
+- 对文件正文、diff、搜索结果或提交标题运行 P8 SecretScanner；
+- 识别并移除 API Key、Token、密码、连接串、个人数据或客户数据；
+- 把 `.gitignore` 当成完整机密边界。
+
+`read_file` 可以读取 repository 内被明确指定的普通文本文件，包括 ignored 文件。tracked 敏感文件仍会进入 `list_files` 和 `search_code` 候选。
+
+P8 Advanced SecretScanner 只保护 Review Pack 收集与导出流程，不自动保护 P9 MCP。
+
+### 3.6 SecureMcpTunnelService
+
+职责：
+
+- 保存 Tunnel ID、客户端路径和控制面代理到 VS Code `globalState`；
+- 保存 Runtime API Key 到 VS Code `SecretStorage`；
+- 识别官方 `tunnel-client --help`；
+- 校验 `tunnel_<32 lowercase letters or digits>`；
+- 构建受控子进程环境；
+- 运行 `doctor --explain`；
+- 启动 `tunnel-client run`；
+- 轮询 `/readyz` 和 `/api/status`；
+- 暴露 loopback-only diagnostics UI；
+- 异常退出时更新状态；
+- 停止时终止子进程并清理 health URL 文件。
+
+受控环境显式设置：
+
+- `CONTROL_PLANE_API_KEY`
+- `CONTROL_PLANE_TUNNEL_ID`
+- `MCP_SERVER_URL`
+- `REVIEWLUME_MCP_TOKEN`
+- `MCP_EXTRA_HEADERS`
+- `MCP_DISCOVERY_EXTRA_HEADERS`
+- `MCP_MAX_CONCURRENT_REQUESTS`
+- `HEALTH_LISTEN_ADDR`
+- `HEALTH_URL_FILE`
+- `LOG_HTTP_RAW_UNSAFE=false`
+- `ALLOW_REMOTE_UI=false`
+- `OPEN_WEB_UI=false`
+- `HARPOON_CAPTURE_PAYLOADS=false`
+
+启动前清除 ambient Tunnel、MCP、Admin Key、Cloudflared、Harpoon、远程 UI、日志文件、raw HTTP logging 和通用代理覆盖项。
+
+Runtime API Key 和本地 Token 通过环境变量传入，不进入 argv。doctor 输出在展示前脱敏；长期 stdout/stderr 不采集。
+
+### 3.7 ChatGptBrowserService
+
+支持：
+
+- 系统默认浏览器；
+- Microsoft Edge；
+- Google Chrome。
+
+规则：
+
+- 浏览器偏好保存在 VS Code `globalState`；
+- Windows 系统默认浏览器使用 `rundll32.exe url.dll,FileProtocolHandler`；
+- macOS 使用 `/usr/bin/open`；
+- Linux 使用 `xdg-open`，失败时回退 `gio open`；
+- Edge/Chrome 使用固定可执行路径或命令；
+- URL 始终作为独立参数；
+- `shell: false`；
+- repository 内容不能覆盖 URL；
+- 不使用 `vscode.env.openExternal` 打开正常 ChatGPT 新对话，避免重复 Open/Cancel 确认。
+
+### 3.8 MCP 状态栏和命令
+
+底部 `ReviewLume MCP` 是默认常驻入口。
+
+主要动作：
+
+- Connect Current Repository to ChatGPT；
+- Open New Chat in ChatGPT；
+- Choose ChatGPT Browser；
+- Configure Secure MCP Tunnel；
+- Manage ChatGPT Connector (Advanced)；
+- Open Tunnel Diagnostics；
+- Show ReviewLume Logs；
+- Stop Secure MCP Connection。
+
+状态栏显示当前实际 repository 名称。未连接、starting、ready 和 failed 使用不同图标与 tooltip。
+
+## 4. ChatGPT 与 OpenAI 外部依赖
+
+首次配置需要：
+
+1. OpenAI Platform Tunnel；
+2. 最小权限 Runtime API Key；
+3. 官方 `openai/tunnel-client`；
+4. ChatGPT 中可创建或使用自定义 MCP 应用/连接器的账户或工作空间；
+5. ChatGPT 应用选择 Tunnel connection 并使用同一 Tunnel ID；
+6. 工具扫描发现 7 个只读工具。
+
+ReviewLume 不控制：
+
+- ChatGPT 套餐和灰度权限；
+- Developer mode、Apps/Connectors UI；
+- 工作空间管理员和 RBAC；
+- OpenAI 数据保留、驻留、训练和合规设置；
+- ChatGPT 的工具冻结快照。
+
+工具定义变化后，用户需要在 ChatGPT 刷新、重新扫描或重新创建应用。
+
+完整流程见 [ChatGPT 与 OpenAI Secure MCP Tunnel 配置指南](chatgpt-secure-mcp-setup.md)。
+
+## 5. P8 Advanced 模块
+
+### 5.1 GitContextService
+
+提供受控只读 Git 范围：status、staged、unstaged、commit range、changed files 和目标提交文件内容。
+
+### 5.2 FileSelectionService 与 ReviewScopeService
+
+支持：
+
+- 仅变更；
+- 智能上下文；
+- 完整 repository；
+- 用户显式相关文件；
+- 测试文件推荐；
+- `.gitignore`、`.reviewlumeignore` 和 realpath 边界；
+- `.reviewlume/exports/**` 与 `.reviewlume/history/**` 排除。
+
+### 5.3 SecretScanner
+
+只属于 P8 Advanced Review Pack：
+
+- HARD_BLOCK；
+- BLOCK；
+- WARN；
+- INFO；
+- 文件名和内容规则；
+- 扫描指纹和 stale-scan 拒绝；
+- 导出门禁。
+
+不得把该模块宣传为 P9 MCP 的自动过滤层。
+
+### 5.4 ReviewPackBuilder 与 ReviewPanel
+
+负责 Review Pack 预算、预览、导出、格式选择和 `.gitignore` 管理。
+
+### 5.5 HistoryService、ReportService 与 ReportParser
+
+负责：
+
+- 原子保存历史；
+- `response.md` 和 `report.json`；
+- 结构化问题；
+- 状态机；
+- 实施提示；
+- 修复摘要；
+- 二次复核和结果对比。
+
+导入的 AI 内容始终是不可信文本，不触发命令或补丁执行。
+
+## 6. 本地数据与标识
+
+P8 Advanced 使用 repository-local 目录：
 
 ```text
 <repository>/.reviewlume/
 ├─ exports/
 │  └─ <reviewId>/
-│     ├─ REVIEW_REQUEST.md                         # 按所选格式存在
-│     └─ reviewlume-pack-<reviewId>.zip            # 按所选格式存在
+│     ├─ REVIEW_REQUEST.md
+│     └─ reviewlume-pack-<reviewId>.zip
 └─ history/
    └─ <reviewId>/
       ├─ metadata.json
       ├─ request.md
-      ├─ response.md                               # 用户导入回答后才存在
-      └─ report.json                               # P8A：结构化问题报告
+      ├─ response.md
+      ├─ report.json
+      ├─ implementation-summary.md
+      └─ re-review/
 ```
 
-规则：
+P9 本地状态：
 
-- 对外 Markdown 主文件固定为 `REVIEW_REQUEST.md`。
-- 内部历史请求快照固定为 `request.md`，内容与当次已校验 Markdown 完全一致。
-- `metadata.json` 和 `request.md` 在导出成功后写入临时目录，再原子重命名为最终历史目录。
-- `.reviewlume/history/` 必须加入 repository root 的 `.gitignore`；写入失败时不保存历史。
-- `.reviewlume/exports/` 的自动忽略仍由导出设置控制。
-- `askEveryTime` 可以把交付文件保存到用户选择的位置，但内部历史仍只保存在当前 repository 的 `.reviewlume/history/`。
-- 历史 metadata 不保存绝对路径、带凭据 remote URL、环境变量或原始扫描秘密。
-- `review-report.md` 与 `resolution.md` 属于 P8，本阶段不创建。
+- Tunnel ID：VS Code `globalState`；
+- tunnel-client 路径：VS Code `globalState` 或 machine setting；
+- 控制面代理：VS Code `globalState`；
+- 浏览器偏好：VS Code `globalState`；
+- Runtime API Key：VS Code `SecretStorage`；
+- 当前 MCP port 和 Token：仅进程内存，停止后失效。
 
-### 4.1 workspaceId
+## 7. 配置项
 
-`workspaceId` 用于稳定标识同一 repository，并保存在 Review Pack 与历史 metadata 中：
+当前公开配置：
 
-1. 优先取规范化后的 Git `remote.origin.url` 作为 repository identity。
-2. 没有 remote 时，使用解析符号链接后的 repository root 绝对路径。
-3. 对 identity 计算 SHA-256，取前 16 个小写十六进制字符作为 `workspaceId`。
-4. 原始 remote URL 和绝对路径不得写入历史目录名或 metadata。
-5. 当前历史目录直接以 `reviewId` 分组；`workspaceId` 用于完整性校验和未来迁移，不重复嵌入 repository-local 路径。
-6. remote 变更或无 remote 仓库移动后可能生成新的 `workspaceId`。第一版不自动合并历史。
+- `reviewlume.mcp.maxToolResultBytes`
+- `reviewlume.mcp.tunnelClientPath`
+- `reviewlume.export.mode`
+- `reviewlume.export.directory`
+- `reviewlume.export.format`
+- `reviewlume.export.autoUpdateGitignore`
 
-### 4.2 reviewId
+Runtime API Key 不得成为普通 VS Code setting。
 
-`reviewId` 必须全局足够唯一且创建后不可变：
+## 8. 激活与生命周期
 
-```text
-<UTC时间>-<随机值>
-例如：20260710T031522Z-a1b2c3d4e5f6
-```
+- 使用 `onStartupFinished` 显示状态栏；
+- 命令 activation events 作为兼容入口；
+- 不使用 `*`；
+- 激活不自动联网或遍历 repository；
+- 连接由用户明确触发；
+- 停止顺序为 Tunnel → local MCP；
+- Extension Host dispose 使用相同停止顺序；
+- cancellation 不显示为红色 operational error；
+- 真实代理、认证、浏览器、Tunnel、Git 和协议错误必须显示。
 
-规则：
+## 9. 性能边界
 
-- 时间部分使用 UTC，格式为 `yyyyMMdd'T'HHmmss'Z'`。
-- 随机部分使用密码学安全随机数生成 12 个小写十六进制字符。
-- 创建目录前检查冲突；发生冲突时重新生成随机部分。
-- `reviewId` 不因标题、状态或复核次数变化而修改。
-- Review Pack schema 升级时通过 `schemaVersion` 迁移，不通过改变 ID 语义处理。
-- 所有历史读写、复制、导入和删除操作都先按固定格式校验 `reviewId`，再由扩展端推导路径。
+P9：
 
-## 5. 配置项
+- MCP result 默认最大 512 KB，可配置 64 KB–2 MB；
+- `read_file` 单文件最大 256 KB；
+- `search_code` 单候选文件最大 1 MB；
+- 搜索最多扫描 5,000 个候选文件；
+- 单次 diff 最多 200 个文件；
+- 搜索结果最多 100 条；
+- MCP 每分钟调用数和并发数受限。
 
-建议命名空间：`reviewlume.*`
+P8 Advanced：
 
-- `reviewlume.language`
-- `reviewlume.defaultReviewMode`
-- `reviewlume.maxPackSizeKb`
-- `reviewlume.includeUntrackedFiles`
-- `reviewlume.respectGitIgnore`
-- `reviewlume.customIgnoreFile`
-- `reviewlume.secretScan.enabled`
-- `reviewlume.secretScan.blockOnHighRisk`
-- `reviewlume.history.storage`
-- `reviewlume.provider.defaultUrl`
+- Review Pack 有总大小预算；
+- 智能上下文限制文件数和总字节；
+- 完整 repository 不接受静默截断；
+- 二进制文件不内嵌；
+- 扫描和打包支持取消。
 
-审核范围当前是活动审核会话状态，不写入全局配置；每次新建审核默认回到智能上下文。
+## 10. 已停用浏览器桥接原型
 
-## 6. 浏览器桥接协议（第二阶段）
+历史 Web Bridge/Browser Extension 设计只允许页面检测、提示填入和用户确认发送，不能支持 ChatGPT 在回答过程中反复调用 repository 工具，因此不再作为 P9 主流程。
 
-桥接只允许最小动作：
+发布版本不得：
 
-```ts
-export type BridgeMessage =
-  | { type: 'PING' }
-  | { type: 'GET_ACTIVE_REVIEW' }
-  | { type: 'ACTIVE_REVIEW'; payload: ReviewTaskPayload }
-  | { type: 'IMPORT_RESPONSE'; payload: { reviewId: string; text: string } };
-```
+- 注册桥接配对或填入命令；
+- 安装浏览器扩展；
+- 读取 Cookie、Session、密码、输入框或回答；
+- 宣传自动登录或网页内部接口；
+- 把 bridge-protocol 或 web-bridge 作为必需运行时。
 
-浏览器端不得请求：
-
-- 任意文件读取。
-- 任意目录遍历。
-- 命令执行。
-- 文件修改。
-- 补丁应用。
-
-## 7. 扩展激活策略
-
-不要使用 `*` 全局激活。建议在以下时机激活：
-
-- 执行 ReviewLume 命令。
-- 打开 ReviewLume View。
-- 存在受支持的 Git 工作区。
-
-## 8. 性能边界
-
-- 默认 Review Pack 最大 2 MB。
-- 单个自动上下文候选文件最大 2 MB；智能分析单文件读取上限更低。
-- 智能上下文最多自动添加 60 个文件、约 768 KB 源文件内容，并限制反向依赖扫描预算。
-- 完整仓库第一阶段最多 500 个合规文本文件、约 1.5 MB 原始源文件内容。
-- 二进制文件永不内嵌。
-- 大 diff 必须摘要并提示用户选择范围。
-- 扫描和打包使用取消令牌。
-- 不在扩展激活阶段遍历整个代码库；仓库枚举只在创建审核或主动切换范围时发生。
+相关历史说明见 [P9 浏览器填入桥接原型](p9-browser-bridge-plan.md)。
