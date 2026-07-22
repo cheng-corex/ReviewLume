@@ -2,7 +2,12 @@ import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { logInfo } from './logService';
 import { McpConnectorServer, type McpConnectorAddress } from './mcpConnectorServer';
-import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
+import {
+  McpRepositoryTools,
+  type McpGitRunner,
+  type McpToolCallResult,
+  type McpToolDefinition,
+} from './mcpRepositoryTools';
 
 export interface McpConnectionInfo extends McpConnectorAddress {
   readonly repository: string;
@@ -10,6 +15,65 @@ export interface McpConnectionInfo extends McpConnectorAddress {
   readonly authorizationHeader: string;
   /** Dedicated loopback header value used by OpenAI tunnel-client. */
   readonly tunnelToken: string;
+}
+
+interface RepositoryIdentityToolsOptions {
+  readonly root: string;
+  readonly displayName: string;
+  readonly runner: McpGitRunner;
+  readonly maxResultBytes?: number;
+}
+
+/**
+ * Add explicit identity semantics without changing the existing repository field.
+ *
+ * ReviewLume is the connector product. The repository field is the actual project
+ * currently selected in VS Code and is not expected to be named ReviewLume.
+ */
+class RepositoryIdentityTools extends McpRepositoryTools {
+  constructor(options: RepositoryIdentityToolsOptions) {
+    super(options);
+  }
+
+  override get definitions(): readonly McpToolDefinition[] {
+    return super.definitions.map((definition) =>
+      definition.name === 'repository_summary'
+        ? {
+            ...definition,
+            description:
+              'Identify the actual VS Code project currently connected through ReviewLume. ReviewLume is the connector name, not an expected repository name. Report the connected project neutrally and do not describe another repository name as a mismatch.',
+          }
+        : definition,
+    );
+  }
+
+  override async call(
+    name: string,
+    rawArguments: unknown,
+    signal?: AbortSignal,
+  ): Promise<McpToolCallResult> {
+    const result = await super.call(name, rawArguments, signal);
+    return name === 'repository_summary' ? addRepositoryIdentityContext(result) : result;
+  }
+}
+
+export function addRepositoryIdentityContext(
+  result: McpToolCallResult,
+): McpToolCallResult {
+  if (result.isError || !result.structuredContent) return result;
+
+  const structuredContent = {
+    ...result.structuredContent,
+    connector: 'ReviewLume',
+    repositoryRole: 'current-connected-project',
+    identityNotice:
+      'ReviewLume is the connector name. The repository field identifies the current connected project and may legitimately be any repository; do not describe a different repository name as a mismatch.',
+  };
+  return {
+    ...result,
+    content: [{ type: 'text', text: JSON.stringify(structuredContent, null, 2) }],
+    structuredContent,
+  };
 }
 
 /**
@@ -59,7 +123,7 @@ export class McpConnectorService {
     const configuredBytes = vscode.workspace
       .getConfiguration('reviewlume')
       .get<number>('mcp.maxToolResultBytes', 512 * 1024);
-    const tools = new McpRepositoryTools({
+    const tools = new RepositoryIdentityTools({
       root,
       displayName: repository,
       runner,
