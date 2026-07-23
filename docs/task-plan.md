@@ -133,6 +133,7 @@
 ### 文档与隐私
 
 - [x] README 与当前 P9 主流程一致。
+- [x] Marketplace 打包 README 与实际 P9 可读范围一致。
 - [x] PRIVACY.md 与实际 P9 可读范围一致。
 - [x] SECURITY.md 区分 P9 MCP 与 P8 SecretScanner。
 - [x] 安全与合规、架构、P9 计划和验收清单同步。
@@ -142,10 +143,11 @@
 
 ### 发布准备
 
-- [ ] 确认实际可用的 VS Code Marketplace Publisher ID。
-- [ ] 决定首个公开版本号并同步 package、Changelog 和 VSIX 文件名。
-- [ ] 准备不含密钥、Token、私有路径或源码的截图。
-- [ ] 准备 Marketplace 描述、隐私链接、安全报告链接和第三方免责声明。
+- [x] 创建 VS Code Marketplace Publisher：名称 `ReviewLume`，ID `ReviewLume`。
+- [x] 首个公开版本确定为 `0.2.0`，同步 package、Changelog 和 VSIX 文件名。
+- [x] Marketplace manifest 标记为 Preview、Free。
+- [x] 准备 Marketplace 描述、隐私链接、安全报告链接、第三方免责声明和上传清单。
+- [ ] 准备不含密钥、Token、私有路径、账号信息或源码的截图。
 - [ ] 对最终发布候选运行四平台 CI。
 - [ ] 检查最终 VSIX 内容并记录 SHA-256。
 - [ ] 在 Windows 覆盖安装最终候选并完成连接、工具调用和停止验收。
