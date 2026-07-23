@@ -1,12 +1,14 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.16",
+  "version": "0.2.0",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
-  "publisher": "reviewlume",
+  "publisher": "ReviewLume",
   "private": true,
+  "preview": true,
+  "pricing": "Free",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.100.0"
@@ -54,7 +56,7 @@
     "test": "vitest run",
     "verify:package-contents": "node scripts/validate-package-contents.mjs",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.16.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.2.0.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
