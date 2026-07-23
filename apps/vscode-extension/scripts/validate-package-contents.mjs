@@ -42,7 +42,10 @@ const forbidden = files.filter(
   (file) =>
     /(^|\/)\.env(?:\.|$)/u.test(file) ||
     /(^|\/)\.reviewlume(?:\/|$)/u.test(file) ||
-    file.startsWith('extension/src/') ||
+    file.includes('/src/') ||
+    /(^|\/)(?:__tests__|tests?|benchmarks?)(?:\/|$)/u.test(file) ||
+    /\.(?:ts|tsx|map)$/u.test(file) ||
+    /\.d\.(?:cts|mts)$/u.test(file) ||
     file.endsWith('.tsbuildinfo') ||
     /\.test\.js$/u.test(file) ||
     file === 'extension/dist/commands/browserBridgeCommands.js' ||
