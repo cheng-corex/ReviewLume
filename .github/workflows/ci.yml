@@ -42,18 +42,6 @@ jobs:
       - name: Type check
         run: pnpm typecheck
 
-      - name: Capture release test diagnostics
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == 22
-        run: pnpm test > test-output.log 2>&1 || true
-
-      - name: Upload release test diagnostics
-        if: matrix.os == 'ubuntu-latest' && matrix.node-version == 22
-        uses: actions/upload-artifact@v4
-        with:
-          name: reviewlume-release-test-diagnostics
-          path: test-output.log
-          if-no-files-found: error
-
       - name: Test
         run: pnpm test
 
