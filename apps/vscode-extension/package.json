@@ -1,12 +1,14 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.1.16",
+  "version": "0.2.0",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
-  "publisher": "reviewlume",
+  "publisher": "ReviewLume",
   "private": true,
+  "preview": true,
+  "pricing": "Free",
   "icon": "resources/icon.png",
   "engines": {
     "vscode": "^1.100.0"
@@ -47,14 +49,14 @@
   ],
   "main": "dist/extension.js",
   "scripts": {
-    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.build.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && node -e \"const fs=require('node:fs');const path=require('node:path');fs.mkdirSync('dist/webview/media',{recursive:true});for(const f of ['reviewPanel.js','reviewPanel.css','reviewPanelTheme.css'])fs.copyFileSync('src/webview/media/'+f,'dist/webview/media/'+f);const zodDir=path.dirname(require.resolve('zod/package.json'));fs.cpSync(zodDir,'dist/node_modules/zod',{recursive:true})\"",
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.build.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && node scripts/copy-runtime-assets.mjs",
     "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
     "lint": "eslint src/",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "verify:package-contents": "node scripts/validate-package-contents.mjs",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.1.16.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.2.0.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {

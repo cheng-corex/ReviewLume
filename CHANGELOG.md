@@ -2,6 +2,8 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-07-23
+
 ### Added
 
 - P1 VS Code extension entry and basic interaction:
@@ -107,6 +109,10 @@
   - A public setup guide now documents OpenAI Tunnel creation, least-privilege Runtime API Key
     creation, official tunnel-client download, ChatGPT app/connector setup, tool scanning, daily use,
     revocation, and plan/workspace availability caveats.
+- Marketplace release metadata:
+  - Publisher ID aligned to the created `ReviewLume` Marketplace publisher.
+  - First public package version set to `0.2.0`.
+  - Marketplace listing marked `Preview` and `Free`.
 
 ### Fixed
 

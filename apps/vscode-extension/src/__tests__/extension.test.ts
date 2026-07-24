@@ -8,6 +8,9 @@ import { COMMANDS } from '../constants';
 interface PkgJson {
   name: string;
   version: string;
+  publisher: string;
+  preview?: boolean;
+  pricing?: string;
   activationEvents: string[];
   main: string;
   icon?: string;
@@ -89,10 +92,13 @@ describe('reviewlume-vscode manifest', () => {
     return match ? readNls()[match[1]] ?? value : value;
   };
 
-  it('has valid extension metadata and Restricted Mode support', () => {
+  it('has valid Marketplace metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.1.16');
+    expect(content.version).toBe('0.2.0');
+    expect(content.publisher).toBe('ReviewLume');
+    expect(content.preview).toBe(true);
+    expect(content.pricing).toBe('Free');
     expect(content.main).toBe('dist/extension.js');
     expect(content.repository.url).toBe('https://github.com/cheng-corex/ReviewLume.git');
     expect(content.capabilities?.untrustedWorkspaces?.supported).toBe('limited');
