@@ -24,7 +24,7 @@ interface PkgJson {
   contributes: {
     commands: Array<{ command: string; title: string }>;
     configuration?: {
-      properties?: Record<string, { scope?: string; type?: string }>;
+      properties?: Record<string, { scope?: string; type?: string; default?: unknown }>;
     };
     viewsContainers?: unknown;
     views?: unknown;
@@ -55,6 +55,9 @@ const PUBLIC_COMMANDS = [
   COMMANDS.IMPORT_RE_REVIEW_RESPONSE,
   COMMANDS.VIEW_RE_REVIEW_COMPARISON,
   COMMANDS.OPEN_REVIEW_PANEL,
+  COMMANDS.CONFIGURE_LOCAL_VERIFICATION,
+  COMMANDS.RUN_LOCAL_VERIFICATION,
+  COMMANDS.CLEAR_LOCAL_VERIFICATION,
   COMMANDS.MCP_CONNECTOR_MENU,
   COMMANDS.CONNECT_SECURE_MCP_TUNNEL,
   COMMANDS.CONFIGURE_SECURE_MCP_TUNNEL,
@@ -95,7 +98,7 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid Marketplace metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.2.0');
+    expect(content.version).toBe('0.3.0');
     expect(content.publisher).toBe('ReviewLume');
     expect(content.preview).toBe(true);
     expect(content.pricing).toBe('Free');
@@ -123,6 +126,18 @@ describe('reviewlume-vscode manifest', () => {
     { command: 'reviewlume.importReviewResponse', title: 'Import Review Response' },
     { command: 'reviewlume.updateIssueStatus', title: 'Update Issue Status' },
     { command: 'reviewlume.openReviewPanel', title: 'Open Review Panel' },
+    {
+      command: 'reviewlume.configureLocalVerification',
+      title: 'Configure Local Verification',
+    },
+    {
+      command: 'reviewlume.runLocalVerification',
+      title: 'Run Approved Local Verification',
+    },
+    {
+      command: 'reviewlume.clearLocalVerification',
+      title: 'Clear Local Verification Approval',
+    },
     { command: 'reviewlume.mcpConnectorMenu', title: 'Secure MCP Connector' },
     { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Repository to ChatGPT' },
     {
@@ -153,11 +168,19 @@ describe('reviewlume-vscode manifest', () => {
     });
   }
 
-  it('keeps the tunnel-client path machine-local and does not define credential settings', () => {
+  it('keeps credentials out of settings and declares bounded verification controls', () => {
     const properties = readPkg().contributes.configuration?.properties ?? {};
     expect(properties['reviewlume.mcp.tunnelClientPath']).toMatchObject({
       type: 'string',
       scope: 'machine',
+    });
+    expect(properties['reviewlume.verification.runOnConnect']).toMatchObject({
+      type: 'boolean',
+      default: true,
+    });
+    expect(properties['reviewlume.verification.maxOutputBytes']).toMatchObject({
+      type: 'integer',
+      default: 262144,
     });
     expect(Object.keys(properties).some((key) => /api.?key|token|secret/i.test(key))).toBe(
       false,
@@ -191,6 +214,8 @@ describe('reviewlume-vscode manifest', () => {
     expect(chinese['command.updateIssueStatus']).toContain('更新问题状态');
     expect(english['command.connectSecureMcpTunnel']).toContain('ChatGPT');
     expect(chinese['command.connectSecureMcpTunnel']).toContain('ChatGPT');
+    expect(english['command.configureLocalVerification']).toContain('Local Verification');
+    expect(chinese['command.configureLocalVerification']).toContain('本地验证');
   });
 
   it('packages self-contained Git, scanner, Review Pack, report parser, and Webview runtimes', () => {
@@ -252,7 +277,7 @@ describe('extension activation', () => {
     testing.reset();
   });
 
-  it('registers the status-bar MCP flow and Advanced review commands without an Activity Bar tree', () => {
+  it('registers the status-bar MCP flow, local verification, and Advanced review commands without an Activity Bar tree', () => {
     const context = { subscriptions: [] } as unknown as vscode.ExtensionContext;
     activate(context);
 
