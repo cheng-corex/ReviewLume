@@ -173,7 +173,7 @@ describe('local verification core', () => {
     expect(after.changedFiles).toEqual(['src/current.js']);
   });
 
-  it('keeps approval valid when tests are added but invalidates it when runner configuration changes', async () => {
+  it('keeps approval valid when tests are added but invalidates it when configuration changes', async () => {
     const initial = await discoverVerificationCandidates(root);
     const mocha = initial.find((candidate) => candidate.id === 'mocha-changed');
     const plan = createVerificationPlan(root, [mocha!]);
@@ -191,6 +191,31 @@ describe('local verification core', () => {
     );
     const afterConfigurationChanged = await discoverVerificationCandidates(root);
     expect(validateVerificationPlan(plan, root, afterConfigurationChanged)).toMatchObject({
+      valid: false,
+    });
+  });
+
+  it('invalidates approval when the repository-local runner or lockfile changes', async () => {
+    const initial = await discoverVerificationCandidates(root);
+    const mocha = initial.find((candidate) => candidate.id === 'mocha-changed');
+    const originalPlan = createVerificationPlan(root, [mocha!]);
+
+    await writeFile(
+      path.join(root, 'node_modules', 'mocha', 'bin', 'mocha.js'),
+      'module.exports = "changed runner";\n',
+    );
+    const afterRunnerChanged = await discoverVerificationCandidates(root);
+    expect(validateVerificationPlan(originalPlan, root, afterRunnerChanged)).toMatchObject({
+      valid: false,
+    });
+
+    const changedMocha = afterRunnerChanged.find(
+      (candidate) => candidate.id === 'mocha-changed',
+    );
+    const changedRunnerPlan = createVerificationPlan(root, [changedMocha!]);
+    await writeFile(path.join(root, 'pnpm-lock.yaml'), 'lockfileVersion: 9\n');
+    const afterLockfileAdded = await discoverVerificationCandidates(root);
+    expect(validateVerificationPlan(changedRunnerPlan, root, afterLockfileAdded)).toMatchObject({
       valid: false,
     });
   });
