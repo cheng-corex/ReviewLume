@@ -8,9 +8,13 @@ import {
   type VerificationTargetMode,
 } from './localVerificationTypes';
 
-const MAX_CONFIG_BYTES = 512 * 1024;
+const MAX_CONFIG_BYTES = 4 * 1024 * 1024;
 const CONFIG_FILES = [
   'package.json',
+  'package-lock.json',
+  'npm-shrinkwrap.json',
+  'pnpm-lock.yaml',
+  'yarn.lock',
   'vitest.config.ts',
   'vitest.config.js',
   'vitest.config.mts',
@@ -29,17 +33,20 @@ export async function discoverVerificationCandidates(
 ): Promise<readonly VerificationCandidate[]> {
   const root = await realpath(repositoryRoot);
   const configFingerprint = await fingerprintConfiguration(root);
-  const candidates: VerificationCandidate[] = [candidate({
-    id: 'node-check-changed',
-    label: 'JavaScript syntax check for changed files',
-    description: 'Run node --check once for each changed .js, .cjs, and .mjs file without executing it.',
-    executable: process.execPath,
-    argsPrefix: ['--check'],
-    targetMode: 'changed-javascript',
-    timeoutMs: 30_000,
-    configFingerprint,
-    pickedByDefault: true,
-  })];
+  const candidates: VerificationCandidate[] = [
+    candidate({
+      id: 'node-check-changed',
+      label: 'JavaScript syntax check for changed files',
+      description:
+        'Run node --check once for each changed .js, .cjs, and .mjs file without executing it.',
+      executable: process.execPath,
+      argsPrefix: ['--check'],
+      targetMode: 'changed-javascript',
+      timeoutMs: 30_000,
+      configFingerprint,
+      pickedByDefault: true,
+    }),
+  ];
 
   const runnerCandidates = [
     {
@@ -69,17 +76,20 @@ export async function discoverVerificationCandidates(
   for (const definition of runnerCandidates) {
     const runnerPath = await resolveRepositoryFile(root, definition.relativeRunner);
     if (!runnerPath) continue;
-    candidates.push(candidate({
-      id: definition.id,
-      label: definition.label,
-      description: definition.description,
-      executable: process.execPath,
-      argsPrefix: [runnerPath, ...definition.argsPrefix],
-      targetMode: 'changed-tests',
-      timeoutMs: 10 * 60_000,
-      configFingerprint,
-      pickedByDefault: firstTestRunner,
-    }));
+    candidates.push(
+      candidate({
+        id: definition.id,
+        label: definition.label,
+        description: definition.description,
+        executable: process.execPath,
+        argsPrefix: [runnerPath, ...definition.argsPrefix],
+        targetMode: 'changed-tests',
+        timeoutMs: 10 * 60_000,
+        configFingerprint,
+        runnerFingerprint: await fingerprintFile(runnerPath),
+        pickedByDefault: firstTestRunner,
+      }),
+    );
     firstTestRunner = false;
   }
 
@@ -89,32 +99,40 @@ export async function discoverVerificationCandidates(
     packageJson &&
     /(?:^|[\s"'])node\s+--test(?:[\s"']|$)/i.test(packageJson)
   ) {
-    candidates.push(candidate({
-      id: 'node-test-changed',
-      label: 'Node test runner changed tests',
-      description: 'Run every newly added or modified test file with node --test.',
-      executable: process.execPath,
-      argsPrefix: ['--test'],
-      targetMode: 'changed-tests',
-      timeoutMs: 10 * 60_000,
-      configFingerprint,
-      pickedByDefault: true,
-    }));
+    candidates.push(
+      candidate({
+        id: 'node-test-changed',
+        label: 'Node test runner changed tests',
+        description: 'Run every newly added or modified test file with node --test.',
+        executable: process.execPath,
+        argsPrefix: ['--test'],
+        targetMode: 'changed-tests',
+        timeoutMs: 10 * 60_000,
+        configFingerprint,
+        pickedByDefault: true,
+      }),
+    );
   }
 
-  const typeScriptRunner = await resolveRepositoryFile(root, 'node_modules/typescript/bin/tsc');
+  const typeScriptRunner = await resolveRepositoryFile(
+    root,
+    'node_modules/typescript/bin/tsc',
+  );
   if (typeScriptRunner) {
-    candidates.push(candidate({
-      id: 'typescript-noemit',
-      label: 'TypeScript type check',
-      description: 'Run the repository-local TypeScript compiler with --noEmit.',
-      executable: process.execPath,
-      argsPrefix: [typeScriptRunner, '--noEmit', '--pretty', 'false'],
-      targetMode: 'full-suite',
-      timeoutMs: 10 * 60_000,
-      configFingerprint,
-      pickedByDefault: true,
-    }));
+    candidates.push(
+      candidate({
+        id: 'typescript-noemit',
+        label: 'TypeScript type check',
+        description: 'Run the repository-local TypeScript compiler with --noEmit.',
+        executable: process.execPath,
+        argsPrefix: [typeScriptRunner, '--noEmit', '--pretty', 'false'],
+        targetMode: 'full-suite',
+        timeoutMs: 10 * 60_000,
+        configFingerprint,
+        runnerFingerprint: await fingerprintFile(typeScriptRunner),
+        pickedByDefault: true,
+      }),
+    );
   }
 
   return candidates;
@@ -125,7 +143,9 @@ export function createVerificationPlan(
   candidates: readonly VerificationCandidate[],
   now = new Date(),
 ): VerificationPlan {
-  if (candidates.length === 0) throw new Error('At least one verification rule must be approved.');
+  if (candidates.length === 0) {
+    throw new Error('At least one verification rule must be approved.');
+  }
   return {
     schemaVersion: PLAN_SCHEMA_VERSION,
     repositoryRoot: path.resolve(repositoryRoot),
@@ -157,9 +177,14 @@ export function validateVerificationPlan(
   const byId = new Map(currentCandidates.map((item) => [item.id, item]));
   for (const approved of plan.steps) {
     const current = byId.get(approved.id);
-    if (!current) return { valid: false, reason: `${approved.label} is no longer available.` };
+    if (!current) {
+      return { valid: false, reason: `${approved.label} is no longer available.` };
+    }
     if (current.approvalFingerprint !== approved.approvalFingerprint) {
-      return { valid: false, reason: `${approved.label} changed and must be approved again.` };
+      return {
+        valid: false,
+        reason: `${approved.label} changed and must be approved again.`,
+      };
     }
   }
   return { valid: true };
@@ -190,37 +215,70 @@ function candidate(input: {
   readonly targetMode: VerificationTargetMode;
   readonly timeoutMs: number;
   readonly configFingerprint: string;
+  readonly runnerFingerprint?: string;
   readonly pickedByDefault: boolean;
 }): VerificationCandidate {
   return {
     ...input,
     argsPrefix: [...input.argsPrefix],
-    approvalFingerprint: sha256(JSON.stringify({
-      id: input.id,
-      executable: input.executable,
-      argsPrefix: input.argsPrefix,
-      targetMode: input.targetMode,
-      timeoutMs: input.timeoutMs,
-      configFingerprint: input.configFingerprint,
-    })),
+    approvalFingerprint: sha256(
+      JSON.stringify({
+        id: input.id,
+        executable: input.executable,
+        argsPrefix: input.argsPrefix,
+        targetMode: input.targetMode,
+        timeoutMs: input.timeoutMs,
+        configFingerprint: input.configFingerprint,
+        runnerFingerprint: input.runnerFingerprint,
+      }),
+    ),
   };
 }
 
 async function fingerprintConfiguration(root: string): Promise<string> {
   const values: string[] = [];
   for (const relativePath of CONFIG_FILES) {
-    const content = await readOptionalText(path.join(root, relativePath));
-    if (content !== undefined) values.push(`${relativePath}:${sha256(content)}`);
+    const fingerprint = await fingerprintOptionalFile(path.join(root, relativePath));
+    if (fingerprint !== undefined) values.push(`${relativePath}:${fingerprint}`);
   }
   return sha256(values.sort().join('\n'));
 }
 
-async function resolveRepositoryFile(root: string, relativePath: string): Promise<string | undefined> {
+async function fingerprintFile(filePath: string): Promise<string> {
+  const fingerprint = await fingerprintOptionalFile(filePath);
+  if (fingerprint === undefined) {
+    throw new Error('The approved verification runner is not a readable regular file.');
+  }
+  return fingerprint;
+}
+
+async function fingerprintOptionalFile(filePath: string): Promise<string | undefined> {
+  try {
+    const fileStat = await stat(filePath);
+    if (!fileStat.isFile()) return undefined;
+    if (fileStat.size <= MAX_CONFIG_BYTES) {
+      return sha256(await readFile(filePath));
+    }
+    return `${fileStat.size}:${Math.trunc(fileStat.mtimeMs)}`;
+  } catch {
+    return undefined;
+  }
+}
+
+async function resolveRepositoryFile(
+  root: string,
+  relativePath: string,
+): Promise<string | undefined> {
   const candidatePath = path.resolve(root, normalizeRepositoryRelativePath(relativePath));
   try {
     const resolved = await realpath(candidatePath);
     const relative = path.relative(root, resolved);
-    if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    if (
+      !relative ||
+      relative === '..' ||
+      relative.startsWith(`..${path.sep}`) ||
+      path.isAbsolute(relative)
+    ) {
       throw new Error('Verification runner resolves outside the repository.');
     }
     return resolved;
@@ -241,11 +299,23 @@ async function readOptionalText(filePath: string): Promise<string | undefined> {
 }
 
 function normalizeRepositoryRelativePath(value: string): string {
-  if (!value || value.includes('\0') || path.isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value)) {
+  if (
+    !value ||
+    value.includes('\0') ||
+    path.isAbsolute(value) ||
+    /^[A-Za-z]:[\\/]/.test(value)
+  ) {
     throw new Error('Verification paths must be repository-relative.');
   }
   const normalized = path.posix.normalize(normalizeRepoPath(value));
-  if (!normalized || normalized === '.' || normalized === '..' || normalized.startsWith('../') || normalized === '.git' || normalized.startsWith('.git/')) {
+  if (
+    !normalized ||
+    normalized === '.' ||
+    normalized === '..' ||
+    normalized.startsWith('../') ||
+    normalized === '.git' ||
+    normalized.startsWith('.git/')
+  ) {
     throw new Error('Verification path escapes the repository boundary.');
   }
   return normalized;
@@ -255,6 +325,6 @@ function normalizeRepoPath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\.\//, '');
 }
 
-function sha256(value: string): string {
+function sha256(value: string | Buffer): string {
   return createHash('sha256').update(value).digest('hex');
 }
