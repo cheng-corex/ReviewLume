@@ -3,6 +3,7 @@ import * as path from 'node:path';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
+  captureWorkspaceSnapshot,
   createVerificationPlan,
   detectNoTests,
   discoverVerificationCandidates,
@@ -32,7 +33,7 @@ class FakeGitRunner implements VerificationGitRunner {
       return { stdout: args.includes('--cached') ? '' : `${this.changed.join('\0')}\0` };
     }
     if (args[0] === 'diff') {
-      return { stdout: args.includes('--cached') ? '' : 'diff --git a/x b/x\n' };
+      return { stdout: args.includes('--cached') ? '' : 'M\0src/current.js\0' };
     }
     throw new Error(`Unexpected Git call: ${args.join(' ')}`);
   }
@@ -141,6 +142,35 @@ describe('local verification core', () => {
       ['src/current.js'],
       ['src/second.js'],
     ]);
+  });
+
+  it('uses the real no-shell launcher and catches a syntax error in the second changed file', async () => {
+    await writeFile(path.join(root, 'src', 'second.js'), 'module.exports = ;\n');
+    const candidates = await discoverVerificationCandidates(root);
+    const syntax = candidates.find((candidate) => candidate.id === 'node-check-changed');
+
+    const result = await runVerificationPlan({
+      root,
+      repository: 'fixture',
+      plan: createVerificationPlan(root, [syntax!]),
+      runner: new FakeGitRunner(['src/current.js', 'src/second.js']),
+    });
+
+    expect(result.status).toBe('failed');
+    expect(result.steps).toHaveLength(2);
+    expect(result.steps[0]?.status).toBe('passed');
+    expect(result.steps[1]?.status).toBe('failed');
+    expect(result.steps[1]?.output).toMatch(/SyntaxError|Unexpected token/i);
+  });
+
+  it('changes the workspace fingerprint when changed file content changes', async () => {
+    const runner = new FakeGitRunner(['src/current.js']);
+    const before = await captureWorkspaceSnapshot(root, runner);
+    await writeFile(path.join(root, 'src', 'current.js'), 'module.exports = 99;\n');
+    const after = await captureWorkspaceSnapshot(root, runner);
+
+    expect(after.fingerprint).not.toBe(before.fingerprint);
+    expect(after.changedFiles).toEqual(['src/current.js']);
   });
 
   it('keeps approval valid when tests are added but invalidates it when runner configuration changes', async () => {
