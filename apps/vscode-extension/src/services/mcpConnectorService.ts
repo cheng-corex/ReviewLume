@@ -1,6 +1,8 @@
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { logInfo } from './logService';
+import { createReadOnlyGitRunner } from './gitRuntime';
+import type { LocalVerificationService, VerificationResultReader } from './localVerificationService';
+import { logInfo, logWarn } from './logService';
 import { McpConnectorServer, type McpConnectorAddress } from './mcpConnectorServer';
 import {
   McpRepositoryTools,
@@ -22,21 +24,61 @@ interface RepositoryIdentityToolsOptions {
   readonly displayName: string;
   readonly runner: McpGitRunner;
   readonly maxResultBytes?: number;
+  readonly verification?: VerificationResultReader;
 }
 
+const READ_ONLY_ANNOTATIONS = {
+  readOnlyHint: true,
+  destructiveHint: false,
+  idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+export const VERIFICATION_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
+  {
+    name: 'verification_status',
+    title: 'Local verification status',
+    description:
+      'Read the latest user-approved local verification result for the connected repository, including whether it still matches the current HEAD and working tree. This tool cannot start a process.',
+    inputSchema: { type: 'object', additionalProperties: false },
+    annotations: READ_ONLY_ANNOTATIONS,
+  },
+  {
+    name: 'read_verification_output',
+    title: 'Read local verification output',
+    description:
+      'Read a bounded line range from the sanitized output of one previously completed user-approved verification step. This tool cannot start, retry, or alter a process.',
+    inputSchema: {
+      type: 'object',
+      additionalProperties: false,
+      properties: {
+        stepId: { type: 'string', description: 'Optional verification step ID.' },
+        startLine: { type: 'integer', minimum: 1, default: 1 },
+        endLine: { type: 'integer', minimum: 1 },
+      },
+    },
+    annotations: READ_ONLY_ANNOTATIONS,
+  },
+];
+
 /**
- * Add explicit identity semantics without changing the existing repository field.
- *
- * ReviewLume is the connector product. The repository field is the actual project
- * currently selected in VS Code and is not expected to be named ReviewLume.
+ * Add explicit identity semantics and optional read-only verification evidence
+ * without changing the existing repository field or exposing process execution.
  */
-class RepositoryIdentityTools extends McpRepositoryTools {
+export class RepositoryIdentityTools extends McpRepositoryTools {
+  readonly #root: string;
+  readonly #runner: McpGitRunner;
+  readonly #verification: VerificationResultReader | undefined;
+
   constructor(options: RepositoryIdentityToolsOptions) {
     super(options);
+    this.#root = options.root;
+    this.#runner = options.runner;
+    this.#verification = options.verification;
   }
 
   override get definitions(): readonly McpToolDefinition[] {
-    return super.definitions.map((definition) =>
+    const repositoryDefinitions = super.definitions.map((definition) =>
       definition.name === 'repository_summary'
         ? {
             ...definition,
@@ -45,6 +87,9 @@ class RepositoryIdentityTools extends McpRepositoryTools {
           }
         : definition,
     );
+    return this.#verification
+      ? [...repositoryDefinitions, ...VERIFICATION_TOOL_DEFINITIONS]
+      : repositoryDefinitions;
   }
 
   override async call(
@@ -52,8 +97,40 @@ class RepositoryIdentityTools extends McpRepositoryTools {
     rawArguments: unknown,
     signal?: AbortSignal,
   ): Promise<McpToolCallResult> {
+    if (this.#verification && name === 'verification_status') {
+      return this.#callVerification(() =>
+        this.#verification!.getVerificationStatus(this.#root, this.#runner),
+      );
+    }
+    if (this.#verification && name === 'read_verification_output') {
+      return this.#callVerification(() =>
+        this.#verification!.readVerificationOutput(this.#root, rawArguments, this.#runner),
+      );
+    }
+
     const result = await super.call(name, rawArguments, signal);
     return name === 'repository_summary' ? addRepositoryIdentityContext(result) : result;
+  }
+
+  async #callVerification(
+    operation: () => Promise<Record<string, unknown>>,
+  ): Promise<McpToolCallResult> {
+    try {
+      const structuredContent = await operation();
+      return {
+        content: [{ type: 'text', text: JSON.stringify(structuredContent, null, 2) }],
+        structuredContent,
+        isError: false,
+      };
+    } catch (error) {
+      return {
+        content: [{
+          type: 'text',
+          text: error instanceof Error ? error.message : 'Verification evidence could not be read.',
+        }],
+        isError: true,
+      };
+    }
   }
 }
 
@@ -95,8 +172,13 @@ export function createSafeToolCallObserver(
 
 /** Owns the MCP endpoint for the repository selected in VS Code. */
 export class McpConnectorService {
+  readonly #verification: LocalVerificationService | undefined;
   #server: McpConnectorServer | undefined;
   #connection: McpConnectionInfo | undefined;
+
+  constructor(verification?: LocalVerificationService) {
+    this.#verification = verification;
+  }
 
   get connection(): McpConnectionInfo | undefined {
     return this.#connection;
@@ -107,7 +189,19 @@ export class McpConnectorService {
       throw new Error('ReviewLume MCP requires a trusted VS Code workspace.');
     }
 
-    const runner = createGitRunner();
+    if (this.#verification) {
+      try {
+        await this.#verification.runOnConnect(workspaceFolder);
+      } catch (error) {
+        logWarn(
+          `Local verification could not complete before connection: ${
+            error instanceof Error ? error.message : 'unknown error'
+          }`,
+        );
+      }
+    }
+
+    const runner = createReadOnlyGitRunner();
     const root = (
       await runner.run({
         cwd: workspaceFolder.uri.fsPath,
@@ -128,6 +222,7 @@ export class McpConnectorService {
       displayName: repository,
       runner,
       maxResultBytes: configuredBytes,
+      verification: this.#verification,
     });
     const server = new McpConnectorServer({
       tools,
@@ -159,22 +254,5 @@ export class McpConnectorService {
 
   async dispose(): Promise<void> {
     await this.stop();
-  }
-}
-
-function createGitRunner(): McpGitRunner {
-  type GitContextRuntime = typeof import('../../../../packages/git-context/dist/index.js');
-  try {
-    // Packaged VSIX runtime.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const runtime = require('../vendor/git-context/index.js') as GitContextRuntime;
-    return new runtime.GitCommandRunner();
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code;
-    if (code !== 'MODULE_NOT_FOUND') throw error;
-    // Workspace test/development runtime before the vendor build has run.
-    // eslint-disable-next-line @typescript-eslint/no-var-requires
-    const runtime = require('../../../../packages/git-context/src/index') as GitContextRuntime;
-    return new runtime.GitCommandRunner();
   }
 }
