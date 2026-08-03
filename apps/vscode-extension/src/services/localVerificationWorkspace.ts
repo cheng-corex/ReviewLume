@@ -11,6 +11,7 @@ import type {
 const MAX_CHANGED_FILES = 400;
 const MAX_TARGET_FILES = 200;
 const MAX_FINGERPRINT_FILE_BYTES = 1024 * 1024;
+const MAX_FINGERPRINT_TOTAL_BYTES = 8 * 1024 * 1024;
 
 export async function captureWorkspaceSnapshot(
   root: string,
@@ -18,26 +19,43 @@ export async function captureWorkspaceSnapshot(
   signal?: AbortSignal,
 ): Promise<WorkspaceSnapshot> {
   const safeDiffFlags = ['--no-ext-diff', '--no-textconv', '--no-color'];
-  const [headResult, unstagedResult, stagedResult, untrackedResult] = await Promise.all([
+  const [headResult, unstagedStatus, stagedStatus] = await Promise.all([
     runner.run({ cwd: root, args: ['rev-parse', 'HEAD'], signal }),
-    runner.run({ cwd: root, args: ['diff', ...safeDiffFlags, '--binary'], signal }),
-    runner.run({ cwd: root, args: ['diff', ...safeDiffFlags, '--cached', '--binary'], signal }),
-    runner.run({ cwd: root, args: ['ls-files', '--others', '--exclude-standard', '-z'], signal }),
+    runner.run({ cwd: root, args: ['diff', ...safeDiffFlags, '--name-status', '-z'], signal }),
+    runner.run({
+      cwd: root,
+      args: ['diff', ...safeDiffFlags, '--cached', '--name-status', '-z'],
+      signal,
+    }),
   ]);
 
   const changedFiles = await collectChangedFiles(root, runner, signal);
-  const untracked = splitZeroSeparated(untrackedResult.stdout).slice(0, MAX_CHANGED_FILES);
-  const untrackedDigests: string[] = [];
-  for (const relativePath of untracked) {
+  const fileFingerprints: string[] = [];
+  let remainingContentBudget = MAX_FINGERPRINT_TOTAL_BYTES;
+  for (const relativePath of changedFiles) {
     const resolved = await resolveRepositoryFile(root, relativePath);
-    if (!resolved) continue;
+    if (!resolved) {
+      fileFingerprints.push(`${normalizeRepoPath(relativePath)}:missing`);
+      continue;
+    }
     const fileStat = await stat(resolved);
-    if (!fileStat.isFile()) continue;
-    untrackedDigests.push(
-      fileStat.size <= MAX_FINGERPRINT_FILE_BYTES
-        ? `${normalizeRepoPath(relativePath)}:${sha256(await readFile(resolved))}`
-        : `${normalizeRepoPath(relativePath)}:${fileStat.size}:${Math.trunc(fileStat.mtimeMs)}`,
-    );
+    if (!fileStat.isFile()) {
+      fileFingerprints.push(`${normalizeRepoPath(relativePath)}:not-file`);
+      continue;
+    }
+    if (
+      fileStat.size <= MAX_FINGERPRINT_FILE_BYTES &&
+      fileStat.size <= remainingContentBudget
+    ) {
+      fileFingerprints.push(
+        `${normalizeRepoPath(relativePath)}:${sha256(await readFile(resolved))}`,
+      );
+      remainingContentBudget -= fileStat.size;
+    } else {
+      fileFingerprints.push(
+        `${normalizeRepoPath(relativePath)}:${fileStat.size}:${Math.trunc(fileStat.mtimeMs)}`,
+      );
+    }
   }
 
   const head = headResult.stdout.trim();
@@ -47,9 +65,9 @@ export async function captureWorkspaceSnapshot(
     fingerprint: sha256(
       JSON.stringify({
         head,
-        unstaged: unstagedResult.stdout,
-        staged: stagedResult.stdout,
-        untracked: untrackedDigests.sort(),
+        unstagedStatus: unstagedStatus.stdout,
+        stagedStatus: stagedStatus.stdout,
+        fileFingerprints,
       }),
     ),
   };
