@@ -64,7 +64,9 @@ export class NodeVerificationProcessLauncher implements VerificationProcessLaunc
       child.stdout?.on('data', append);
       child.stderr?.on('data', append);
 
-      const terminate = (): void => { void terminateProcessTree(child); };
+      const terminate = (): void => {
+        void terminateProcessTree(child);
+      };
       const timeout = setTimeout(() => {
         timedOut = true;
         terminate();
@@ -75,7 +77,10 @@ export class NodeVerificationProcessLauncher implements VerificationProcessLaunc
           request.signal.removeEventListener('abort', abortHandler);
         }
       };
-      const finish = (exitCode: number | null, processSignal: NodeJS.Signals | null): void => {
+      const finish = (
+        exitCode: number | null,
+        processSignal: NodeJS.Signals | null,
+      ): void => {
         if (settled) return;
         settled = true;
         cleanup();
@@ -162,13 +167,18 @@ export function sanitizeVerificationOutput(value: string): string {
     .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
     .replace(/(authorization\s*[:=]\s*)\S+/gi, '$1[REDACTED]')
     .replace(/([a-z][a-z0-9+.-]*:\/\/)[^\s/@]+(?::[^\s/@]*)?@/gi, '$1[REDACTED]@')
-    .replace(/\b(api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|private[_-]?key)\b(\s*[:=]\s*)([^\s,;]+)/gi, '$1$2[REDACTED]')
+    .replace(
+      /\b(api[_-]?key|access[_-]?token|refresh[_-]?token|client[_-]?secret|password|passwd|private[_-]?key)\b(\s*[:=]\s*)([^\s,;]+)/gi,
+      '$1$2[REDACTED]',
+    )
     .replace(/\bsk-[A-Za-z0-9_-]{16,}\b/g, '[REDACTED_OPENAI_KEY]')
     .replace(/\b(?:eyJ[A-Za-z0-9_-]{8,}\.){2}[A-Za-z0-9_-]{8,}\b/g, '[REDACTED_JWT]');
 }
 
 export function detectNoTests(output: string): boolean {
-  return /(?:no tests? found|no test files? found|no matching tests?|collected\s+0\s+items|\b0\s+passing\b|\b0\s+tests?\b)/i.test(output);
+  return /(?:no tests? found|no test files? found|no matching tests?|collected\s+0\s+items|\b0\s+passing\b|\b0\s+tests?\b)/i.test(
+    output,
+  );
 }
 
 export function parseVerificationCounts(output: string): VerificationCounts {
@@ -181,7 +191,9 @@ export function parseVerificationCounts(output: string): VerificationCounts {
     const skipped = numberFromMatch(mochaPending);
     return { passed, failed, skipped, total: passed + failed + skipped };
   }
-  const jestLine = /Tests:\s*(?:(\d+)\s+failed,\s*)?(?:(\d+)\s+skipped,\s*)?(?:(\d+)\s+passed,\s*)?(\d+)\s+total/i.exec(output);
+  const jestLine = /Tests:\s*(?:(\d+)\s+failed,\s*)?(?:(\d+)\s+skipped,\s*)?(?:(\d+)\s+passed,\s*)?(\d+)\s+total/i.exec(
+    output,
+  );
   if (jestLine) {
     return {
       failed: Number(jestLine[1] ?? 0),
@@ -190,14 +202,18 @@ export function parseVerificationCounts(output: string): VerificationCounts {
       total: Number(jestLine[4] ?? 0),
     };
   }
-  const vitestLine = /Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(?:(\d+)\s+skipped\s*\|\s*)?(\d+)\s+passed/i.exec(output);
+  const vitestLine = /Tests\s+(?:(\d+)\s+failed\s*\|\s*)?(?:(\d+)\s+skipped\s*\|\s*)?(\d+)\s+passed/i.exec(
+    output,
+  );
   if (vitestLine) {
     const failed = Number(vitestLine[1] ?? 0);
     const skipped = Number(vitestLine[2] ?? 0);
     const passed = Number(vitestLine[3] ?? 0);
     return { failed, skipped, passed, total: failed + skipped + passed };
   }
-  const pytestLine = /(?:^|\s)(\d+)\s+passed(?:,\s*(\d+)\s+failed)?(?:,\s*(\d+)\s+skipped)?/i.exec(output);
+  const pytestLine = /(?:^|\s)(\d+)\s+passed(?:,\s*(\d+)\s+failed)?(?:,\s*(\d+)\s+skipped)?/i.exec(
+    output,
+  );
   if (pytestLine) {
     const passed = Number(pytestLine[1] ?? 0);
     const failed = Number(pytestLine[2] ?? 0);
@@ -208,9 +224,35 @@ export function parseVerificationCounts(output: string): VerificationCounts {
 }
 
 function buildVerificationEnvironment(source: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
-  const allowed = ['PATH', 'Path', 'PATHEXT', 'SystemRoot', 'WINDIR', 'COMSPEC', 'HOME', 'USERPROFILE', 'TEMP', 'TMP', 'TMPDIR', 'LANG', 'LC_ALL', 'NUMBER_OF_PROCESSORS', 'PROCESSOR_ARCHITECTURE'] as const;
-  const env: NodeJS.ProcessEnv = { CI: '1', NO_COLOR: '1', FORCE_COLOR: '0', NODE_ENV: 'test' };
-  for (const name of allowed) if (source[name] !== undefined) env[name] = source[name];
+  const allowed = [
+    'PATH',
+    'Path',
+    'PATHEXT',
+    'SystemRoot',
+    'WINDIR',
+    'COMSPEC',
+    'HOME',
+    'USERPROFILE',
+    'TEMP',
+    'TMP',
+    'TMPDIR',
+    'LANG',
+    'LC_ALL',
+    'NUMBER_OF_PROCESSORS',
+    'PROCESSOR_ARCHITECTURE',
+  ] as const;
+  const env: NodeJS.ProcessEnv = {
+    CI: '1',
+    NO_COLOR: '1',
+    FORCE_COLOR: '0',
+    NODE_ENV: 'test',
+    // VS Code's extension host may expose Electron/Code as process.execPath.
+    // This makes that same trusted executable behave as Node without searching PATH.
+    ELECTRON_RUN_AS_NODE: '1',
+  };
+  for (const name of allowed) {
+    if (source[name] !== undefined) env[name] = source[name];
+  }
   return env;
 }
 
@@ -229,10 +271,18 @@ async function terminateProcessTree(child: ChildProcess): Promise<void> {
     await new Promise<void>((resolve) => killer.once('close', () => resolve()));
     return;
   }
-  try { process.kill(-pid, 'SIGTERM'); } catch { child.kill('SIGTERM'); }
+  try {
+    process.kill(-pid, 'SIGTERM');
+  } catch {
+    child.kill('SIGTERM');
+  }
   await new Promise((resolve) => setTimeout(resolve, PROCESS_STOP_GRACE_MS));
   if (child.exitCode === null && child.signalCode === null) {
-    try { process.kill(-pid, 'SIGKILL'); } catch { child.kill('SIGKILL'); }
+    try {
+      process.kill(-pid, 'SIGKILL');
+    } catch {
+      child.kill('SIGKILL');
+    }
   }
 }
 
