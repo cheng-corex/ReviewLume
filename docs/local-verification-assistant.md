@@ -86,8 +86,8 @@ Only existing regular files inside the bound repository are passed to a runner. 
 Before and after a run, ReviewLume captures:
 
 - HEAD SHA;
-- staged and unstaged binary-safe Git diffs with external diff and text conversion disabled;
-- non-ignored untracked paths and bounded content fingerprints;
+- staged and unstaged Git name/status data with external diff and text conversion disabled;
+- bounded fingerprints for changed tracked and non-ignored untracked files, with a per-file and total content-hash budget;
 - the list of changed files supplied to verification discovery.
 
 The stored result is marked stale when the current fingerprint differs. A result also records whether the repository changed while the process was running.
