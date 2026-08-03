@@ -18,22 +18,27 @@ export async function captureWorkspaceSnapshot(
   runner: VerificationGitRunner,
   signal?: AbortSignal,
 ): Promise<WorkspaceSnapshot> {
+  const repositoryRoot = await realpath(root);
   const safeDiffFlags = ['--no-ext-diff', '--no-textconv', '--no-color'];
   const [headResult, unstagedStatus, stagedStatus] = await Promise.all([
-    runner.run({ cwd: root, args: ['rev-parse', 'HEAD'], signal }),
-    runner.run({ cwd: root, args: ['diff', ...safeDiffFlags, '--name-status', '-z'], signal }),
+    runner.run({ cwd: repositoryRoot, args: ['rev-parse', 'HEAD'], signal }),
     runner.run({
-      cwd: root,
+      cwd: repositoryRoot,
+      args: ['diff', ...safeDiffFlags, '--name-status', '-z'],
+      signal,
+    }),
+    runner.run({
+      cwd: repositoryRoot,
       args: ['diff', ...safeDiffFlags, '--cached', '--name-status', '-z'],
       signal,
     }),
   ]);
 
-  const changedFiles = await collectChangedFiles(root, runner, signal);
+  const changedFiles = await collectChangedFiles(repositoryRoot, runner, signal);
   const fileFingerprints: string[] = [];
   let remainingContentBudget = MAX_FINGERPRINT_TOTAL_BYTES;
   for (const relativePath of changedFiles) {
-    const resolved = await resolveRepositoryFile(root, relativePath);
+    const resolved = await resolveRepositoryFile(repositoryRoot, relativePath);
     if (!resolved) {
       fileFingerprints.push(`${normalizeRepoPath(relativePath)}:missing`);
       continue;
@@ -78,11 +83,24 @@ export async function collectChangedFiles(
   runner: VerificationGitRunner,
   signal?: AbortSignal,
 ): Promise<readonly string[]> {
+  const repositoryRoot = await realpath(root);
   const safeDiffFlags = ['--no-ext-diff', '--no-textconv', '--no-color'];
   const [unstaged, staged, untracked] = await Promise.all([
-    runner.run({ cwd: root, args: ['diff', ...safeDiffFlags, '--name-only', '-z'], signal }),
-    runner.run({ cwd: root, args: ['diff', ...safeDiffFlags, '--cached', '--name-only', '-z'], signal }),
-    runner.run({ cwd: root, args: ['ls-files', '--others', '--exclude-standard', '-z'], signal }),
+    runner.run({
+      cwd: repositoryRoot,
+      args: ['diff', ...safeDiffFlags, '--name-only', '-z'],
+      signal,
+    }),
+    runner.run({
+      cwd: repositoryRoot,
+      args: ['diff', ...safeDiffFlags, '--cached', '--name-only', '-z'],
+      signal,
+    }),
+    runner.run({
+      cwd: repositoryRoot,
+      args: ['ls-files', '--others', '--exclude-standard', '-z'],
+      signal,
+    }),
   ]);
   return [
     ...new Set(
@@ -103,11 +121,12 @@ export async function selectVerificationTargets(
   targetMode: VerificationTargetMode,
 ): Promise<readonly string[]> {
   if (targetMode === 'full-suite') return [];
+  const repositoryRoot = await realpath(root);
   const predicate = targetMode === 'changed-tests' ? isTestFile : isJavaScriptFile;
   const selected: string[] = [];
   for (const relativePath of changedFiles) {
     if (!predicate(relativePath)) continue;
-    const resolved = await resolveRepositoryFile(root, relativePath);
+    const resolved = await resolveRepositoryFile(repositoryRoot, relativePath);
     if (!resolved) continue;
     const fileStat = await stat(resolved);
     if (!fileStat.isFile()) continue;
@@ -118,13 +137,16 @@ export async function selectVerificationTargets(
 }
 
 async function resolveRepositoryFile(
-  root: string,
+  canonicalRoot: string,
   relativePath: string,
 ): Promise<string | undefined> {
-  const candidatePath = path.resolve(root, normalizeRepositoryRelativePath(relativePath));
+  const candidatePath = path.resolve(
+    canonicalRoot,
+    normalizeRepositoryRelativePath(relativePath),
+  );
   try {
     const resolved = await realpath(candidatePath);
-    const relative = path.relative(root, resolved);
+    const relative = path.relative(canonicalRoot, resolved);
     if (
       !relative ||
       relative === '..' ||
