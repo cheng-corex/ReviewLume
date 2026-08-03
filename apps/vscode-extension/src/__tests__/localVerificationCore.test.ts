@@ -69,9 +69,16 @@ describe('local verification core', () => {
       JSON.stringify({ name: 'fixture', devDependencies: { mocha: '^11.0.0' } }),
     );
     await writeFile(path.join(root, 'node_modules', 'mocha', 'bin', 'mocha.js'), '');
-    await writeFile(path.join(root, 'test', 'runtime', 'first.test.js'), 'it("first", () => {});\n');
-    await writeFile(path.join(root, 'test', 'runtime', 'second.test.js'), 'it("second", () => {});\n');
+    await writeFile(
+      path.join(root, 'test', 'runtime', 'first.test.js'),
+      'it("first", () => {});\n',
+    );
+    await writeFile(
+      path.join(root, 'test', 'runtime', 'second.test.js'),
+      'it("second", () => {});\n',
+    );
     await writeFile(path.join(root, 'src', 'current.js'), 'module.exports = 1;\n');
+    await writeFile(path.join(root, 'src', 'second.js'), 'module.exports = 2;\n');
   });
 
   afterEach(async () => {
@@ -110,12 +117,41 @@ describe('local verification core', () => {
     expect(result.steps[0]?.counts).toMatchObject({ passed: 2, failed: 0, total: 2 });
   });
 
+  it('checks each changed JavaScript file in a separate node process', async () => {
+    const candidates = await discoverVerificationCandidates(root);
+    const syntax = candidates.find((candidate) => candidate.id === 'node-check-changed');
+    expect(syntax).toBeDefined();
+    const launcher = new FakeLauncher();
+    launcher.result = { ...launcher.result, output: '' };
+
+    const result = await runVerificationPlan({
+      root,
+      repository: 'fixture',
+      plan: createVerificationPlan(root, [syntax!]),
+      runner: new FakeGitRunner(['src/current.js', 'src/second.js']),
+      launcher,
+    });
+
+    expect(result.status).toBe('passed');
+    expect(launcher.requests.map((request) => request.args)).toEqual([
+      ['--check', 'src/current.js'],
+      ['--check', 'src/second.js'],
+    ]);
+    expect(result.steps.map((step) => step.requestedTargets)).toEqual([
+      ['src/current.js'],
+      ['src/second.js'],
+    ]);
+  });
+
   it('keeps approval valid when tests are added but invalidates it when runner configuration changes', async () => {
     const initial = await discoverVerificationCandidates(root);
     const mocha = initial.find((candidate) => candidate.id === 'mocha-changed');
     const plan = createVerificationPlan(root, [mocha!]);
 
-    await writeFile(path.join(root, 'test', 'runtime', 'third.test.js'), 'it("third", () => {});\n');
+    await writeFile(
+      path.join(root, 'test', 'runtime', 'third.test.js'),
+      'it("third", () => {});\n',
+    );
     const afterTestAdded = await discoverVerificationCandidates(root);
     expect(validateVerificationPlan(plan, root, afterTestAdded)).toEqual({ valid: true });
 
