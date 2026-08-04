@@ -11,9 +11,11 @@ import { registerImportReReviewResponse } from './commands/importReReviewRespons
 import { registerUpdateIssueStatus } from './commands/updateIssueStatus';
 import { registerReviewLoopCommands } from './commands/reviewLoopCommands';
 import { registerViewReReviewComparison } from './commands/viewReReviewComparison';
+import { registerLocalVerificationCommands } from './commands/localVerificationCommands';
 import { registerMcpConnectorCommands } from './commands/mcpConnectorCommands';
 import { FileSelectionService } from './services/fileSelectionService';
 import { LazyFileSelectionGitRunner } from './services/lazyFileSelectionGitRunner';
+import { LocalVerificationService } from './services/localVerificationService';
 import { McpConnectorService } from './services/mcpConnectorService';
 import { ReviewScopeService } from './services/reviewScopeService';
 import { SecurityReviewService } from './services/securityReviewService';
@@ -43,7 +45,8 @@ export function activate(context: vscode.ExtensionContext): void {
     undefined,
     reviewScopeService,
   );
-  const mcpConnectorService = new McpConnectorService();
+  const localVerificationService = new LocalVerificationService(context);
+  const mcpConnectorService = new McpConnectorService(localVerificationService);
   const secureMcpTunnelService = new SecureMcpTunnelService(context);
   context.subscriptions.push({
     dispose: () => {
@@ -86,6 +89,7 @@ export function activate(context: vscode.ExtensionContext): void {
   registerUpdateIssueStatus(context, fileSelectionService);
   registerReviewLoopCommands(context);
   registerViewReReviewComparison(context);
+  registerLocalVerificationCommands(context, localVerificationService);
   registerMcpConnectorCommands(context, mcpConnectorService, secureMcpTunnelService);
 
   logInfo('ReviewLume extension activated');

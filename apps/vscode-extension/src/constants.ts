@@ -35,6 +35,12 @@ export const COMMANDS = {
   VIEW_RE_REVIEW_COMPARISON: 'reviewlume.viewReReviewComparison',
   /** Open the review panel Webview (P6) */
   OPEN_REVIEW_PANEL: 'reviewlume.openReviewPanel',
+  /** Approve repository-local fixed verification rules. */
+  CONFIGURE_LOCAL_VERIFICATION: 'reviewlume.configureLocalVerification',
+  /** Run the previously approved repository-local verification rules. */
+  RUN_LOCAL_VERIFICATION: 'reviewlume.runLocalVerification',
+  /** Remove the repository-local verification approval and stored result. */
+  CLEAR_LOCAL_VERIFICATION: 'reviewlume.clearLocalVerification',
   /** Open the primary read-only MCP action menu. */
   MCP_CONNECTOR_MENU: 'reviewlume.mcpConnectorMenu',
   /** One-click start: local MCP, official Secure MCP Tunnel, and ChatGPT connectors. */

@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -20,7 +20,7 @@
     }
   },
   "categories": ["Other", "Visualization"],
-  "keywords": ["code review", "git diff", "ai review", "mcp", "privacy"],
+  "keywords": ["code review", "git diff", "ai review", "mcp", "privacy", "testing"],
   "activationEvents": [
     "onStartupFinished",
     "onCommand:reviewlume.hello",
@@ -39,6 +39,9 @@
     "onCommand:reviewlume.importReReviewResponse",
     "onCommand:reviewlume.viewReReviewComparison",
     "onCommand:reviewlume.openReviewPanel",
+    "onCommand:reviewlume.configureLocalVerification",
+    "onCommand:reviewlume.runLocalVerification",
+    "onCommand:reviewlume.clearLocalVerification",
     "onCommand:reviewlume.mcpConnectorMenu",
     "onCommand:reviewlume.connectSecureMcpTunnel",
     "onCommand:reviewlume.configureSecureMcpTunnel",
@@ -56,7 +59,7 @@
     "test": "vitest run",
     "verify:package-contents": "node scripts/validate-package-contents.mjs",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.2.0.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.3.0.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
@@ -77,6 +80,9 @@
       { "command": "reviewlume.importReReviewResponse", "title": "%command.importReReviewResponse%" },
       { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
       { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" },
+      { "command": "reviewlume.configureLocalVerification", "title": "%command.configureLocalVerification%" },
+      { "command": "reviewlume.runLocalVerification", "title": "%command.runLocalVerification%" },
+      { "command": "reviewlume.clearLocalVerification", "title": "%command.clearLocalVerification%" },
       { "command": "reviewlume.mcpConnectorMenu", "title": "%command.mcpConnectorMenu%" },
       { "command": "reviewlume.connectSecureMcpTunnel", "title": "%command.connectSecureMcpTunnel%" },
       { "command": "reviewlume.configureSecureMcpTunnel", "title": "%command.configureSecureMcpTunnel%" },
@@ -100,6 +106,18 @@
           "scope": "machine",
           "default": "",
           "description": "%config.mcp.tunnelClientPath.description%"
+        },
+        "reviewlume.verification.runOnConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.verification.runOnConnect.description%"
+        },
+        "reviewlume.verification.maxOutputBytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 1048576,
+          "default": 262144,
+          "description": "%config.verification.maxOutputBytes.description%"
         },
         "reviewlume.export.mode": {
           "type": "string",

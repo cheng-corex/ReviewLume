@@ -2,6 +2,36 @@
 
 ## [Unreleased]
 
+### Added
+
+- ReviewLume 0.3.0 local verification assistant:
+  - Trusted Workspace users can approve fixed repository-local verification rules once per Git repository.
+  - Newly added or modified matching tests are automatically included in later runs without approving each file again.
+  - Supported first-release entry points are repository-local Vitest, Jest, Mocha, Node test, TypeScript `tsc --noEmit`, and per-file `node --check` for changed JavaScript.
+  - The launcher uses `spawn(executable, argv)` with `shell: false`, a reduced environment, bounded output, timeout, cancellation, and process-tree termination.
+  - Approval fingerprints invalidate when the repository-local runner or relevant package/test/TypeScript configuration changes.
+  - Results are bound to HEAD, staged and unstaged Git name/status data, and bounded changed-file fingerprints; mismatched evidence is reported as stale.
+  - Verification approvals and bounded sanitized output are stored in VS Code extension storage rather than the selected repository.
+- Two additional read-only MCP evidence tools:
+  - `verification_status`
+  - `read_verification_output`
+  - Both explicitly report `mcpCanStartProcesses: false`; ChatGPT cannot start, retry, alter, or compose a verification command.
+- VS Code commands for configuring, running, and clearing repository-local verification approvals.
+- Windows F5 acceptance checklist and detailed execution, privacy, and security documentation.
+
+### Security
+
+- ReviewLume still exposes no MCP shell, terminal, arbitrary command runner, process-start, file write, delete, patch, or Git-mutation tool.
+- Local verification never runs package scripts, `npx`, downloaded runners, AI responses, repository instructions, or commands found in test output.
+- Repository roots and targets are canonicalized before boundary checks on Windows, macOS, and Linux.
+- Verification output is size-limited, ANSI-cleaned, and redacted for common credential patterns on a best-effort basis.
+- Explicit zero-test/no-test results are reported as inconclusive rather than passed.
+
+### Limitations
+
+- Local verification executes untrusted repository test code and is not a sandbox; tests can still modify files, start child processes, access the network, or contact local services.
+- The first release does not support Python, Maven, Gradle, .NET, Go, containers, databases, custom integration environments, or arbitrary user-defined commands.
+
 ## [0.2.0] - 2026-07-23
 
 ### Added
