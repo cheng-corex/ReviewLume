@@ -449,17 +449,17 @@ async function resolveNodeModuleFile(
   packageRoot: string,
   moduleRelativePath: string,
 ): Promise<string | undefined> {
-  let current = packageRoot;
-  while (true) {
+  let current: string | undefined = packageRoot;
+  while (current !== undefined) {
     const candidatePath = path.join(current, 'node_modules', ...moduleRelativePath.split('/'));
     const relativePath = normalizeRepoPath(path.relative(root, candidatePath));
     const resolved = await resolveRepositoryFile(root, relativePath);
     if (resolved) return resolved;
     if (normalizeComparablePath(current) === normalizeComparablePath(root)) return undefined;
     const parent = path.dirname(current);
-    if (parent === current || !isWithinRoot(root, parent)) return undefined;
-    current = parent;
+    current = parent === current || !isWithinRoot(root, parent) ? undefined : parent;
   }
+  return undefined;
 }
 
 async function resolvePackageFile(
