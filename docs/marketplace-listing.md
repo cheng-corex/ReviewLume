@@ -6,7 +6,7 @@
 - Publisher ID: `ReviewLume`
 - Extension name: `reviewlume-vscode`
 - Full extension ID: `ReviewLume.reviewlume-vscode`
-- Public version: `0.3.0`
+- Public candidate version: `0.3.1`
 - Release channel: Preview
 - Pricing: Free
 
@@ -24,7 +24,7 @@ ReviewLume is a privacy-aware VS Code extension for AI-assisted code review. It 
 
 ChatGPT can inspect repository identity, Git status, recent commits, bounded diffs, file paths, text excerpts, literal search matches, and completed local-verification evidence. ReviewLume does not expose shell execution, terminal access, process-start commands, file writes, deletion, patch application, or Git mutation commands through MCP.
 
-Version 0.3.0 adds an optional local verification assistant. In a Trusted Workspace, the user may approve fixed repository-local verification rules. Matching added or modified tests are discovered automatically on later runs. Verification is controlled by VS Code, not ChatGPT. ChatGPT can only read completed, bounded, sanitized evidence through two read-only MCP tools and cannot start, retry, alter, or compose a command.
+Version 0.3.1 improves the optional local verification assistant for monorepos and nested packages. In a Trusted Workspace, the user may approve fixed repository-local verification rules for package roots such as `server/`, `client/`, or `packages/*`. Matching added or modified tests are discovered automatically on later runs. Each rule records its package working directory. ChatGPT can only read completed, bounded, sanitized evidence and cannot start, retry, alter, or compose a command.
 
 ReviewLume is an independent open-source project and is not affiliated with or endorsed by OpenAI, Microsoft, Anthropic, Google, or other service providers.
 
@@ -60,7 +60,7 @@ All nine tools are declared read-only, non-destructive, idempotent, and closed-w
 
 ## Optional local verification
 
-The first 0.3.0 Preview supports fixed repository-local entry points for:
+The 0.3.1 Preview supports fixed repository-local entry points for:
 
 - Vitest;
 - Jest;
@@ -69,9 +69,11 @@ The first 0.3.0 Preview supports fixed repository-local entry points for:
 - TypeScript `tsc --noEmit`;
 - per-file `node --check` for added or modified `.js`, `.cjs`, and `.mjs` files.
 
+ReviewLume discovers bounded nested package roots, skips dependency and generated-output directories, and can use either a package-local runner or a dependency-hoisted runner that still resolves inside the bound Git repository. Changed tests are scoped to the approved package and passed as package-relative argv entries.
+
 ReviewLume does not run arbitrary package scripts, `npx`, downloaded runners, AI responses, repository instructions, or commands found in test output. It launches an executable with an argv array and `shell: false`.
 
-Approval is bound to one canonical Git repository and to the executable, fixed arguments, target mode, timeout, relevant configuration, package-manager lockfile, and repository-local runner content. Boundary changes invalidate approval and require the user to approve again. Adding or modifying matching tests does not require per-file approval.
+Approval is bound to one canonical Git repository and to the executable, fixed arguments, package working directory, target mode, timeout, relevant configuration, package-manager lockfiles, and repository-local runner content. Boundary changes invalidate approval and require the user to approve again. Approvals created by 0.3.0 are invalidated because they did not bind a package working directory.
 
 Local verification is not a sandbox. Test code may modify files, start child processes, access the network, read environment data, or contact local services. Users must inspect the approval dialog and run only repositories and tests they trust.
 
@@ -125,27 +127,22 @@ All screenshots must use a test repository and must not contain real tokens, Tun
 
 1. VS Code status bar showing `ReviewLume MCP` stopped.
 2. ReviewLume MCP menu with the main connect/configure/diagnostics actions.
-3. Local verification approval dialog using a synthetic repository.
-4. A completed local verification result with synthetic output.
-5. Connected status showing a neutral test repository name.
-6. ChatGPT conversation showing a read-only review result with tool calls collapsed or sanitized.
-7. Optional P8 Advanced Review Panel using synthetic files and findings.
-
-Recommended size: 1280×720 or larger PNG. Crop personal account details and browser profile information.
+3. Local verification picker showing a synthetic nested package and its working directory.
+4. Approval dialog with one localized cancel action.
+5. A completed local verification result with synthetic output.
+6. ChatGPT conversation showing a read-only result with tool calls collapsed or sanitized.
 
 ## Upload checklist
 
 - [ ] Publisher ID in the VSIX is exactly `ReviewLume`.
-- [ ] Extension version is `0.3.0`.
+- [ ] Extension version is `0.3.1`.
 - [ ] Marketplace Preview and Free metadata are present.
 - [ ] Four-platform CI is green for the exact release head.
 - [ ] VSIX content validation is green.
 - [ ] Final VSIX SHA-256 is recorded.
 - [ ] The exact final VSIX is installed successfully on Windows.
-- [ ] Local-verification approval, automatic test discovery, failure, zero-test, cancellation, stale-state, and clear-approval flows are accepted on Windows.
+- [ ] Nested package discovery, package cwd, automatic test inclusion, failure, zero-test, cancellation, stale-state, approval invalidation, and clear-approval flows are accepted on Windows.
+- [ ] The approval dialog has no duplicate cancel button and uses accurate rule-specific wording.
 - [ ] ChatGPT sees nine read-only tools and cannot start a process.
-- [ ] System default browser opens ChatGPT without the VS Code Open/Cancel prompt.
-- [ ] A real read-only ChatGPT project check succeeds.
-- [ ] Stopping the connection removes the local endpoint and tunnel process.
 - [ ] Marketplace screenshots contain no private information.
 - [ ] The same byte-identical VSIX is used for GitHub prerelease and Marketplace upload.
