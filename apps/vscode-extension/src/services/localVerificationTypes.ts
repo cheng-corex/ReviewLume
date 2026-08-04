@@ -1,4 +1,4 @@
-export const PLAN_SCHEMA_VERSION = 1;
+export const PLAN_SCHEMA_VERSION = 2;
 export const DEFAULT_OUTPUT_BYTES = 256 * 1024;
 
 export interface VerificationGitRunner {
@@ -17,6 +17,7 @@ export interface VerificationCandidate {
   readonly description: string;
   readonly executable: string;
   readonly argsPrefix: readonly string[];
+  readonly workingDirectory: string;
   readonly targetMode: VerificationTargetMode;
   readonly timeoutMs: number;
   readonly approvalFingerprint: string;
@@ -28,6 +29,7 @@ export interface ApprovedVerificationStep {
   readonly label: string;
   readonly executable: string;
   readonly argsPrefix: readonly string[];
+  readonly workingDirectory: string;
   readonly targetMode: VerificationTargetMode;
   readonly timeoutMs: number;
   readonly approvalFingerprint: string;

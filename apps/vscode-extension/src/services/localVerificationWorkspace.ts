@@ -119,21 +119,54 @@ export async function selectVerificationTargets(
   root: string,
   changedFiles: readonly string[],
   targetMode: VerificationTargetMode,
+  workingDirectory = '.',
 ): Promise<readonly string[]> {
   if (targetMode === 'full-suite') return [];
   const repositoryRoot = await realpath(root);
+  const executionRoot = await resolveVerificationWorkingDirectory(
+    repositoryRoot,
+    workingDirectory,
+  );
+  const normalizedWorkingDirectory = normalizeWorkingDirectory(workingDirectory);
   const predicate = targetMode === 'changed-tests' ? isTestFile : isJavaScriptFile;
   const selected: string[] = [];
-  for (const relativePath of changedFiles) {
-    if (!predicate(relativePath)) continue;
-    const resolved = await resolveRepositoryFile(repositoryRoot, relativePath);
-    if (!resolved) continue;
+
+  for (const repositoryRelativePath of changedFiles) {
+    const normalizedRepositoryPath = normalizeRepositoryRelativePath(repositoryRelativePath);
+    const executionRelativePath = relativeToWorkingDirectory(
+      normalizedRepositoryPath,
+      normalizedWorkingDirectory,
+    );
+    if (!executionRelativePath || !predicate(executionRelativePath)) continue;
+
+    const resolved = await resolveRepositoryFile(repositoryRoot, normalizedRepositoryPath);
+    if (!resolved || !isWithinRoot(executionRoot, resolved)) continue;
     const fileStat = await stat(resolved);
     if (!fileStat.isFile()) continue;
-    selected.push(normalizeRepoPath(relativePath));
+    selected.push(executionRelativePath);
     if (selected.length >= MAX_TARGET_FILES) break;
   }
   return selected;
+}
+
+export async function resolveVerificationWorkingDirectory(
+  canonicalRoot: string,
+  workingDirectory: string,
+): Promise<string> {
+  const normalized = normalizeWorkingDirectory(workingDirectory);
+  const candidatePath =
+    normalized === '.'
+      ? canonicalRoot
+      : path.resolve(canonicalRoot, ...normalized.split('/'));
+  const resolved = await realpath(candidatePath);
+  if (!isWithinRoot(canonicalRoot, resolved)) {
+    throw new Error('Verification working directory resolves outside the repository.');
+  }
+  const directoryStat = await stat(resolved);
+  if (!directoryStat.isDirectory()) {
+    throw new Error('Verification working directory is not a directory.');
+  }
+  return resolved;
 }
 
 async function resolveRepositoryFile(
@@ -146,13 +179,7 @@ async function resolveRepositoryFile(
   );
   try {
     const resolved = await realpath(candidatePath);
-    const relative = path.relative(canonicalRoot, resolved);
-    if (
-      !relative ||
-      relative === '..' ||
-      relative.startsWith(`..${path.sep}`) ||
-      path.isAbsolute(relative)
-    ) {
+    if (!isWithinRoot(canonicalRoot, resolved) || samePath(canonicalRoot, resolved)) {
       throw new Error('Verification target resolves outside the repository.');
     }
     return resolved;
@@ -162,6 +189,22 @@ async function resolveRepositoryFile(
   }
 }
 
+function relativeToWorkingDirectory(
+  repositoryRelativePath: string,
+  workingDirectory: string,
+): string | undefined {
+  if (workingDirectory === '.') return repositoryRelativePath;
+  const prefix = `${workingDirectory}/`;
+  if (!repositoryRelativePath.startsWith(prefix)) return undefined;
+  const relativePath = repositoryRelativePath.slice(prefix.length);
+  return relativePath ? normalizeRepositoryRelativePath(relativePath) : undefined;
+}
+
+function normalizeWorkingDirectory(value: string): string {
+  if (value === '.') return '.';
+  return normalizeRepositoryRelativePath(value);
+}
+
 function normalizeRepositoryRelativePath(value: string): string {
   if (!value || value.includes('\0') || path.isAbsolute(value) || /^[A-Za-z]:[\\/]/.test(value)) {
     throw new Error('Verification paths must be repository-relative.');
@@ -169,7 +212,6 @@ function normalizeRepositoryRelativePath(value: string): string {
   const normalized = path.posix.normalize(normalizeRepoPath(value));
   if (
     !normalized ||
-    normalized === '.' ||
     normalized === '..' ||
     normalized.startsWith('../') ||
     normalized === '.git' ||
@@ -186,6 +228,23 @@ function splitZeroSeparated(value: string): string[] {
 
 function normalizeRepoPath(value: string): string {
   return value.replace(/\\/g, '/').replace(/^\.\//, '');
+}
+
+function isWithinRoot(root: string, candidatePath: string): boolean {
+  const relative = path.relative(root, candidatePath);
+  return !(
+    relative === '..' ||
+    relative.startsWith(`..${path.sep}`) ||
+    path.isAbsolute(relative)
+  );
+}
+
+function samePath(left: string, right: string): boolean {
+  const normalizedLeft = path.resolve(left);
+  const normalizedRight = path.resolve(right);
+  return process.platform === 'win32'
+    ? normalizedLeft.toLowerCase() === normalizedRight.toLowerCase()
+    : normalizedLeft === normalizedRight;
 }
 
 function sha256(value: string | Buffer): string {
