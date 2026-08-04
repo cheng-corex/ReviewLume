@@ -2,9 +2,30 @@
 
 ## [Unreleased]
 
+## [0.3.1] - 2026-08-04
+
+### Fixed
+
+- Discover supported Vitest, Jest, Mocha, Node test, and TypeScript runners from bounded nested package roots such as `server/`, `client/`, and `packages/*` instead of checking only the Git repository root.
+- Run each approved package rule from its recorded repository-relative working directory and pass changed tests as package-relative argv entries.
+- Keep changed tests from other packages out of a nested package runner invocation.
+- Support repository-local dependency-hoisted runners while continuing to reject runners outside the bound repository.
+- Remove the explicit English `Cancel` action from the modal so VS Code displays only its native localized cancel button.
+- Use a syntax-specific warning for `node --check` and a code-execution warning only when tests or type checks are selected.
+- Display the approved working directory together with the fixed command before approval.
+
+### Security
+
+- Upgrade the local verification approval schema to version 2 and invalidate 0.3.0 approvals that did not bind a package working directory.
+- Include the package working directory, package configuration, root and package lockfiles, fixed arguments, and repository-local runner content in the approval boundary.
+- Bound package discovery by directory count, depth, and package-root count; skip Git metadata, dependencies, build output, coverage, caches, and common generated directories.
+- Continue to use `spawn(executable, argv)` with `shell: false`; no package script, `npx`, AI response, repository instruction, or arbitrary command is executed.
+
+## [0.3.0] - 2026-08-04
+
 ### Added
 
-- ReviewLume 0.3.0 local verification assistant:
+- ReviewLume local verification assistant:
   - Trusted Workspace users can approve fixed repository-local verification rules once per Git repository.
   - Newly added or modified matching tests are automatically included in later runs without approving each file again.
   - Supported first-release entry points are repository-local Vitest, Jest, Mocha, Node test, TypeScript `tsc --noEmit`, and per-file `node --check` for changed JavaScript.
