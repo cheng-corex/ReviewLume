@@ -1,163 +1,163 @@
-# ReviewLume 0.3.0 Local Verification Acceptance
+# ReviewLume 0.3.1 Local Verification Acceptance
 
-Status: pending Windows F5 acceptance.
+Status: pending Windows acceptance for PR #28.
 
-This checklist validates the exact security and usability boundary of the local verification assistant. The PR must remain Draft and must not merge until these checks pass.
+This checklist validates the exact 0.3.1 security and usability boundary. The PR remains Draft and must not merge until the applicable checks pass.
 
 ## Preconditions
 
 - Windows with VS Code 1.100 or later.
-- ReviewLume extension development host or the exact CI-produced 0.3.0 VSIX.
-- A non-production test repository with Git initialized.
-- A repository-local supported runner, preferably Mocha, Vitest, or Jest.
-- At least one passing changed test and one ordinary changed JavaScript file.
-- No production credentials, customer data, production databases, or destructive test resources.
+- The exact CI-produced ReviewLume 0.3.1 VSIX.
+- A disposable Git repository that contains at least one nested Node package such as `server/`.
+- The nested package has its own `package.json`, a supported installed runner, and changed tests.
+- Use no production credentials, customer data, production databases, or destructive resources.
 
-## A. First Approval
+## A. Upgrade and Old Approval Invalidation
 
-1. Open the test repository and trust the workspace.
-2. Run **ReviewLume: Configure Local Verification**.
-3. Confirm that the picker shows only fixed discovered rules.
-4. Confirm that each rule displays an executable, fixed arguments, target mode, and timeout.
-5. Confirm that no free-form command text box is present.
-6. Select JavaScript syntax check and one repository-local test runner.
-7. Confirm the modal warning states that tests execute repository code and may have side effects.
-8. Choose **Approve and run**.
+1. Install 0.3.0 and approve the JavaScript syntax rule or another rule.
+2. Upgrade to the exact 0.3.1 candidate.
+3. Run approved verification or connect ReviewLume.
 
 Expected:
 
-- No shell window is opened.
-- The VS Code notification shows verification progress.
-- The approved rules run once.
-- No configuration or output file is added to the repository.
-- The result is stored in VS Code extension storage.
+- The schema-1 approval from 0.3.0 is rejected.
+- No old rule runs silently.
+- ReviewLume asks the user to review current schema-2 rules.
 
-## B. Automatic New Test Inclusion
+## B. Nested Package Discovery
 
-1. Add a new matching test file without changing the approved runner configuration.
-2. Modify another existing matching test file.
-3. Run **ReviewLume: Run Approved Local Verification**.
+Use a repository similar to:
+
+```text
+repository/
+├─ package.json
+├─ server/
+│  ├─ package.json
+│  ├─ node_modules/mocha/bin/mocha.js
+│  └─ test/example.test.js
+└─ client/
+   └─ package.json
+```
+
+Run **ReviewLume: Configure Local Verification**.
 
 Expected:
 
-- No new approval prompt is shown.
-- Both the new and modified tests are passed explicitly to the approved runner.
-- Ordinary source files are not passed as test targets.
-- The result records the exact requested targets.
+- The picker includes `Mocha changed tests (server)` or the corresponding supported runner.
+- The rule detail displays `[cwd: server]`.
+- A root package runner, nested package runner, and syntax check are separate fixed rules.
+- No free-form command input is present.
+- No runner outside the bound repository is offered.
 
-## C. JavaScript Syntax Checks
+## C. Hoisted Runner Discovery
+
+Remove the nested package's own runner while keeping the declared dependency and a compatible runner under the repository root `node_modules`.
+
+Expected:
+
+- ReviewLume may offer the nested package rule using the repository-local hoisted runner.
+- The displayed working directory remains the nested package.
+- A runner resolving outside the Git repository is rejected.
+
+## D. Approval Modal and Wording
+
+### Syntax-only selection
+
+Select only **JavaScript syntax check for changed files**.
+
+Expected:
+
+- The warning says the files are parsed without executing their contents.
+- The dialog contains one affirmative action and only the native localized cancel button.
+- English `Cancel` and localized `取消` do not appear together.
+
+### Test or type-check selection
+
+Select a nested test runner or TypeScript check.
+
+Expected:
+
+- The warning states that repository-local tooling may execute code and cause file, network, or local-service side effects.
+- The exact working directory and command are visible before approval.
+
+## E. Nested Test Execution
+
+1. Approve the nested package runner.
+2. Modify or add two matching tests under the nested package.
+3. Modify a matching test in a different package or repository root.
+4. Choose **Approve and run** or run **ReviewLume: Run Approved Local Verification**.
+
+Expected:
+
+- The process working directory is the approved nested package.
+- Targets are passed relative to that package, such as `test/example.test.js`.
+- Tests outside that package are not passed to this runner.
+- New matching tests are included without another approval.
+- No shell window or arbitrary package script is used.
+
+## F. JavaScript Syntax Checks
 
 1. Modify two valid `.js` files.
-2. Run the approved verification.
-3. Make the second file syntactically invalid while leaving the first valid.
-4. Run again.
+2. Run the syntax rule.
+3. Make the second file invalid and run again.
 
 Expected:
 
-- Each changed JavaScript file is checked in a separate process invocation.
-- The first run passes.
-- The second run fails on the invalid second file; it must not report success merely because the first file is valid.
+- Each file is checked in a separate process.
+- The valid run passes.
+- The invalid second file causes failure; success from the first file cannot mask it.
 
-## D. Zero-Test Evidence
+## G. Configuration and Runner Invalidation
 
-Run a supported test runner in a repository state where an explicit matching target produces a runner message such as `0 passing` or `No test files found`.
+After approving a nested runner, separately change:
 
-Expected:
-
-- ReviewLume reports `inconclusive`, not `passed`.
-- The evidence explains that zero or no matching tests were reported.
-
-## E. Approval Invalidation
-
-1. Approve a runner.
-2. Change relevant `package.json`, test-runner configuration, or TypeScript configuration.
-3. Connect ReviewLume or run verification again.
+- the nested `package.json`;
+- runner configuration;
+- a relevant lockfile;
+- runner content or location;
+- the approved package working directory through a changed project layout.
 
 Expected:
 
-- The previous approval is removed or rejected.
-- ReviewLume states which rule changed.
-- No process starts until the updated rule is reviewed and approved again.
+- The approval becomes invalid.
+- No process runs until the new fixed rule is approved.
+- Editing ordinary test content alone does not invalidate the rule.
 
-Adding or editing ordinary test content alone must not invalidate the fixed rule.
-
-## F. Restricted Mode
-
-1. Reopen the repository without trusting the workspace.
-2. Run a local verification command.
+## H. Zero-Test, Cancellation, and Timeout
 
 Expected:
 
-- No process starts.
-- ReviewLume states that local verification requires a Trusted Workspace.
+- Explicit `0 tests`, `0 passing`, or no-test output is `inconclusive`.
+- User cancellation produces `cancelled` and terminates the process tree.
+- Timeout produces `timed-out` and does not automatically retry.
 
-## G. Cancellation and Timeout
-
-1. Use a safe test fixture that runs long enough to cancel.
-2. Start verification and click Cancel.
-3. Separately exercise a safe fixture that exceeds the approved timeout.
+## I. Restricted Mode and Side Effects
 
 Expected:
 
-- Cancellation returns `cancelled`.
-- Timeout returns `timed-out`.
-- The child process tree is terminated on Windows.
-- ReviewLume does not automatically retry.
+- Restricted Mode blocks all local verification process starts.
+- A safe fixture that modifies the repository sets `workspaceChangedDuringRun=true` and makes evidence stale.
+- ReviewLume does not revert or modify test-created files.
 
-## H. Repository Side-Effect Detection
-
-Use a safe test fixture that intentionally creates or modifies a disposable repository file.
+## J. Output and MCP Evidence
 
 Expected:
 
-- The run completes according to the process exit code.
-- `workspaceChangedDuringRun` is true.
-- The notification warns that the result is already stale.
-- ReviewLume does not revert, delete, or otherwise modify the test-created change.
+- Output is bounded, ANSI-cleaned, and best-effort redacted.
+- No raw test output is written to the diagnostic OutputChannel.
+- `verification_status` and `read_verification_output` remain read-only.
+- Both report `mcpCanStartProcesses: false`.
+- ChatGPT cannot start, retry, alter, or compose a command.
 
-## I. Stored Output and Redaction
+## K. Package Scan Bounds
 
-Use a safe fixture that prints synthetic values shaped like:
-
-- `Authorization: Bearer ...`
-- `api_key=...`
-- a URL with username and password
-- a synthetic JWT
+Use a safe fixture with generated directories and multiple package roots.
 
 Expected:
 
-- Stored output is bounded.
-- ANSI control sequences are removed.
-- Known synthetic secret patterns are replaced with redaction markers.
-- No raw output appears in the ReviewLume diagnostic OutputChannel.
-
-Redaction is best-effort; this test does not establish that every possible secret format is detected.
-
-## J. ChatGPT Evidence Tools
-
-After a completed run and a refreshed/rescanned ReviewLume connector, ask ChatGPT to call:
-
-- `verification_status`
-- `read_verification_output`
-
-Expected:
-
-- Both tools are shown as read-only.
-- The connector exposes nine total tools: seven repository readers plus two verification evidence readers.
-- The payload includes `mcpCanStartProcesses: false`.
-- ChatGPT can read status and bounded sanitized output.
-- ChatGPT cannot start, retry, alter, or compose a verification command.
-
-## K. Stale Evidence
-
-1. Complete a passing verification run.
-2. Modify a tracked or non-ignored untracked file.
-3. Ask ChatGPT for `verification_status` again.
-
-Expected:
-
-- The prior result is reported as `stale`.
-- Current and recorded HEAD/fingerprint context are not falsely presented as matching.
+- `.git`, `node_modules`, build, coverage, cache, and common output directories are not recursively scanned as package roots.
+- Directory symbolic links are not traversed by package discovery.
+- Discovery completes without an unbounded repository walk.
 
 ## L. Clear Approval
 
@@ -165,18 +165,16 @@ Run **ReviewLume: Clear Local Verification Approval**.
 
 Expected:
 
-- The repository-specific approval is removed.
-- The stored result is removed.
-- A later connection cannot start verification until a new approval is granted.
+- The repository approval and stored result are removed.
+- A later run cannot start until a new approval is granted.
 
 ## Acceptance Record
 
 Record:
 
-- VSIX version and SHA-256;
-- VS Code version;
-- Windows version;
-- test repository and runner type without disclosing private content;
-- each section A–L as pass/fail;
-- any expected baseline limitation;
-- screenshots with no secret, private path, Tunnel ID, Runtime API Key, account email, or private source code.
+- VSIX filename, version, size, and SHA-256;
+- PR head SHA and CI run number;
+- VS Code and Windows versions;
+- disposable test repository layout and runner type;
+- sections A–L as pass/fail/not-applicable;
+- screenshots with no secret, private path, account email, Tunnel ID, or private source.
