@@ -1,1 +1,172 @@
-{"name":"reviewlume-vscode","displayName":"%extension.displayName%","version":"0.3.1","description":"%extension.description%","license":"MIT","author":"ReviewLume contributors","publisher":"ReviewLume","private":true,"preview":true,"pricing":"Free","icon":"resources/icon.png","engines":{"vscode":"^1.100.0"},"capabilities":{"untrustedWorkspaces":{"supported":"limited","description":"%capabilities.untrustedWorkspaces%"}},"categories":["Other","Visualization"],"keywords":["code review","git diff","ai review","mcp","privacy","testing"],"activationEvents":["onStartupFinished","onCommand:reviewlume.hello","onCommand:reviewlume.createReviewPack","onCommand:reviewlume.addRelatedFiles","onCommand:reviewlume.recommendTestFiles","onCommand:reviewlume.scanSelectedFiles","onCommand:reviewlume.exportReviewPack","onCommand:reviewlume.addExportDirectoryToGitignore","onCommand:reviewlume.openReviewHistory","onCommand:reviewlume.importReviewResponse","onCommand:reviewlume.updateIssueStatus","onCommand:reviewlume.generateImplementationPrompt","onCommand:reviewlume.importImplementationSummary","onCommand:reviewlume.generateReReviewPrompt","onCommand:reviewlume.importReReviewResponse","onCommand:reviewlume.viewReReviewComparison","onCommand:reviewlume.openReviewPanel","onCommand:reviewlume.configureLocalVerification","onCommand:reviewlume.runLocalVerification","onCommand:reviewlume.clearLocalVerification","onCommand:reviewlume.mcpConnectorMenu","onCommand:reviewlume.connectSecureMcpTunnel","onCommand:reviewlume.configureSecureMcpTunnel","onCommand:reviewlume.openSecureMcpTunnelUi","onCommand:reviewlume.startMcpConnector","onCommand:reviewlume.copyMcpConnectionInfo","onCommand:reviewlume.stopMcpConnector"],"main":"dist/extension.js","scripts":{"build":"node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.build.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && node scripts/copy-runtime-assets.mjs","clean":"node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"","lint":"eslint src/","typecheck":"tsc --noEmit","test":"vitest run","verify:package-contents":"node scripts/validate-package-contents.mjs","prepackage":"pnpm build","package":"vsce package --no-dependencies -o ../../reviewlume-vscode-0.3.1.vsix","pretest":"pnpm build"},"contributes":{"commands":[{"command":"reviewlume.hello","title":"%command.hello%"},{"command":"reviewlume.createReviewPack","title":"%command.createReviewPack%"},{"command":"reviewlume.addRelatedFiles","title":"%command.addRelatedFiles%"},{"command":"reviewlume.recommendTestFiles","title":"%command.recommendTestFiles%"},{"command":"reviewlume.scanSelectedFiles","title":"%command.scanSelectedFiles%"},{"command":"reviewlume.exportReviewPack","title":"%command.exportReviewPack%"},{"command":"reviewlume.addExportDirectoryToGitignore","title":"%command.addExportDirectoryToGitignore%"},{"command":"reviewlume.openReviewHistory","title":"%command.openReviewHistory%"},{"command":"reviewlume.importReviewResponse","title":"%command.importReviewResponse%"},{"command":"reviewlume.updateIssueStatus","title":"%command.updateIssueStatus%"},{"command":"reviewlume.generateImplementationPrompt","title":"%command.generateImplementationPrompt%"},{"command":"reviewlume.importImplementationSummary","title":"%command.importImplementationSummary%"},{"command":"reviewlume.generateReReviewPrompt","title":"%command.generateReReviewPrompt%"},{"command":"reviewlume.importReReviewResponse","title":"%command.importReReviewResponse%"},{"command":"reviewlume.viewReReviewComparison","title":"%command.viewReReviewComparison%"},{"command":"reviewlume.openReviewPanel","title":"%command.openReviewPanel%"},{"command":"reviewlume.configureLocalVerification","title":"%command.configureLocalVerification%"},{"command":"reviewlume.runLocalVerification","title":"%command.runLocalVerification%"},{"command":"reviewlume.clearLocalVerification","title":"%command.clearLocalVerification%"},{"command":"reviewlume.mcpConnectorMenu","title":"%command.mcpConnectorMenu%"},{"command":"reviewlume.connectSecureMcpTunnel","title":"%command.connectSecureMcpTunnel%"},{"command":"reviewlume.configureSecureMcpTunnel","title":"%command.configureSecureMcpTunnel%"},{"command":"reviewlume.openSecureMcpTunnelUi","title":"%command.openSecureMcpTunnelUi%"},{"command":"reviewlume.startMcpConnector","title":"%command.startMcpConnector%"},{"command":"reviewlume.copyMcpConnectionInfo","title":"%command.copyMcpConnectionInfo%"},{"command":"reviewlume.stopMcpConnector","title":"%command.stopMcpConnector%"}],"configuration":{"title":"ReviewLume","properties":{"reviewlume.mcp.maxToolResultBytes":{"type":"integer","minimum":65536,"maximum":2097152,"default":524288,"description":"%config.mcp.maxToolResultBytes.description%"},"reviewlume.mcp.tunnelClientPath":{"type":"string","scope":"machine","default":"","description":"%config.mcp.tunnelClientPath.description%"},"reviewlume.verification.runOnConnect":{"type":"boolean","default":true,"description":"%config.verification.runOnConnect.description%"},"reviewlume.verification.maxOutputBytes":{"type":"integer","minimum":65536,"maximum":1048576,"default":262144,"description":"%config.verification.maxOutputBytes.description%"},"reviewlume.export.mode":{"type":"string","enum":["automatic","askEveryTime"],"enumDescriptions":["%config.export.mode.automatic%","%config.export.mode.askEveryTime%"],"default":"automatic","description":"%config.export.mode.description%"},"reviewlume.export.directory":{"type":"string","default":".reviewlume/exports","description":"%config.export.directory.description%"},"reviewlume.export.format":{"type":"string","enum":["markdown","zip","both"],"enumDescriptions":["Markdown","ZIP","Markdown + ZIP"],"default":"markdown","description":"%config.export.format.description%"},"reviewlume.export.autoUpdateGitignore":{"type":"boolean","default":true,"description":"%config.export.autoUpdateGitignore.description%"}}}},"dependencies":{"@reviewlume/core":"workspace:*","@reviewlume/report-parser":"workspace:*","zod":"^4.4.3"},"devDependencies":{"@types/node":"^20.0.0","@types/vscode":"^1.100.0","@typescript-eslint/eslint-plugin":"^7.0.0","@typescript-eslint/parser":"^7.0.0","@vscode/vsce":"^3.0.0","eslint":"^8.57.0","typescript":"^5.4.0","vitest":"^1.6.0"},"repository":{"type":"git","url":"https://github.com/cheng-corex/ReviewLume.git"},"homepage":"https://github.com/cheng-corex/ReviewLume#readme","bugs":{"url":"https://github.com/cheng-corex/ReviewLume/issues"}}
+{
+  "name": "reviewlume-vscode",
+  "displayName": "%extension.displayName%",
+  "version": "0.3.1",
+  "description": "%extension.description%",
+  "license": "MIT",
+  "author": "ReviewLume contributors",
+  "publisher": "ReviewLume",
+  "private": true,
+  "preview": true,
+  "pricing": "Free",
+  "icon": "resources/icon.png",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "capabilities": {
+    "untrustedWorkspaces": {
+      "supported": "limited",
+      "description": "%capabilities.untrustedWorkspaces%"
+    }
+  },
+  "categories": ["Other", "Visualization"],
+  "keywords": ["code review", "git diff", "ai review", "mcp", "privacy", "testing"],
+  "activationEvents": [
+    "onStartupFinished",
+    "onCommand:reviewlume.hello",
+    "onCommand:reviewlume.createReviewPack",
+    "onCommand:reviewlume.addRelatedFiles",
+    "onCommand:reviewlume.recommendTestFiles",
+    "onCommand:reviewlume.scanSelectedFiles",
+    "onCommand:reviewlume.exportReviewPack",
+    "onCommand:reviewlume.addExportDirectoryToGitignore",
+    "onCommand:reviewlume.openReviewHistory",
+    "onCommand:reviewlume.importReviewResponse",
+    "onCommand:reviewlume.updateIssueStatus",
+    "onCommand:reviewlume.generateImplementationPrompt",
+    "onCommand:reviewlume.importImplementationSummary",
+    "onCommand:reviewlume.generateReReviewPrompt",
+    "onCommand:reviewlume.importReReviewResponse",
+    "onCommand:reviewlume.viewReReviewComparison",
+    "onCommand:reviewlume.openReviewPanel",
+    "onCommand:reviewlume.configureLocalVerification",
+    "onCommand:reviewlume.runLocalVerification",
+    "onCommand:reviewlume.clearLocalVerification",
+    "onCommand:reviewlume.mcpConnectorMenu",
+    "onCommand:reviewlume.connectSecureMcpTunnel",
+    "onCommand:reviewlume.configureSecureMcpTunnel",
+    "onCommand:reviewlume.openSecureMcpTunnelUi",
+    "onCommand:reviewlume.startMcpConnector",
+    "onCommand:reviewlume.copyMcpConnectionInfo",
+    "onCommand:reviewlume.stopMcpConnector"
+  ],
+  "main": "dist/extension.js",
+  "scripts": {
+    "build": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\" && tsc -b --force tsconfig.build.json && tsc -p tsconfig.git-context-vendor.json && tsc -p tsconfig.secret-scanner-vendor.json && tsc -p tsconfig.review-pack-vendor.json && tsc -p tsconfig.report-parser-vendor.json && node scripts/copy-runtime-assets.mjs",
+    "clean": "node -e \"require('node:fs').rmSync('dist',{recursive:true,force:true})\"",
+    "lint": "eslint src/",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "verify:package-contents": "node scripts/validate-package-contents.mjs",
+    "prepackage": "pnpm build",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.3.1.vsix",
+    "pretest": "pnpm build"
+  },
+  "contributes": {
+    "commands": [
+      { "command": "reviewlume.hello", "title": "%command.hello%" },
+      { "command": "reviewlume.createReviewPack", "title": "%command.createReviewPack%" },
+      { "command": "reviewlume.addRelatedFiles", "title": "%command.addRelatedFiles%" },
+      { "command": "reviewlume.recommendTestFiles", "title": "%command.recommendTestFiles%" },
+      { "command": "reviewlume.scanSelectedFiles", "title": "%command.scanSelectedFiles%" },
+      { "command": "reviewlume.exportReviewPack", "title": "%command.exportReviewPack%" },
+      { "command": "reviewlume.addExportDirectoryToGitignore", "title": "%command.addExportDirectoryToGitignore%" },
+      { "command": "reviewlume.openReviewHistory", "title": "%command.openReviewHistory%" },
+      { "command": "reviewlume.importReviewResponse", "title": "%command.importReviewResponse%" },
+      { "command": "reviewlume.updateIssueStatus", "title": "%command.updateIssueStatus%" },
+      { "command": "reviewlume.generateImplementationPrompt", "title": "%command.generateImplementationPrompt%" },
+      { "command": "reviewlume.importImplementationSummary", "title": "%command.importImplementationSummary%" },
+      { "command": "reviewlume.generateReReviewPrompt", "title": "%command.generateReReviewPrompt%" },
+      { "command": "reviewlume.importReReviewResponse", "title": "%command.importReReviewResponse%" },
+      { "command": "reviewlume.viewReReviewComparison", "title": "%command.viewReReviewComparison%" },
+      { "command": "reviewlume.openReviewPanel", "title": "%command.openReviewPanel%" },
+      { "command": "reviewlume.configureLocalVerification", "title": "%command.configureLocalVerification%" },
+      { "command": "reviewlume.runLocalVerification", "title": "%command.runLocalVerification%" },
+      { "command": "reviewlume.clearLocalVerification", "title": "%command.clearLocalVerification%" },
+      { "command": "reviewlume.mcpConnectorMenu", "title": "%command.mcpConnectorMenu%" },
+      { "command": "reviewlume.connectSecureMcpTunnel", "title": "%command.connectSecureMcpTunnel%" },
+      { "command": "reviewlume.configureSecureMcpTunnel", "title": "%command.configureSecureMcpTunnel%" },
+      { "command": "reviewlume.openSecureMcpTunnelUi", "title": "%command.openSecureMcpTunnelUi%" },
+      { "command": "reviewlume.startMcpConnector", "title": "%command.startMcpConnector%" },
+      { "command": "reviewlume.copyMcpConnectionInfo", "title": "%command.copyMcpConnectionInfo%" },
+      { "command": "reviewlume.stopMcpConnector", "title": "%command.stopMcpConnector%" }
+    ],
+    "configuration": {
+      "title": "ReviewLume",
+      "properties": {
+        "reviewlume.mcp.maxToolResultBytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 2097152,
+          "default": 524288,
+          "description": "%config.mcp.maxToolResultBytes.description%"
+        },
+        "reviewlume.mcp.tunnelClientPath": {
+          "type": "string",
+          "scope": "machine",
+          "default": "",
+          "description": "%config.mcp.tunnelClientPath.description%"
+        },
+        "reviewlume.verification.runOnConnect": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.verification.runOnConnect.description%"
+        },
+        "reviewlume.verification.maxOutputBytes": {
+          "type": "integer",
+          "minimum": 65536,
+          "maximum": 1048576,
+          "default": 262144,
+          "description": "%config.verification.maxOutputBytes.description%"
+        },
+        "reviewlume.export.mode": {
+          "type": "string",
+          "enum": ["automatic", "askEveryTime"],
+          "enumDescriptions": ["%config.export.mode.automatic%", "%config.export.mode.askEveryTime%"],
+          "default": "automatic",
+          "description": "%config.export.mode.description%"
+        },
+        "reviewlume.export.directory": {
+          "type": "string",
+          "default": ".reviewlume/exports",
+          "description": "%config.export.directory.description%"
+        },
+        "reviewlume.export.format": {
+          "type": "string",
+          "enum": ["markdown", "zip", "both"],
+          "enumDescriptions": ["Markdown", "ZIP", "Markdown + ZIP"],
+          "default": "markdown",
+          "description": "%config.export.format.description%"
+        },
+        "reviewlume.export.autoUpdateGitignore": {
+          "type": "boolean",
+          "default": true,
+          "description": "%config.export.autoUpdateGitignore.description%"
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "@reviewlume/core": "workspace:*",
+    "@reviewlume/report-parser": "workspace:*",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.100.0",
+    "@typescript-eslint/eslint-plugin": "^7.0.0",
+    "@typescript-eslint/parser": "^7.0.0",
+    "@vscode/vsce": "^3.0.0",
+    "eslint": "^8.57.0",
+    "typescript": "^5.4.0",
+    "vitest": "^1.6.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/cheng-corex/ReviewLume.git"
+  },
+  "homepage": "https://github.com/cheng-corex/ReviewLume#readme",
+  "bugs": {
+    "url": "https://github.com/cheng-corex/ReviewLume/issues"
+  }
+}
