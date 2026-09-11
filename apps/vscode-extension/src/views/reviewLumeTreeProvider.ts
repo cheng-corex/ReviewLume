@@ -299,7 +299,7 @@ export function registerReviewLumeTreeView(
   fileSelectionService: FileSelectionService,
 ): ReviewLumeTreeProvider {
   const provider = new ReviewLumeTreeProvider(fileSelectionService);
-  const treeView = vscode.window.createTreeView<ReviewLumeTreeItem>(VIEWS.REVIEW, {
+  const treeView = vscode.window.createTreeView<ReviewLumeTreeItem>(VIEWS.MAIN_VIEW, {
     treeDataProvider: provider,
     showCollapseAll: true,
   });
