@@ -29,6 +29,9 @@ const connection: McpConnectionInfo = {
   authorizationHeader: 'Bearer local-token-value-123456789',
   repository: 'fixture',
   repositoryRoot: '/workspace/fixture',
+  project: 'fixture',
+  projectRoot: '/workspace/fixture',
+  projectKind: 'git',
 };
 
 const healthyStatus = {
