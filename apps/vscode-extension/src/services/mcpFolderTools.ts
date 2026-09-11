@@ -96,7 +96,6 @@ export class McpFolderTools extends McpRepositoryTools {
     if (name === 'project_summary') {
       return folderSuccess({
         project: this.#displayName,
-        repository: this.#displayName,
         projectKind: 'folder',
         access: 'read-only',
         gitHistoryAvailable: false,
@@ -121,8 +120,12 @@ export class McpFolderTools extends McpRepositoryTools {
     const result = await super.call(name, rawArguments, signal);
     if (result.isError || !result.structuredContent) return result;
 
+    // The reused common implementation carries a legacy `repository` display
+    // field. Strip it at the Folder boundary so a plain folder never presents a
+    // synthetic Git repository identity to the MCP client.
+    const { repository: _repository, ...commonContent } = result.structuredContent;
     const structuredContent = {
-      ...result.structuredContent,
+      ...commonContent,
       project: this.#displayName,
       projectKind: 'folder',
     };
