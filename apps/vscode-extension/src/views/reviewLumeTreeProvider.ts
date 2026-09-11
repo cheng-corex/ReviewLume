@@ -150,18 +150,8 @@ export class ReviewLumeTreeProvider
           'Restricted Mode',
           vscode.TreeItemCollapsibleState.None,
           {
-            description: 'Trust the workspace to enable repository inspection',
+            description: 'Trust the workspace to enable project inspection',
             iconName: 'shield',
-          },
-        );
-      case WorkspaceState.NoGit:
-        return new ReviewLumeTreeItem(
-          'status',
-          'No Git Repository',
-          vscode.TreeItemCollapsibleState.None,
-          {
-            description: 'Open a Git repository to use ReviewLume',
-            iconName: 'git-branch',
           },
         );
       case WorkspaceState.Ready:
@@ -170,7 +160,7 @@ export class ReviewLumeTreeProvider
           'Workspace Trusted',
           vscode.TreeItemCollapsibleState.None,
           {
-            description: 'Run Create Review Pack to inspect changed files',
+            description: 'Read-only MCP can connect Git or Folder Projects',
             iconName: 'shield',
           },
         );
@@ -218,179 +208,114 @@ export class ReviewLumeTreeProvider
     for (const entry of entries) {
       if (!entry.path.startsWith(prefixWithSlash)) continue;
       const remainder = entry.path.slice(prefixWithSlash.length);
-      if (!remainder) continue;
-      const slashIndex = remainder.indexOf('/');
-      if (slashIndex >= 0) {
-        folders.add(remainder.slice(0, slashIndex));
+      const slash = remainder.indexOf('/');
+      if (slash >= 0) {
+        folders.add(remainder.slice(0, slash));
       } else {
         files.push(entry);
       }
     }
 
-    const folderItems = Array.from(folders)
-      .sort((left, right) => left.localeCompare(right))
-      .map((folder) => {
-        const relativePath = prefix ? `${prefix}/${folder}` : folder;
+    const folderItems = [...folders]
+      .sort((a, b) => a.localeCompare(b))
+      .map((name) => {
+        const relativePath = prefix ? `${prefix}/${name}` : name;
         return new ReviewLumeTreeItem(
           'folder',
-          folder,
+          name,
           vscode.TreeItemCollapsibleState.Collapsed,
           {
             relativePath,
             iconName: 'folder',
-            tooltip: relativePath,
           },
         );
       });
 
     const fileItems = files
-      .sort((left, right) => left.path.localeCompare(right.path))
-      .map((entry) => this.buildFileItem(entry));
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .map((entry) => {
+        const basename = entry.path.split('/').pop() ?? entry.path;
+        const description = this.getFileDescription(entry);
+        return new ReviewLumeTreeItem(
+          'file',
+          basename,
+          vscode.TreeItemCollapsibleState.None,
+          {
+            relativePath: entry.path,
+            selected: entry.selected,
+            description,
+            iconName: entry.exists ? 'file' : 'trash',
+            tooltip: `${entry.path}\n${description}`,
+          },
+        );
+      });
 
     return [...folderItems, ...fileItems];
   }
 
-  private buildFileItem(entry: ReviewFileSelectionEntry): ReviewLumeTreeItem {
-    const label = entry.path.split('/').at(-1) ?? entry.path;
-    const description = describeFileEntry(entry);
-    const iconName =
+  private getFileDescription(entry: ReviewFileSelectionEntry): string {
+    const changeText = entry.changeKinds.length > 0 ? entry.changeKinds.join(', ') : '';
+    const sourceText =
       entry.source === 'recommended'
-        ? 'beaker'
+        ? 'recommended test'
         : entry.source === 'manual'
-          ? 'link'
-          : entry.source === 'context'
-            ? 'references'
-            : 'diff';
-    return new ReviewLumeTreeItem('file', label, vscode.TreeItemCollapsibleState.None, {
-      relativePath: entry.path,
-      description,
-      iconName,
-      selected: entry.selected,
-      tooltip: `${entry.path} — ${description}`,
-    });
+          ? 'related file'
+          : 'changed file';
+    return [sourceText, changeText, entry.exists ? '' : 'deleted']
+      .filter(Boolean)
+      .join(' · ');
   }
 
   private getActionItems(): ReviewLumeTreeItem[] {
     return [
-      actionItem(
-        'Open Review Panel',
-        'Open the review panel Webview',
-        COMMANDS.OPEN_REVIEW_PANEL,
-        'preview',
-      ),
-      actionItem(
-        'Create Review Pack',
-        'Inspect Git changes and start a file-selection session',
-        COMMANDS.CREATE_REVIEW_PACK,
-        'new-file',
-      ),
-      actionItem(
-        'Add Related Files',
-        'Add repository-local files that support the review',
-        COMMANDS.ADD_RELATED_FILES,
-        'link',
-      ),
-      actionItem(
-        'Recommend Test Files',
-        'Find likely tests for selected implementation files',
-        COMMANDS.RECOMMEND_TEST_FILES,
-        'beaker',
-      ),
-      actionItem(
-        'Scan Selected Files',
-        'Scan the exact review input for sensitive content',
-        COMMANDS.SCAN_SELECTED_FILES,
-        'shield',
-      ),
-      actionItem(
-        'Export Review Pack',
-        'Build and save the privacy-checked Review Pack',
-        COMMANDS.EXPORT_REVIEW_PACK,
-        'export',
-      ),
-      actionItem(
-        'Add Export Directory to .gitignore',
-        'Exclude generated Review Packs from Git status',
-        COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE,
-        'exclude',
-      ),
-      actionItem(
-        'Open Review History',
-        'Browse past review sessions',
-        COMMANDS.OPEN_REVIEW_HISTORY,
-        'history',
-      ),
-      actionItem(
-        'Import Review Response',
-        'Import an AI review response',
-        COMMANDS.IMPORT_REVIEW_RESPONSE,
-        'cloud-download',
-      ),
+      actionItem('Open Review Panel', COMMANDS.OPEN_REVIEW_PANEL, 'Open the guided review workflow'),
+      actionItem('Create Review Pack', COMMANDS.CREATE_REVIEW_PACK, 'Build a review from Git changes'),
+      actionItem('Add Related Files', COMMANDS.ADD_RELATED_FILES, 'Add repository files to the active review'),
+      actionItem('Recommend Test Files', COMMANDS.RECOMMEND_TEST_FILES, 'Find likely test files for the active review'),
+      actionItem('Scan Selected Files', COMMANDS.SCAN_SELECTED_FILES, 'Run the P8 sensitive-content scan'),
+      actionItem('Export Review Pack', COMMANDS.EXPORT_REVIEW_PACK, 'Export the active P8 review package'),
+      actionItem('Add Export Directory to .gitignore', COMMANDS.ADD_EXPORT_DIRECTORY_TO_GITIGNORE, 'Keep generated review output out of Git'),
+      actionItem('Open Review History', COMMANDS.OPEN_REVIEW_HISTORY, 'Browse locally stored review history'),
+      actionItem('Import Review Response', COMMANDS.IMPORT_REVIEW_RESPONSE, 'Import an AI review response into P8'),
     ];
   }
+}
+
+function actionItem(label: string, command: string, tooltip: string): ReviewLumeTreeItem {
+  return new ReviewLumeTreeItem(
+    'action',
+    label,
+    vscode.TreeItemCollapsibleState.None,
+    {
+      command: { command, title: label },
+      iconName: 'play',
+      tooltip: `${tooltip}; click to run`,
+    },
+  );
 }
 
 export function registerReviewLumeTreeView(
   context: vscode.ExtensionContext,
   fileSelectionService: FileSelectionService,
-  onSelectionChanged?: (refreshSmartContext: boolean) => void | Promise<void>,
 ): ReviewLumeTreeProvider {
   const provider = new ReviewLumeTreeProvider(fileSelectionService);
-  const treeView = vscode.window.createTreeView(VIEWS.MAIN_VIEW, {
+  const treeView = vscode.window.createTreeView<ReviewLumeTreeItem>(VIEWS.REVIEW, {
     treeDataProvider: provider,
     showCollapseAll: true,
   });
-
   context.subscriptions.push(
-    treeView,
     provider,
-    treeView.onDidChangeCheckboxState(async (event) => {
-      let refreshSmartContext = false;
+    treeView,
+    treeView.onDidChangeCheckboxState((event) => {
       for (const [item, state] of event.items) {
-        if (item.itemKind === 'file' && item.relativePath) {
-          const entry = fileSelectionService.entries.find(
-            (candidate) => candidate.path === item.relativePath,
-          );
-          if (!entry) continue;
-          fileSelectionService.setSelected(
-            item.relativePath,
-            state === vscode.TreeItemCheckboxState.Checked,
-          );
-          if (entry.source !== 'context') refreshSmartContext = true;
-        }
+        if (item.itemKind !== 'file' || !item.relativePath) continue;
+        fileSelectionService.setSelected(
+          item.relativePath,
+          state === vscode.TreeItemCheckboxState.Checked,
+        );
       }
-      await onSelectionChanged?.(refreshSmartContext);
       provider.refresh();
     }),
-    vscode.workspace.onDidChangeWorkspaceFolders(() => {
-      fileSelectionService.clear();
-      provider.refresh();
-    }),
-    vscode.workspace.onDidGrantWorkspaceTrust(() => provider.refresh()),
   );
-
   return provider;
-}
-
-function actionItem(
-  label: string,
-  description: string,
-  command: string,
-  iconName: string,
-): ReviewLumeTreeItem {
-  return new ReviewLumeTreeItem('action', label, vscode.TreeItemCollapsibleState.None, {
-    description,
-    command: { command, title: label },
-    iconName,
-    tooltip: `${label} — click to run`,
-  });
-}
-
-function describeFileEntry(entry: ReviewFileSelectionEntry): string {
-  if (entry.source === 'manual') return 'related file';
-  if (entry.source === 'recommended') return 'recommended test';
-  if (entry.source === 'context') return 'automatic context';
-
-  const changeDescription = entry.changeKinds.length > 0 ? entry.changeKinds.join(', ') : 'changed';
-  return entry.exists ? changeDescription : `${changeDescription}, deleted`;
 }
