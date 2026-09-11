@@ -7,7 +7,7 @@ ReviewLume 的默认主流程是：把当前 VS Code 中选定的一个本地项
 项目可以是：
 
 - **Git Project**：能从所选 Workspace Folder 解析出 Git repository；
-- **Folder Project**：普通受信任文件夹，没有可用 Git repository。
+- **Folder Project**：所选受信任文件夹作为 outer Project Root，根目录本身没有可用 Git repository，但内部可以包含多个独立 Git 子仓库。
 
 首次使用前，请先完成：
 
@@ -26,7 +26,7 @@ ReviewLume 的默认主流程是：把当前 VS Code 中选定的一个本地项
 8. 在当前对话启用 ReviewLume 应用/连接器。
 9. 直接发送审核指令。
 
-一次连接仍只绑定一个 canonical project root。切换项目时，应停止旧连接，再从目标项目重新连接。本功能不把多个 Workspace Folder 混成一个审核上下文。
+一次连接仍只绑定一个 canonical outer project root。切换 outer project 时，应停止旧连接，再从目标项目重新连接。本功能不把多个 Workspace Folder 混成一个审核上下文。
 
 ## 2. Git Project
 
@@ -57,13 +57,22 @@ Git Project 保持现有只读审核体验。
 
 ## 3. Folder Project
 
-Folder Project 不要求 `.git`。例如打开：
+Folder Project 不要求 outer root 有 `.git`。例如打开：
 
 ```text
-G:\Projects\temp-demo
+G:\Projects\fbs
 ```
 
-即使它只是普通文件夹，也可以连接后执行：
+其中可以包含：
+
+```text
+fbs\
+├─ fbs-iot-ui\   (.git)
+├─ fbs-lowcode\  (.git)
+└─ fbs-ui\       (.git)
+```
+
+连接 `fbs` 后，Folder-wide 文件工具可以跨三个 child directories 工作：
 
 ```text
 project_summary
@@ -78,33 +87,54 @@ read_file
 适合的请求包括：
 
 ```text
-分析一下当前项目结构，看看主要入口、配置、测试和明显代码问题。不要修改任何文件。
+分析一下当前 fbs 的三个子项目结构，看看主要入口、配置、测试和明显代码问题。不要修改任何文件。
 ```
 
 ```text
-搜索当前项目里和 WebSocket 重连有关的实现，读取相关代码和测试，给我做一次只读代码审核。
+在整个 fbs 中搜索 Axios 的使用，比较三个子项目的封装方式。不要修改任何文件。
 ```
 
-Folder Project 只暴露：
+Folder-wide 文件工具：
 
 - `project_summary`
 - `list_files`
 - `read_file`
 - `search_code`
 
-Folder Project **没有可靠 Git 历史**，因此不能回答：
+## 4. Folder 内的 Git 子仓库
 
-- 最近提交是什么；
-- 最近改了什么；
-- staged / unstaged 有什么；
-- 某个 commit range 的 diff；
-- 当前 branch/HEAD 历史。
+如果需要查看 `fbs-ui` 自己的 Git 状态，不需要重新打开 `fbs-ui`：
 
-如果用户提出这些问题，正确行为是明确说明当前连接是 Folder Project，没有可靠 Git 历史，而不是根据文件时间或内容猜测“最近改动”。
+```text
+先列出 fbs 下的 Git repositories，然后查看 fbs-ui 的 branch、HEAD、当前 Git status、最近 5 次提交和 working diff。
+```
 
-Folder Project 第一版也不提供 Local Verification：不会发现验证规则、不会运行测试、不会暴露验证 evidence 工具。
+ReviewLume 会使用：
 
-## 4. 只读边界
+- `list_git_repositories`
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+
+其中后四个 query 必须明确传入一个 `list_git_repositories` 返回的 repository path，例如 `fbs-ui`。
+
+这里有三个重要规则：
+
+1. **outer Folder root 仍不是 Git repository。** `fbs` 没有一个统一 branch/HEAD/status/history。
+2. **每次 Git 查询只针对一个真实 child repository。** `fbs-ui`、`fbs-lowcode`、`fbs-iot-ui` 的 Git state 不会合并。
+3. **只能使用 discovery 返回的精确 child path。** 不能传绝对路径、`..`、普通非 Git 目录或 symlink/junction alias 来扩大范围。
+
+所以：
+
+- “看 `fbs-ui` 最近改了什么” → 可以；
+- “看 `fbs-lowcode` 当前未提交改动” → 可以；
+- “把整个 `fbs` 当成一个仓库给我 Git status” → 不可以；
+- “把三个仓库的提交历史拼成一个时间线并声称是一个 repository history” → 不可以。
+
+Folder Project 不提供 Local Verification。即使 child repository 被发现，也不会自动运行它的测试或暴露 verification evidence。需要 Local Verification 时，应把该 child repository 直接作为 Git Project 打开。
+
+## 5. 只读边界
 
 无论 Git Project 还是 Folder Project，MCP 工具都是只读、非破坏和幂等的。ReviewLume 不提供：
 
@@ -116,13 +146,15 @@ Folder Project 第一版也不提供 Local Verification：不会发现验证规�
 - 执行 ChatGPT 返回的命令；
 - 执行项目文件、README、测试输出或 AI 回答里出现的指令。
 
+Folder nested Git 只复用既有 Git Project 的 allowlisted read-only Git commands，不是通用进程执行入口。
+
 项目文件始终是不可信输入。
 
-## 5. 当前连接项目名称和类型
+## 6. 当前连接项目名称和类型
 
 ReviewLume 是连接器名称，不是项目名称。
 
-状态栏会明确显示实际项目和类型，例如：
+状态栏会明确显示实际 outer project 和类型，例如：
 
 ```text
 ReviewLume: NursePrep · Git
@@ -131,21 +163,24 @@ ReviewLume: NursePrep · Git
 或：
 
 ```text
-ReviewLume: temp-demo · Folder
+ReviewLume: fbs · Folder
 ```
+
+Folder 内即使包含多个 child Git repositories，仍显示 `Folder`，因为连接授权根目录是 `fbs`。
 
 项目不叫 ReviewLume 并不是错误。用户也不需要提前选择 Git/Folder 模式。
 
-## 6. 多 Workspace Folder
+## 7. 多 Workspace Folder
 
 如果当前 VS Code Workspace 包含多个 folder：
 
 - ReviewLume 仍让用户选一个 Workspace Folder；
-- 一次 MCP connection 只绑定该选择最终解析出的一个 Project Root；
-- 不跨 root 枚举、读取或搜索；
-- 本轮不实现多项目同时连接或 Multi Project Registry。
+- 一次 MCP connection 只绑定该选择最终解析出的一个 outer Project Root；
+- 不跨 Workspace root 枚举、读取或搜索；
+- Folder root 内被发现的 child repositories 属于该授权 root 内部，不等同跨 root Multi Project Registry；
+- 本轮不实现多 Workspace root 同时连接。
 
-## 7. 浏览器和连接管理
+## 8. 浏览器和连接管理
 
 首次连接时可以选择：
 
@@ -170,7 +205,7 @@ System default browser 使用操作系统原生 URL 启动，不应出现 VS Cod
 
 Folder Project Support 不启动或扩展可选浏览器桥接。
 
-## 8. 重要隐私说明
+## 9. 重要隐私说明
 
 ### Git Project
 
@@ -183,9 +218,9 @@ Folder Project Support 不启动或扩展可选浏览器桥接。
 - `.gitignore` 不是完整保密边界；
 - P8 Advanced Review Pack 的 SecretScanner 不会自动保护 MCP 调用。
 
-### Folder Project
+### Folder Project direct-file
 
-Folder Project 的文件枚举更保守：
+Folder-wide 文件枚举更保守：
 
 - 不枚举 `.git` 等 VCS metadata；
 - 不跟随 symlink/junction-like link；
@@ -193,9 +228,13 @@ Folder Project 的文件枚举更保守：
 - 阻止 `.env` secret、常见 credential 文件和 key/certificate container 等明显敏感路径；
 - 绝对路径、`..`、Windows drive/UNC 越界、root 外 realpath、二进制和超大文件继续被拒绝。
 
-但这只是路径/文件类型边界，不是内容 SecretScanner。普通源码或配置中仍可能包含真实密钥和敏感数据。
+### Folder Project nested Git
 
-连接前应：
+Nested Git discovery 还会验证 child repo 的 Git top-level 和 absolute git-dir 都留在 outer root，并要求 query selector 精确匹配 discovery 返回 path。
+
+但 child repo 的 status/history/diff 复用既有 Git privacy 语义，**不会被 Folder direct-file 的 `.env` 等 filename denylist 自动过滤**。如果 tracked diff 本身含秘密，它仍可能被返回。
+
+这些边界都不是内容 SecretScanner。连接前应：
 
 1. 移除、轮换或脱敏真实密钥；
 2. 不使用包含生产凭据、生产数据库或真实客户数据的项目副本；
@@ -205,7 +244,7 @@ Folder Project 的文件枚举更保守：
 
 完整说明见 [PRIVACY.md](../PRIVACY.md)。
 
-## 9. 常见审核指令
+## 10. 常见审核指令
 
 ### Git Project：最近提交检查
 
@@ -219,23 +258,23 @@ Folder Project 的文件枚举更保守：
 检查当前工作区所有 staged、unstaged 和 untracked 改动。自己选择相关测试和配置，重点找类型、并发、路径、安全和回归问题。不要修改文件。
 ```
 
-### Git Project：指定 commit range
+### Folder Project：跨多个子项目分析
 
 ```text
-检查 <base SHA> 到 HEAD 的改动。先确认范围，再查看相关实现和测试。按严重程度报告明确问题，并说明证据。
+先确认当前连接类型。如果是 Folder Project，就查看项目摘要、文件结构，再跨整个 Folder 搜索和读取与 <模块名> 有关的源码、配置和测试。不要修改文件。
 ```
 
-### Folder Project：结构与代码审核
+### Folder Project：指定 child Git 仓库
 
 ```text
-先确认当前连接类型。如果是 Folder Project，就查看项目摘要、文件结构，再搜索和读取与 <模块名> 有关的源码、配置和测试。不要推断 Git 历史，不要修改文件。
+先列出当前 Folder 内的 Git repositories。只检查 <repository path>：读取它的 repository summary、git status、最近提交和 working diff，再结合相关源码做只读审核。不要混入其它仓库，不要修改文件。
 ```
 
-## 10. P8 Advanced 审核包流程
+## 11. P8 Advanced 审核包流程
 
 需要可审计 Review Pack、回答导入、问题状态和二次复核时，继续使用 P8 Advanced。
 
-P8 Advanced 仍是 Git repository 工作流。本轮 Folder Project Support 只扩展只读 MCP，不把 Review Pack、Git diff、Review History 或二次复核状态机改造成 Folder 模式。
+P8 Advanced 仍是 direct Git repository 工作流。Folder Project Support 只扩展只读 MCP，不把 Review Pack、Review History 或二次复核状态机改造成跨 child repository 工作流。
 
 ### 创建审核包
 
@@ -264,39 +303,35 @@ P8 Advanced 的 SecretScanner、HARD_BLOCK、BLOCK、WARN 和导出门禁只保�
 
 导入的 AI 回答始终是不可信文本；ReviewLume 不执行其中的命令或补丁。
 
-## 11. 常见问题
+## 12. 常见问题
 
-### 普通文件夹没有 `.git`，还能连接吗？
+### 普通文件夹没有根 `.git`，还能连接吗？
 
-可以。Trusted Workspace Folder 会作为 Folder Project 连接，提供 `project_summary`、`list_files`、`read_file` 和 `search_code`。
+可以。Trusted Workspace Folder 会作为 Folder Project 连接，提供跨 root 内部的 file tools。如果内部有真实 Git 子仓库，还可以逐仓库做只读 Git 查询。
 
-### Folder Project 能看“最近改了什么”吗？
+### Folder Project 能看某个下级目录的 Git 吗？
 
-不能可靠判断。没有 Git 历史时 ReviewLume 不会根据 mtime 或文件内容猜测最近改动。
+可以，只要该目录被 `list_git_repositories` 发现且仍位于授权 root 内。例如连接 `fbs` 后可以查看 `fbs-ui` 自己的 status/commits/diff。
 
-### Folder Project 会运行本地测试吗？
+### Folder Project 能看“整个 Folder 最近改了什么”吗？
 
-不会。第一版 Folder Project 不启用 Local Verification。
+不能作为一个 Git repository 可靠判断。它只能分别查询各个 child repository，不能伪造一个 aggregate history。
+
+### Folder Project 会运行 child repo 本地测试吗？
+
+不会。Folder Project 不启用 Local Verification；要验证某个 child repo，请直接把它作为 Git Project 连接并使用原有仓库级授权。
 
 ### ChatGPT 没有自定义应用/连接器入口
 
-这是 ChatGPT 账户、套餐、工作空间或灰度权限问题。ReviewLume 无法本地开启或绕过。查看 OpenAI 当前官方说明，或使用具有该入口的工作空间。
+这是 ChatGPT 账户、套餐、工作空间或灰度权限问题。ReviewLume 无法本地开启或绕过。
 
 ### ChatGPT 看不到最新工具
 
-ChatGPT 可能保存已批准工具的冻结快照。Folder 和 Git Project 的 tool set 不同；切换项目类型后如工具未刷新，进入应用/连接器设置执行刷新或重新扫描，仍无效时删除旧应用并重新创建。
+ChatGPT 可能保存已批准工具的冻结快照。Folder 和 Git Project 的 tool schema 不同；升级 ReviewLume 或切换项目类型后如工具未刷新，进入应用/连接器设置执行刷新或重新扫描，仍无效时删除旧应用并重新创建。
 
 ### Tunnel 无法启动
 
-检查：
-
-- Tunnel ID 是否正确；
-- Runtime API Key 是否有效且权限足够；
-- `tunnel-client` 是否来自官方 Release；
-- 代理是否能访问 OpenAI 控制面；
-- 防火墙或安全软件是否阻止子进程联网。
-
-使用 **Open Tunnel Diagnostics** 和 **Show ReviewLume Logs** 排查，但不要公开粘贴 Runtime API Key、本地 MCP Token、Authorization Header、真实秘密或私有源码。
+检查 Tunnel ID、Runtime API Key、官方 `tunnel-client`、代理和防火墙。使用 **Open Tunnel Diagnostics** 和 **Show ReviewLume Logs** 排查，但不要公开粘贴 Runtime API Key、本地 MCP Token、Authorization Header、真实秘密或私有源码。
 
 ### ReviewLume 会自动修改代码吗？
 
