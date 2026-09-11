@@ -139,7 +139,7 @@ describe('reviewlume-vscode manifest', () => {
       title: 'Clear Local Verification Approval',
     },
     { command: 'reviewlume.mcpConnectorMenu', title: 'Secure MCP Connector' },
-    { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Repository to ChatGPT' },
+    { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Current Project to ChatGPT' },
     {
       command: 'reviewlume.configureSecureMcpTunnel',
       title: 'Configure OpenAI Secure MCP Tunnel',
