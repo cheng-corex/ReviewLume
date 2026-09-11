@@ -1,6 +1,6 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { mkdtemp, mkdir, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, realpath, rm } from 'node:fs/promises';
 import { afterEach, describe, expect, it } from 'vitest';
 import type { McpGitRunner } from './mcpRepositoryTools';
 import { resolveProjectContext } from './projectContext';
@@ -24,12 +24,13 @@ describe('resolveProjectContext', () => {
   it('uses a trusted ordinary workspace folder when Git discovery fails', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'reviewlume-folder-context-'));
     roots.push(root);
+    const canonicalRoot = await realpath(root);
 
     const context = await resolveProjectContext(root, new FakeRunner(new Error('not a repository')));
 
     expect(context).toEqual({
-      root,
-      displayName: path.basename(root),
+      root: canonicalRoot,
+      displayName: path.basename(canonicalRoot),
       kind: 'folder',
     });
   });
@@ -37,6 +38,7 @@ describe('resolveProjectContext', () => {
   it('keeps the discovered Git repository root for Git Projects', async () => {
     const root = await mkdtemp(path.join(os.tmpdir(), 'reviewlume-git-context-'));
     roots.push(root);
+    const canonicalRoot = await realpath(root);
     const nested = path.join(root, 'packages', 'app');
     await mkdir(nested, { recursive: true });
 
@@ -46,8 +48,8 @@ describe('resolveProjectContext', () => {
     );
 
     expect(context).toEqual({
-      root,
-      displayName: path.basename(root),
+      root: canonicalRoot,
+      displayName: path.basename(canonicalRoot),
       kind: 'git',
     });
   });
