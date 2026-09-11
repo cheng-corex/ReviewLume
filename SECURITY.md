@@ -21,11 +21,13 @@ One ReviewLume MCP connection binds exactly one canonical project root selected 
 The project kind is detected automatically:
 
 - **Git Project** — read-only Git discovery succeeds and the canonical Git top-level becomes the root.
-- **Folder Project** — Git discovery is unavailable or fails, so the canonical selected Workspace Folder becomes the root with a smaller capability set.
+- **Folder Project** — Git discovery is unavailable or fails at the selected root, so the canonical selected Workspace Folder becomes the outer authorized root.
 
 A missing Git repository is not a security error and does not cause Git metadata to be fabricated.
 
-Folder Project support does not enable multi-project cross-root reads and does not start the optional browser bridge.
+A Folder Project may contain multiple real nested Git repositories. ReviewLume may inspect one such child repository read-only only after it is discovered inside the authorized Folder root and explicitly selected by project-relative path. Separate child repositories are never merged into synthetic Git state.
+
+Folder Project support does not enable cross-root reads and does not start the optional browser bridge.
 
 ## In-Scope Security Issues
 
@@ -36,12 +38,14 @@ The following are in scope:
 - unauthorized filesystem access outside the selected Project Root;
 - bypasses of absolute-path, parent-traversal, `.git`, canonical-root, symlink/junction/reparse-point, binary, file-size, result-size, request-size, or rate-limit boundaries;
 - Folder Project enumeration escaping the root, following a link outside the root, or exposing a documented blocked credential-like path;
-- capability confusion where a Folder Project exposes Git-only or Local Verification tools;
+- nested Git discovery accepting a repository top-level or Git metadata directory outside the authorized Folder root;
+- nested Git selectors escaping the Folder root, selecting an ordinary directory, or selecting a repository that was not allowed by discovery;
+- capability confusion where a Folder Project exposes Local Verification or Git mutation tools;
 - project-identity confusion that permits one MCP connection to read another Workspace Folder/root;
 - SecretScanner or export-gate bypasses in the separate P8 Advanced Review Pack workflow;
 - local MCP authentication, Origin, content-type, lifecycle, cancellation, and residual-access failures;
 - Secure MCP Tunnel configuration, proxy isolation, credential leakage, or unsafe subprocess invocation;
-- unexpected MCP write, shell, terminal, patch, delete, Git mutation, arbitrary command, or process-start capabilities;
+- unexpected MCP write, shell, terminal, patch, delete, Git mutation, arbitrary command, or general process-start capabilities;
 - Git Project Local Verification approval bypasses, repository-binding bypasses, argument substitution, shell invocation, runner symlink escapes, approval-fingerprint bypasses, or execution in an untrusted workspace;
 - Folder Project connection unexpectedly discovering/running Local Verification or exposing verification evidence tools;
 - Local Verification timeout, cancellation, process-tree termination, stale-result, workspace-fingerprint, output-bound, ANSI-control, or secret-redaction failures;
@@ -66,8 +70,8 @@ All project types enforce:
 - canonical root resolution with `realpath`;
 - local MCP listening only on a random `127.0.0.1` port;
 - a fresh high-entropy local token per run;
-- absolute-path, Windows drive-path, UNC-path, parent-traversal, NUL, and `.git` rejection;
-- `realpath` containment checks before file reads;
+- absolute-path, Windows drive-path, UNC-path, parent-traversal, NUL, and direct `.git` file-read rejection;
+- `realpath` containment checks before project file reads;
 - rejection of external symlink targets, directories, binary files, and oversized files;
 - bounded result sizes, file counts, line counts, request sizes, concurrency, and call rates;
 - no MCP shell, terminal, file write/delete/rename, patch apply, Git mutation, arbitrary command, package-script, or general process-start capability;
@@ -95,22 +99,50 @@ When Local Verification is available, Git Projects may additionally expose read-
 
 ## Folder Project Boundary
 
-Folder Project registers exactly:
+Folder Project exposes project-wide file tools:
 
 - `project_summary`
 - `list_files`
 - `read_file`
 - `search_code`
 
-It does **not** register or simulate `repository_summary`, `git_status`, `recent_commits`, `get_diff`, `verification_status`, or `read_verification_output`. Hidden calls to those capabilities are rejected.
+It also exposes explicitly scoped nested Git read tools:
 
-Folder enumeration is process-free and bounded. It uses filesystem APIs only, does not follow symbolic-link/junction-like entries, canonicalizes candidate directories/files, and requires every resolved path to remain under the canonical Folder Project root.
+- `list_git_repositories`
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
 
-The enumerator skips VCS metadata, common dependency/build/cache trees, and common credential-store directories. Folder Projects also block obvious credential-like names such as `.env` secrets, common credentials/secrets files, private-key names, and common key/certificate container extensions. Template files such as `.env.example` remain eligible.
+`repository_summary`, `git_status`, `recent_commits`, and `get_diff` require one explicit `repository` path returned by `list_git_repositories`. The Folder root is not a synthetic repository and multiple child repositories are not combined.
+
+Folder Project does **not** register `verification_status` or `read_verification_output` and never starts Local Verification for discovered child repositories.
+
+### Folder file enumeration
+
+Folder file enumeration is process-free and bounded. It uses filesystem APIs only, does not follow symbolic-link/junction-like entries, canonicalizes candidate directories/files, and requires every resolved path to remain under the canonical Folder Project root.
+
+The enumerator skips VCS metadata, common dependency/build/cache trees, and common credential-store directories. Folder file tools also block obvious credential-like names such as `.env` secrets, common credentials/secrets files, private-key names, and common key/certificate container extensions. Template files such as `.env.example` remain eligible.
 
 This policy reduces accidental exposure but is not content DLP and cannot detect every secret embedded in ordinary source/configuration files.
 
-A Folder Project has no reliable Git history. ReviewLume must not infer recent changes, commit/branch history, staged/unstaged state, or diffs from file timestamps or content.
+### Nested Git discovery and execution
+
+Nested Git discovery is separately bounded:
+
+- maximum 64 discovered child repositories;
+- maximum 20,000 visited entries;
+- maximum traversal depth 32;
+- dependency/build/cache/credential-store directories are skipped;
+- directory symlinks/junction-like entries are not followed;
+- candidates require a local `.git` file or directory marker;
+- `git rev-parse --show-toplevel` must resolve to the candidate directory itself;
+- `git rev-parse --absolute-git-dir` must resolve inside the authorized Folder root;
+- external Git metadata, external links, root escapes, and ordinary non-repository directories are rejected.
+
+After selection, nested Git queries reuse the existing Git Project read-only command allowlist and diff/ref safeguards. This is an intentionally narrow process capability, not a general process runner. It adds no checkout, add, commit, reset, clean, merge, rebase, fetch, push, shell, package script, or arbitrary executable capability.
+
+The Folder direct-file filename block does not sanitize nested Git status/history/diff output. Explicitly selected nested Git metadata or diffs can include sensitive-looking tracked paths/content under the existing Git read semantics. That is documented privacy behavior, not an authorization bypass.
 
 ## Local Verification Execution Boundary
 
@@ -130,7 +162,7 @@ For Git Projects, the approved boundary remains:
 
 Tests remain executable untrusted repository code and can have side effects; ReviewLume is not a sandbox.
 
-For Folder Projects, connection startup does not perform verification discovery, does not run an approved verification rule, and does not register verification evidence tools. Folder Verification requires a separate design and approval before implementation.
+For Folder Projects, connection startup does not perform verification discovery, does not run an approved verification rule, and does not register verification evidence tools. Nested Git discovery also never triggers Local Verification. If verification is needed, the child repository must be connected directly as a Git Project under the existing approval model.
 
 ## Privacy and Data Flow
 
