@@ -314,20 +314,22 @@ async function resolveNestedGitRepository(
   signal?: AbortSignal,
 ): Promise<NestedGitRepository> {
   const canonicalRoot = await realpath(path.resolve(root));
-  const requestedAbsolute = await safeRealpathInside(
-    canonicalRoot,
-    path.resolve(canonicalRoot, requestedRepository),
-  );
-  if (!requestedAbsolute || sameCanonicalPath(requestedAbsolute, canonicalRoot)) {
-    throw new Error('The requested repository must be a nested Git repository inside the Folder Project.');
-  }
-
   const discovery = await discoverNestedGitRepositories(canonicalRoot, runner, signal);
-  const repository = discovery.repositories.find((candidate) =>
-    sameCanonicalPath(candidate.absolutePath, requestedAbsolute),
+  const repository = discovery.repositories.find(
+    (candidate) => candidate.relativePath === requestedRepository,
   );
   if (!repository) {
-    throw new Error('The requested path is not an allowed nested Git repository in this Folder Project.');
+    throw new Error(
+      'The requested path must exactly match a nested Git repository returned by list_git_repositories.',
+    );
+  }
+
+  const selectedPath = await safeRealpathInside(
+    canonicalRoot,
+    path.resolve(canonicalRoot, repository.relativePath),
+  );
+  if (!selectedPath || !sameCanonicalPath(selectedPath, repository.absolutePath)) {
+    throw new Error('The selected nested Git repository no longer resolves to the discovered path.');
   }
   return repository;
 }
