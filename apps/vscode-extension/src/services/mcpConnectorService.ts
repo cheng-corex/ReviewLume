@@ -3,7 +3,7 @@ import { createReadOnlyGitRunner } from './gitRuntime';
 import type { LocalVerificationService, VerificationResultReader } from './localVerificationService';
 import { logInfo, logWarn } from './logService';
 import { McpConnectorServer, type McpConnectorAddress } from './mcpConnectorServer';
-import { McpFolderTools } from './mcpFolderTools';
+import { McpFolderProjectTools } from './mcpFolderProjectTools';
 import {
   McpRepositoryTools,
   type McpGitRunner,
@@ -237,9 +237,10 @@ export class McpConnectorService {
           maxResultBytes: configuredBytes,
           verification: this.#verification,
         })
-      : new McpFolderTools({
+      : new McpFolderProjectTools({
           root: project.root,
           displayName: project.displayName,
+          gitRunner: runner,
           maxResultBytes: configuredBytes,
         });
     const server = new McpConnectorServer({
