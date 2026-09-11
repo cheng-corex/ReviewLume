@@ -6,7 +6,7 @@ ReviewLume 把当前 VS Code 中选定的一个本地项目以受控的只读 MC
 
 ReviewLume 不向 ChatGPT 提供终端、Shell、任意命令、写文件、应用补丁或 Git 修改能力，也不读取浏览器 Cookie、Session、Token、密码或 ChatGPT 回答。
 
-可选的本地验证助手仍由 VS Code 用户控制，并继续绑定 Git repository 的安全模型。Folder Project 第一版不发现、不运行、也不暴露 Local Verification evidence 工具。
+可选的本地验证助手仍由 VS Code 用户控制，并继续绑定 Git repository 的安全模型。Folder Project 不发现、不运行、也不暴露 Local Verification evidence 工具。
 
 > **重要隐私提醒：** Git Project 的既有 MCP 行为不会因为文件名是 `.env`、`credentials`、`secrets` 或内容像密钥就自动阻止读取；Folder Project 采用更保守的明显凭据路径/文件名阻断，但这仍不是内容 SecretScanner。连接前必须移除、轮换或脱敏真实凭据，只连接你有权提供给 OpenAI 的项目内容。详细说明见 [PRIVACY.md](PRIVACY.md)。
 
@@ -57,7 +57,7 @@ verification_status + read_verification_output
 
 ### Folder Project
 
-普通文件夹即使没有 `.git` 也可以连接：
+普通文件夹即使没有根 `.git` 也可以连接：
 
 ```text
 project_summary
@@ -68,10 +68,20 @@ search_code
     ↓
 read_file
     ↓
-直接在 ChatGPT 中分析结构、代码、配置、测试并给出审核与优化建议
+直接在 ChatGPT 中跨多个子目录分析结构、代码、配置和测试
 ```
 
-Folder Project 没有可靠 Git 历史，因此 ReviewLume 不会伪造或推断 branch、HEAD、commit、diff、staged/unstaged 或“最近改了什么”。
+如果这个授权 Folder 内包含真实 Git 子仓库，还可以继续：
+
+```text
+list_git_repositories
+    ↓
+明确选择一个子仓库，例如 fbs-ui
+    ↓
+repository_summary + git_status + recent_commits + get_diff
+```
+
+Folder **根目录本身没有聚合 Git 历史**。ReviewLume 不会把多个子仓库拼成一个假的 branch、HEAD、status、commit history 或 diff；Git 查询必须明确落到一个真实、且 Git top-level 与 Git metadata 都位于授权 Folder root 内的子仓库。
 
 用户不需要先扫描、手动选文件、导出审核包、导入回答或执行多次复核。高级 Review Pack 工作流仍然保留，且继续是 Git repository 工作流。
 
@@ -115,18 +125,28 @@ VS Code 状态栏提供 `ReviewLume MCP` 主入口。首次连接需要完成一
 连接后状态栏会显示项目类型，例如：
 
 - `ReviewLume: ai-ui · Git`
-- `ReviewLume: temp-demo · Folder`
+- `ReviewLume: fbs · Folder`
 
 ### Folder Project 工具
 
-Folder Project 只注册：
+Folder Project 注册跨整个授权根目录的文件工具：
 
 - `project_summary`
 - `list_files`
 - `read_file`
 - `search_code`
 
-Folder Project 不注册 `repository_summary`、`git_status`、`recent_commits`、`get_diff`、`verification_status` 或 `read_verification_output`。即使客户端尝试隐藏调用，也会返回 unsupported error，而不是模拟 Git 信息。
+同时注册授权根目录内的嵌套 Git 只读工具：
+
+- `list_git_repositories`
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+
+后四个 Git 查询都必须带 `repository`，值必须来自 `list_git_repositories` 返回的 project-relative 子仓库路径。Folder root 不能作为一个合成 Git repository 使用，多个子仓库的 Git 状态也不能被合并。
+
+Folder Project **不注册** `verification_status` 或 `read_verification_output`，也不会自动对任何子仓库运行 Local Verification。
 
 ### Git Project 工具
 
@@ -144,7 +164,7 @@ Git Project 保持现有工具：
 
 前七个工具读取 repository；后两个工具只读取已经完成的本地验证证据。Local Verification evidence 工具是否存在取决于当前安装版本中 Local Verification 是否启用。每个 MCP 工具都声明为 read-only、non-destructive、idempotent 和 closed-world。验证工具明确不能启动进程。
 
-ChatGPT 可以选择需要读取什么，但不能获得写入、删除、Shell、终端、进程启动或 Git mutation 能力。
+ChatGPT 可以选择需要读取什么，但不能获得写入、删除、Shell、终端、任意进程启动或 Git mutation 能力。
 
 详细设计见 [Folder Project Support](docs/folder-project-support.md) 和现有 [P9 ChatGPT 只读项目 MCP 计划](docs/p9-readonly-mcp-plan.md)。真实 Tunnel 验收见 [P9 Secure MCP Tunnel 验收清单](docs/p9-readonly-mcp-verification.md)。Folder Project 支持不启动或扩展可选浏览器桥接。
 
@@ -152,12 +172,14 @@ ChatGPT 可以选择需要读取什么，但不能获得写入、删除、Shell�
 
 本地验证助手不是 ChatGPT 终端，也不是 MCP action 工具。
 
-它仍然只面向 **Git Project**。Folder Project 第一版：
+它仍然只面向 **Git Project**。Folder Project：
 
 - 不进行验证规则 discovery；
 - 不运行已授权规则；
 - 不暴露 `verification_status`；
 - 不暴露 `read_verification_output`。
+
+即使 Folder Project 中发现了多个 Git 子仓库，也不会因此自动继承或运行这些子仓库的验证授权。需要 Local Verification 时，应把对应仓库直接作为 Git Project 打开。
 
 第一次配置 Git Project 本地验证时，ReviewLume 会在 VS Code 中完整显示：
 
@@ -220,11 +242,13 @@ ReviewLume 不运行任意 `package.json` script，不使用 `npx` 下载 runner
 - 拒绝绝对路径、`..`、`.git`、project root 外部 realpath、目录、二进制和超大文件；
 - 文件、搜索结果、请求大小和调用频率均有限制；
 - 不记录文件正文、diff 正文、搜索词、搜索结果、原始验证输出或任何凭据到诊断日志；
-- 不提供 MCP shell、终端、进程启动、写文件、删除文件、Git 修改或补丁应用工具；
+- 不提供 MCP shell、终端、任意进程启动、写文件、删除文件、Git 修改或补丁应用工具；
 - 项目文件、文档、测试和 AI 回复始终视为不可信输入；
 - 本地 endpoint 不直接暴露到公网，外部连接由 OpenAI Secure MCP Tunnel 管理。
 
 Folder Project 额外采用保守文件枚举：不跟随 symlink/junction-like link；跳过 VCS metadata、常见依赖/构建目录和明显 credential-store 目录；并阻止 `.env` secrets、常见 credential 文件及 key/certificate container 文件名。该策略不扫描内容，也不保证识别所有秘密。
+
+Folder Project 的嵌套 Git discovery 同样受 canonical Folder root 约束：不跟随外部链接；只接受真实 `.git` marker；Git top-level 和 `--absolute-git-dir` 都必须解析到授权根目录内；每次 Git 查询必须明确选择一个已发现的子仓库。它复用既有 Git 只读 allowlist，不增加 Git mutation。
 
 Git Project 继续使用受控只读 Git 命令，并固定禁用 external diff 和 textconv。为保持现有连接器兼容，Git Project 的既有 MCP **不会**按 `.env`、credentials、secrets、证书、私钥或生产配置等文件名自动阻止；也不会自动用 SecretScanner 扫描文件正文、diff、搜索结果、提交标题或验证输出。`.gitignore` 也不是完整隐私边界：tracked 文件仍可枚举，被明确指定的 ignored 文本文件仍可由 `read_file` 读取。
 
@@ -255,8 +279,8 @@ P8 Advanced Review Pack 的 SecretScanner 和导出门禁只保护该高级工�
 - 自己实现、代理或绕过 OpenAI Tunnel 控制面；
 - 把本地 project 端口直接暴露到公网；
 - 一次连接跨越多个 project root；
-- Folder Project 中伪造 Git 历史；
-- Folder Project 第一版中启用 Local Verification。
+- 把 Folder 内多个子仓库拼成一个伪造 Git repository/history；
+- Folder Project 中启用或自动运行 Local Verification。
 
 ## 文档阅读顺序
 
@@ -283,7 +307,7 @@ P8 Advanced Review Pack 的 SecretScanner 和导出门禁只保护该高级工�
 - Model Context Protocol（Streamable HTTP）
 - OpenAI Secure MCP Tunnel (`openai/tunnel-client`)
 - pnpm workspace
-- 受控 Git 子进程封装（Git Project only）
+- 受控 Git 子进程封装（Git Project + Folder 内显式子仓库只读查询）
 - 受控 local verification 子进程封装（Git Project only）
 - bounded filesystem enumeration（Folder Project）
 - Vitest
