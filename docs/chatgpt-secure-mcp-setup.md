@@ -14,7 +14,9 @@
 Workspace Folder 可以是 Git repository，也可以只是普通文件夹。ReviewLume 会在连接时自动检测：
 
 - Git discovery 成功 → **Git Project**；
-- 无 Git repository 或 discovery 不可用 → **Folder Project**。
+- 根目录无 Git repository 或 discovery 不可用 → **Folder Project**。
+
+Folder Project 内部可以包含多个真实 Git 子仓库。它们仍然位于同一个授权 Folder root 内，并且只能按显式子仓库路径做只读 Git 查询。
 
 用户不需要提前选择模式。
 
@@ -65,7 +67,7 @@ ReviewLume 不捆绑、不静默下载、也不自动更新 `tunnel-client`。�
 5. ReviewLume 自动解析 Project Context。
 6. 等待 Tunnel 健康并打开 ChatGPT 新对话。
 
-连接成功后状态栏会明确显示类型，例如：
+连接成功后状态栏会明确显示外层项目类型，例如：
 
 ```text
 ReviewLume: ai-ui · Git
@@ -74,8 +76,10 @@ ReviewLume: ai-ui · Git
 或：
 
 ```text
-ReviewLume: temp-demo · Folder
+ReviewLume: fbs · Folder
 ```
+
+Folder 内即使发现多个 Git 子仓库，状态栏仍显示 `Folder`，因为本次连接的授权边界仍是这个 Folder root。
 
 一次连接只绑定一个 canonical Project Root。不会跨多个 Workspace Folder 混读。
 
@@ -84,9 +88,9 @@ ReviewLume: temp-demo · Folder
 连接时 ReviewLume：
 
 1. canonicalize 所选 Workspace Folder；
-2. 使用只读 Git discovery 尝试解析 Git top-level；
+2. 使用只读 Git discovery 尝试解析根 Git top-level；
 3. 成功则创建 Git Project，否则以所选 Folder 创建 Folder Project；
-4. 只有 Git Project 才允许进入现有 repository-bound Local Verification `runOnConnect` 流程；
+4. 只有直接 Git Project 才允许进入现有 repository-bound Local Verification `runOnConnect` 流程；
 5. Folder Project 不 discovery、不运行 Local Verification；
 6. 启动仅监听 `127.0.0.1` 随机端口的本地只读 MCP；
 7. 生成新的本地高熵 Token；
@@ -95,7 +99,7 @@ ReviewLume: temp-demo · Folder
 10. 校验 loopback health；
 11. 健康后打开 ChatGPT 新对话。
 
-如果 Git CLI 不可用，ReviewLume 会安全降级为更小权限的 Folder Project，而不是伪造 Git capability。
+如果 Git CLI 不可用，ReviewLume 会安全降级为 Folder Project；文件工具仍可工作，但 nested Git discovery/query 不能伪造 Git 结果。
 
 ## 7. 在 ChatGPT 创建/刷新 ReviewLume 应用
 
@@ -128,20 +132,35 @@ ReviewLume: temp-demo · Folder
 
 ### Folder Project 应看到
 
-只能看到：
+Folder-wide 文件工具：
 
 - `project_summary`
 - `list_files`
 - `read_file`
 - `search_code`
 
-不应看到 Git-only 或 verification tools。
+以及授权根目录内的 nested Git 只读工具：
 
-### 切换 Project Kind 后工具没更新
+- `list_git_repositories`
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
 
-ChatGPT 可能保存已批准工具定义的快照。Git Project 与 Folder Project 的 tool set 不同；切换类型后如果仍显示旧工具，需要在 Apps/Connectors 管理页刷新/重新扫描，必要时重新创建应用。
+后四个 Git query 都要求一个 `repository` 参数，值必须来自 `list_git_repositories` 返回的 Folder-relative path。
 
-如果扫描结果出现 write、delete、shell、terminal、patch、Git mutation 或 process-start capability，应停止使用并检查是否连接了错误服务。
+Folder Project **不应看到**：
+
+- `verification_status`
+- `read_verification_output`
+
+它也不应出现 shell、terminal、write、patch、Git mutation 或通用 process-start 工具。
+
+### 切换 Project Kind / 更新工具后工具没更新
+
+ChatGPT 可能保存已批准工具定义的快照。Git Project 与 Folder Project 的 tool schema 不同；升级 ReviewLume、切换类型或 nested Git tool 定义变化后，如果仍显示旧工具，需要在 Apps/Connectors 管理页刷新/重新扫描，必要时重新创建应用。
+
+如果扫描结果出现 write、delete、shell、terminal、patch、Git mutation 或 general process-start capability，应停止使用并检查是否连接了错误服务。
 
 ## 8. 日常使用
 
@@ -151,19 +170,25 @@ ChatGPT 可能保存已批准工具定义的快照。Git Project 与 Folder Proj
 检查当前项目最近 5 个提交，先看 Git 状态和提交范围，再读取必要的 diff、源码、测试和配置。不要修改任何文件。
 ```
 
-### Folder Project
+### Folder Project：跨子项目读代码
 
 ```text
-先看当前 Folder Project 的结构，再搜索并读取和 WebSocket 重连有关的源码、配置和测试，做一次只读代码审核。不要推断 Git 历史，不要修改任何文件。
+先看当前 Folder Project 的结构，再搜索并读取和 WebSocket 重连有关的源码、配置和测试，做一次只读代码审核。不要修改任何文件。
 ```
 
-Folder Project 不能可靠回答“最近改了什么”、branch/HEAD/commit/diff/staged/unstaged 等 Git 历史问题。ReviewLume 不使用 mtime 猜测“最近修改”。
+### Folder Project：查看一个下级 Git 仓库
+
+```text
+先列出当前 Folder 内可用的 Git repositories，然后查看 fbs-ui 的 branch、当前 Git status、最近 5 次提交和 working diff。只检查 fbs-ui，不要合并其它仓库状态。
+```
+
+Folder root 本身不能可靠回答一个“聚合的最近改动”。但如果问题明确指向一个 `list_git_repositories` 已发现的子仓库，ReviewLume 可以读取那个子仓库自己的 branch/HEAD/status/commits/diff。
 
 ## 9. Project 文件与隐私边界
 
 所有 Project Kind：
 
-- 拒绝绝对路径、`..`、`.git`、root 外 realpath、目录、binary、超大文件；
+- project file 工具拒绝绝对路径、`..`、直接 `.git` 读取、root 外 realpath、目录、binary、超大文件；
 - local MCP 和返回结果有大小、数量、请求和速率预算；
 - 不提供 shell、terminal、write/delete/rename、patch 或 Git mutation；
 - 项目文件和 AI 回复都是不可信输入；
@@ -173,9 +198,9 @@ Folder Project 不能可靠回答“最近改了什么”、branch/HEAD/commit/d
 
 为保持既有 Connector 兼容，Git Project 不会仅按 `.env`、credentials、secrets、key、数据库或生产配置等文件名自动阻断。tracked 敏感文件仍可能被枚举/读取；P8 SecretScanner 不自动覆盖 MCP。
 
-### Folder Project
+### Folder Project 文件工具
 
-Folder Project 采用更保守的枚举和路径策略：
+Folder file listing/reading/search 采用更保守的策略：
 
 - 不跟随 symlink/junction-like link；
 - 每个枚举候选 realpath 必须留在 root；
@@ -183,13 +208,24 @@ Folder Project 采用更保守的枚举和路径策略：
 - 阻止 `.env` secrets、常见 credentials/secrets 文件、private-key names 和 key/certificate container 文件；
 - `.env.example/.sample/.template/.dist` 可作为模板读取。
 
-这仍不是内容 DLP。普通源码/配置中仍可能包含真实秘密。连接前必须移除、轮换或脱敏真实密钥，并确认有权把内容提供给 OpenAI。
+### Folder Project nested Git
+
+Nested Git discovery 只在授权 root 内有界扫描，并要求：
+
+- candidate 是实际目录，不通过外部 symlink/junction 进入；
+- candidate 有本地 `.git` marker；
+- Git top-level 与 absolute git-dir 都 canonicalize 到授权 root 内；
+- Git query 的 `repository` 必须精确匹配 discovery 返回值。
+
+Nested Git status/history/diff 复用现有 Git Project 语义，因此**不会被 Folder direct-file 的 `.env` 等文件名 denylist 自动过滤**。显式 Git diff 仍可能包含敏感 tracked 内容。
+
+这些机制都不是内容 DLP。连接前必须移除、轮换或脱敏真实密钥，并确认有权把内容提供给 OpenAI。
 
 详细说明见 [PRIVACY.md](../PRIVACY.md)、[安全与合规边界](security-and-compliance.md) 和 [Folder Project Support](folder-project-support.md)。
 
 ## 10. Local Verification
 
-Local Verification 仍然是 Git Project-only：
+Local Verification 仍然是 direct Git Project-only：
 
 - approval 绑定 canonical Git repository；
 - 固定 executable/argv/target mode/timeout；
@@ -197,13 +233,17 @@ Local Verification 仍然是 Git Project-only：
 - 不执行 AI 回复或项目文档中的命令；
 - evidence tools 只能读取已完成结果。
 
-Folder Project 第一版不 discovery、不运行、不暴露 Local Verification evidence。不要为 Folder 项目手工解释或模拟 verification status。
+Folder Project 不 discovery、不运行、不暴露 Local Verification evidence；即使发现了 nested Git repositories，也不会自动运行它们的测试或复用授权。
 
 ## 11. 常见问题
 
-### 普通文件夹没有 `.git` 能连接吗？
+### 普通文件夹没有根 `.git` 能连接吗？
 
-可以。只要 Workspace Folder 已 Trusted，就会作为 Folder Project 连接，并只暴露四个公共只读文件工具。
+可以。只要 Workspace Folder 已 Trusted，就会作为 Folder Project 连接并提供跨 Folder 文件读取/搜索；如果内部包含真实 Git 子仓库，还可以通过 `list_git_repositories` 和显式 repository 参数做只读 Git 查询。
+
+### Folder Project 可以看某个子项目的 Git 吗？
+
+可以。先让 ReviewLume 列出 nested Git repositories，再明确指定其中一个，例如 `fbs-ui`。它可以查看该仓库自己的 summary/status/commits/diff，但不会把多个仓库合成一个 Git 状态。
 
 ### ChatGPT 没有自定义应用/连接器入口
 
@@ -211,7 +251,7 @@ Folder Project 第一版不 discovery、不运行、不暴露 Local Verification
 
 ### 工具列表仍是旧版本
 
-刷新或重新扫描应用工具；如果 Git/Folder 类型发生变化但快照仍不更新，重新创建应用。
+刷新或重新扫描应用工具；如果 Git/Folder 类型或 ReviewLume 版本发生变化但快照仍不更新，重新创建应用。
 
 ### Tunnel 启动失败
 
