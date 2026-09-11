@@ -53,7 +53,7 @@ describe('ReviewLumeTreeProvider', () => {
     );
   });
 
-  it('shows Restricted Mode without inspecting repository content', () => {
+  it('shows Restricted Mode without inspecting project content', () => {
     testing.setWorkspaceState([{}], false);
     const provider = new ReviewLumeTreeProvider(selectionService());
     expect(provider.getChildren(section(provider, 'Status'))[0].label).toBe(
@@ -67,7 +67,7 @@ describe('ReviewLumeTreeProvider', () => {
 
     const status = provider.getChildren(section(provider, 'Status'))[0];
     expect(status.label).toBe('Workspace Trusted');
-    expect(status.description).toContain('changed files');
+    expect(status.description).toContain('Git or Folder Projects');
 
     const files = provider.getChildren(section(provider, 'Files'));
     expect(files[0].label).toBe('No Active Review');
