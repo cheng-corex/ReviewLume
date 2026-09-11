@@ -4,6 +4,16 @@
 
 ### Added
 
+- Folder Project Support for the read-only ChatGPT MCP connector:
+  - A Trusted VS Code Workspace Folder no longer needs to be a Git repository before it can connect to ChatGPT.
+  - ReviewLume resolves a `ProjectContext` automatically as either a Git Project or Folder Project while keeping one active MCP connection bound to one project root.
+  - Folder Projects expose only `project_summary`, `list_files`, `read_file`, and `search_code`; Git status, commit history, diffs, staged/unstaged state, and verification evidence are not registered or simulated.
+  - Folder `project_summary` explicitly reports that reliable Git history is unavailable so ChatGPT must not infer recent changes from timestamps or file order.
+  - Folder Projects do not discover, run, approve, or expose Local Verification; the existing repository-bound verification safety model remains Git Project only.
+  - The primary action is now `Connect Current Project to ChatGPT`, and connected status identifies the detected `Git` or `Folder` project kind.
+  - Multi-root workspaces still bind one selected Workspace Folder per MCP connection; Multi Project Registry is not part of this change.
+  - Folder file enumeration is process-free and bounded, canonicalizes the root, does not follow symlink/junction-like entries, verifies real paths remain inside the root, skips VCS/dependency/build/credential-store trees, and rejects obvious credential-like paths.
+  - Existing Git Project MCP tool names, Git behavior, and 0.3.0 filename/privacy semantics remain compatible.
 - ReviewLume 0.3.0 local verification assistant:
   - Trusted Workspace users can approve fixed repository-local verification rules once per Git repository.
   - Newly added or modified matching tests are automatically included in later runs without approving each file again.
@@ -21,6 +31,7 @@
 
 ### Security
 
+- Folder Projects add a stricter path denylist for obvious credential-like files without claiming content-level DLP; environment templates such as `.env.example` remain readable.
 - ReviewLume still exposes no MCP shell, terminal, arbitrary command runner, process-start, file write, delete, patch, or Git-mutation tool.
 - Local verification never runs package scripts, `npx`, downloaded runners, AI responses, repository instructions, or commands found in test output.
 - Repository roots and targets are canonicalized before boundary checks on Windows, macOS, and Linux.
@@ -29,6 +40,7 @@
 
 ### Limitations
 
+- Folder Projects have no reliable Git history semantics and no Local Verification in the first release.
 - Local verification executes untrusted repository test code and is not a sandbox; tests can still modify files, start child processes, access the network, or contact local services.
 - The first release does not support Python, Maven, Gradle, .NET, Go, containers, databases, custom integration environments, or arbitrary user-defined commands.
 
