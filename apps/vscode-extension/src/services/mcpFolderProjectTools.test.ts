@@ -1,6 +1,6 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   McpFolderProjectTools,
@@ -168,6 +168,29 @@ describe('McpFolderProjectTools nested Git support', () => {
       const result = await tools.call('git_status', argumentsValue);
       expect(result.isError).toBe(true);
     }
+  });
+
+  it('requires the exact repository path returned by discovery and rejects link aliases', async () => {
+    await createNestedRepository('ui');
+    const alias = path.join(root, 'ui-alias');
+    try {
+      await symlink(path.join(root, 'ui'), alias, process.platform === 'win32' ? 'junction' : 'dir');
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code === 'EPERM' || code === 'EACCES') return;
+      throw error;
+    }
+
+    const listed = await tools.call('list_git_repositories', {});
+    expect(structured<{ repositories: Array<{ path: string }> }>(listed).repositories)
+      .toEqual([{ path: 'ui', name: 'ui' }]);
+
+    const aliasResult = await tools.call('git_status', { repository: 'ui-alias' });
+    expect(aliasResult.isError).toBe(true);
+    expect(aliasResult.content[0].text).toContain('exactly match');
+
+    const realResult = await tools.call('git_status', { repository: 'ui' });
+    expect(realResult.isError).not.toBe(true);
   });
 
   it('rejects a nested repository whose Git metadata resolves outside the authorized Folder root', async () => {
