@@ -57,10 +57,11 @@ describe('McpFolderTools', () => {
       gitHistoryAvailable: false,
       localVerificationAvailable: false,
     });
+    expect(structured(result)).not.toHaveProperty('repository');
     expect(result.content[0].text).toContain('no reliable Git history');
   });
 
-  it('lists, reads, and searches ordinary project source files', async () => {
+  it('lists, reads, and searches ordinary project source files without synthetic repository identity', async () => {
     const listed = await tools.call('list_files', { limit: 20 });
     const read = await tools.call('read_file', { path: 'src/example.ts' });
     const searched = await tools.call('search_code', { query: 'answer', maxResults: 10 });
@@ -74,6 +75,9 @@ describe('McpFolderTools', () => {
     expect(structured<{ matches: Array<{ path: string }> }>(searched).matches.map((match) => match.path))
       .toEqual(['src/example.test.ts', 'src/example.ts']);
     expect(structured(read)).toMatchObject({ project: 'fixture-folder', projectKind: 'folder' });
+    for (const result of [listed, read, searched]) {
+      expect(structured(result)).not.toHaveProperty('repository');
+    }
   });
 
   it('rejects hidden Git or verification tool calls instead of simulating them', async () => {
