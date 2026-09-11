@@ -1,18 +1,21 @@
 # ReviewLume Privacy Policy
 
-Last updated: 2026-08-03
+Last updated: 2026-09-11
 
 ## Overview
 
-ReviewLume is a privacy-aware VS Code extension that can expose one selected Git repository to ChatGPT through a controlled, read-only local Model Context Protocol (MCP) server and the official OpenAI Secure MCP Tunnel.
+ReviewLume is a privacy-aware VS Code extension that can expose one selected local project to ChatGPT through a controlled, read-only local Model Context Protocol (MCP) server and the official OpenAI Secure MCP Tunnel.
 
-ReviewLume also has an optional local verification assistant. That assistant can execute fixed repository-local test and type-check rules only after the user approves them in a Trusted Workspace. ChatGPT cannot start, retry, change, or compose those processes; it can only read completed verification evidence through read-only MCP tools.
+A connected project is one of two kinds:
+
+- **Git Project** — ReviewLume discovers a Git repository from the selected Trusted Workspace Folder.
+- **Folder Project** — the selected Trusted Workspace Folder is used directly when no Git repository is available.
+
+One MCP connection is always bound to one canonical project root. ReviewLume does not combine multiple Workspace Folders into one review context.
+
+ReviewLume also has an optional Local Verification assistant for **Git Projects only**. It can execute fixed repository-local test and type-check rules only after user approval in a Trusted Workspace. Folder Project first-version support does not discover, run, or expose Local Verification evidence.
 
 ReviewLume is an independent open-source project. It is not affiliated with or endorsed by OpenAI, Microsoft, Anthropic, Google, or other service providers.
-
-**Important:** the ReviewLume MCP connection does not automatically run SecretScanner and does not automatically block files merely because they are named `.env`, `credentials`, `secrets`, or appear to contain tokens, passwords, private keys, connection strings, personal data, or internal addresses. Users must connect only repositories and content they are authorized and willing to provide to OpenAI.
-
-**Important:** tests are executable repository code. Even when ReviewLume launches a fixed approved runner without a shell, the runner or tests may modify files, start child processes, access the network, read environment data, or contact local services. The local verification assistant is not a sandbox.
 
 ## Data ReviewLume Does Not Collect
 
@@ -23,39 +26,41 @@ ReviewLume does not operate a developer-owned cloud service and does not collect
 - browser cookies, sessions, passwords, or browsing history;
 - ChatGPT conversation history or responses;
 - payment information;
-- repository data on ReviewLume-owned servers.
+- project data on ReviewLume-owned servers.
 
 ReviewLume does not call a model API and does not use an OpenAI model API key. The OpenAI credential used by the extension is a Secure MCP Tunnel Runtime API Key supplied by the user.
 
 ## Data Stored Locally
 
-Depending on the features used, ReviewLume may store the following on the user's machine:
+Depending on the features used, ReviewLume may store:
 
 - the selected official `tunnel-client` executable path;
 - the OpenAI Tunnel ID;
 - the normalized OpenAI control-plane proxy URL;
 - the preferred browser used to open ChatGPT;
-- repository-specific local verification approvals in VS Code global state;
-- the latest local verification metadata and sanitized bounded output in VS Code global storage;
-- P8 Advanced Review Pack exports and review history under the selected repository's `.reviewlume/` directory.
+- Git-repository-specific Local Verification approvals in VS Code global state;
+- the latest Local Verification metadata and sanitized bounded output in VS Code global storage;
+- P8 Advanced Review Pack exports and review history under the selected Git repository's `.reviewlume/` directory.
 
-Local verification approvals and output are not intentionally written into the selected repository.
+Local Verification approvals and output are not intentionally written into the selected repository.
 
-The OpenAI Runtime API Key is stored only in VS Code SecretStorage. ReviewLume does not intentionally write that key to repository files, VS Code settings JSON, process arguments, the clipboard, or logs.
+The OpenAI Runtime API Key is stored only in VS Code SecretStorage. ReviewLume does not intentionally write that key to project files, VS Code settings JSON, process arguments, the clipboard, or logs.
 
 Each local MCP run uses a fresh random loopback port and a fresh high-entropy local token. Stopping the connection or closing the extension invalidates that local endpoint and token.
 
-## When Repository Data Can Leave the Machine
+## When Project Data Can Leave the Machine
 
-ReviewLume sends no repository content merely because VS Code starts or the extension activates.
+ReviewLume sends no project content merely because VS Code starts or the extension activates.
 
-Repository data can leave the local machine only after the user:
+Project data can leave the machine only after the user:
 
-1. explicitly starts a ReviewLume Secure MCP connection for a selected Git repository;
+1. explicitly starts a ReviewLume Secure MCP connection for one selected project;
 2. enables the ReviewLume app or connector in a ChatGPT conversation; and
-3. asks a question that causes ChatGPT to call one or more ReviewLume tools.
+3. asks a question that causes ChatGPT to call one or more exposed ReviewLume tools.
 
-ChatGPT may then request permitted data such as:
+### Git Project data
+
+Depending on the tool call, Git Project data can include:
 
 - repository identity, branch, HEAD, remote metadata, and working-tree status;
 - recent commit authors, timestamps, subjects, and hashes;
@@ -63,130 +68,163 @@ ChatGPT may then request permitted data such as:
 - tracked and non-ignored untracked file paths;
 - bounded text-file line ranges;
 - bounded literal code-search matches;
-- local verification status, target paths, exit codes, durations, parsed test counts, evidence messages, and stale-state information;
-- bounded sanitized stdout/stderr excerpts from a completed local verification step.
+- when Local Verification is available, completed verification status and bounded sanitized output.
 
-ReviewLume does not automatically send verification output merely because a local verification run occurred. It becomes eligible to leave the machine only when ChatGPT calls one of the read-only verification evidence tools.
+### Folder Project data
 
-## Actual MCP Read Boundaries
+Folder Projects expose only:
 
-The MCP tools enforce repository and resource boundaries, but they are not a secret-classification system.
+- `project_summary`;
+- bounded project-relative file paths from `list_files`;
+- bounded text-file excerpts from `read_file`;
+- bounded literal matches from `search_code`.
 
-The following are enforced:
+Folder Project metadata explicitly states that reliable Git history and Local Verification are unavailable. ReviewLume does not infer recent changes, staged/unstaged state, commits, branches, HEAD history, or diffs from timestamps or file contents.
 
-- one active connection is bound to one Git repository;
-- absolute paths, parent traversal, `.git`, and paths outside the bound repository are rejected;
-- symbolic links that resolve outside the repository are rejected;
-- directories, binary files, and oversized files are rejected by file-reading tools;
-- Git external diff and textconv execution are disabled;
-- result size, file count, line count, request size, concurrency, and call rate are bounded;
-- credential-bearing usernames and passwords are removed from returned remote URLs;
-- no shell, terminal, write, delete, patch, Git-mutation, or process-start MCP tool is exposed.
+## Shared MCP Read Boundaries
 
-The following are **not** automatically enforced by the MCP tools:
+All project types enforce:
+
+- one active connection bound to one canonical project root;
+- VS Code Workspace Trust before MCP start;
+- absolute-path and parent-traversal rejection;
+- `.git` read rejection;
+- canonical `realpath` checks that prevent reads outside the bound root;
+- rejection of external symlink targets;
+- rejection of directories, binary files, and oversized files by file-reading tools;
+- bounded result size, file count, line count, request size, concurrency, and call rate;
+- no MCP shell, terminal, write, delete, patch, Git-mutation, or arbitrary process-start tool.
+
+Project files and AI responses are untrusted input. Text inside a project cannot authorize a command, enlarge the root, enable a hidden capability, or make the connector writable.
+
+## Git Project Privacy Boundary
+
+For compatibility with the existing Git connector, Git Project MCP remains a repository-bound reader rather than a secret-classification system.
+
+The following are **not** automatically enforced for Git Projects:
 
 - `.env`, credential, secret, certificate, key, database, or production-configuration filenames are not blocked solely because of their names;
-- `read_file` may read any explicitly addressed regular text file inside the repository, including ignored files, when the caller knows or guesses the path;
+- `read_file` may read an explicitly addressed regular text file inside the repository, including an ignored file, when the caller knows or guesses the path;
 - `list_files` and `search_code` enumerate tracked files and non-ignored untracked files, so tracked sensitive files remain eligible;
-- diffs, file excerpts, commit subjects, search results, test target paths, and verification output may contain API keys, tokens, passwords, private-key text, connection strings, personal data, customer data, or internal addresses;
-- SecretScanner is not automatically applied to MCP tool calls.
+- diffs, excerpts, commit subjects, search results, target paths, and verification output may contain secrets or personal/internal data;
+- P8 SecretScanner is not automatically applied to Git MCP tool calls.
 
-Repository files and AI responses are treated as untrusted input, but that does not make their contents non-sensitive.
+Credential-bearing usernames and passwords are removed from returned Git remote URLs, and Git external diff/textconv execution is disabled, but these controls do not make repository contents non-sensitive.
+
+## Folder Project Privacy Boundary
+
+Folder Projects use a more conservative first-version enumeration and path-name policy because there is no Git index to define the project file set.
+
+Folder enumeration:
+
+- is implemented with bounded filesystem reads and starts no process;
+- never follows symbolic-link or junction-like link entries;
+- canonicalizes enumerated directories/files and requires them to remain under the canonical project root;
+- skips `.git`, `.hg`, `.svn` and common dependency/build/cache trees;
+- skips common credential-store directories such as `.ssh`, `.gnupg`, `.aws`, `.azure`, and `.kube`;
+- visits at most 20,000 entries and returns at most 5,000 candidate files.
+
+Folder Projects additionally block obvious credential-like paths such as:
+
+- `.env` and non-template `.env.*` files;
+- `credentials`, `credentials.json`, and common `secrets.*` names;
+- `id_rsa`, `id_ed25519`, `.npmrc`, `.pypirc`, and `.netrc`;
+- common private-key/certificate/container extensions such as `.key`, `.pem`, `.p12`, `.pfx`, `.jks`, `.keystore`, and `.kdbx`.
+
+Template files such as `.env.example`, `.env.sample`, `.env.template`, and `.env.dist` remain readable.
+
+**This is not content DLP or a complete SecretScanner.** Ordinary source/config files can still contain API keys, tokens, passwords, connection strings, personal data, customer data, or internal addresses. Users must sanitize projects before connecting them.
+
+The stricter Folder policy does not retroactively change the existing Git Project filename semantics.
 
 ## Optional Local Verification Assistant
 
-The local verification assistant is controlled from VS Code, not from ChatGPT.
+Local Verification remains **Git Project only**.
 
-The following are enforced:
+For Git Projects:
 
-- local verification requires a Trusted Workspace;
-- an approval is bound to one canonical Git repository;
-- the user sees the executable, fixed arguments, target mode, timeout, and risk warning before approving;
-- the launcher uses an executable and argv array with `shell: false`;
-- ReviewLume does not execute free-form command strings, package scripts, AI responses, repository instructions, or commands found in test output;
-- only supported repository-local runner entry points are discovered from fixed locations;
-- runner and relevant configuration changes invalidate the approval;
+- it requires a Trusted Workspace;
+- approval is bound to one canonical Git repository;
+- the user sees executable, fixed arguments, target mode, timeout, and risk warning before approval;
+- the launcher uses executable + argv with `shell: false`;
+- free-form commands, package scripts, AI responses, repository instructions, and commands found in test output are not executed;
+- runner/config changes invalidate approval;
 - output and execution time are bounded;
-- cancellation attempts to terminate the process tree;
-- common credential patterns and ANSI control sequences are removed from stored output on a best-effort basis;
-- the result is bound to HEAD and a staged, unstaged, and non-ignored untracked workspace fingerprint;
-- a changed workspace makes prior evidence stale.
+- results are bound to HEAD and working-tree state and become stale after changes.
 
-The following are **not** guaranteed:
+Tests remain executable untrusted repository code and can potentially modify files, launch child processes, access the network, read environment data, or contact local services. The assistant is not a sandbox.
 
-- test code cannot modify files or external systems;
-- test code cannot access the network or local services;
-- the reduced environment contains no sensitive value relevant to every possible test;
-- output redaction detects every secret or personal value;
-- a successful exit code proves coverage, isolation, correctness, or absence of side effects.
+For Folder Projects:
 
-See [docs/local-verification-assistant.md](docs/local-verification-assistant.md) for the detailed execution and evidence boundaries.
+- no verification discovery occurs during MCP connection;
+- no approved verification rule is run;
+- `verification_status` and `read_verification_output` are not registered.
+
+A future Folder Verification design would require separate review and approval.
+
+See [docs/local-verification-assistant.md](docs/local-verification-assistant.md) for the Git Project execution/evidence boundary.
 
 ## Data Sent to OpenAI and ChatGPT
 
-Data returned through the connector is transmitted through the official OpenAI Secure MCP Tunnel and processed by OpenAI under the user's OpenAI account, workspace controls, terms, privacy settings, and applicable data policies. ReviewLume does not control OpenAI's retention, residency, training, workspace administration, or downstream processing after data reaches OpenAI.
+Data returned through the connector is transmitted through the official OpenAI Secure MCP Tunnel and processed by OpenAI under the user's OpenAI account, workspace controls, terms, privacy settings, and applicable data policies. ReviewLume does not control OpenAI retention, residency, training, workspace administration, or downstream processing after data reaches OpenAI.
 
-ReviewLume does not proxy repository content or verification evidence through a ReviewLume-operated server.
+ReviewLume does not proxy project content or verification evidence through a ReviewLume-operated server.
 
-Users should review OpenAI's current product, privacy, workspace, and data-control documentation before enabling the connector. OpenAI product availability and behavior may change independently of ReviewLume.
+Users should review OpenAI's current product, privacy, workspace, and data-control documentation before enabling the connector.
 
 ## User Responsibilities and Data Minimization
 
-Before connecting a repository or enabling local verification, users should:
+Before connecting any project, users should:
 
 - remove, rotate, or redact real secrets and credentials;
-- avoid connecting repositories or running tests that expose production databases or real customer data;
-- use a sanitized copy, test branch, dedicated review repository, or isolated test environment when necessary;
-- inspect the exact verification rules shown by VS Code before approval;
-- confirm that their organization permits the selected content and verification output to be processed by OpenAI;
-- stop the connection when the review is complete;
-- clear the verification approval when it is no longer needed;
+- avoid connecting projects that expose production databases or real customer data;
+- use a sanitized copy, test branch, dedicated review project, or isolated test environment when necessary;
+- for Git Project Local Verification, inspect the exact approved rules before running them;
+- confirm that their organization permits the selected content and evidence to be processed by OpenAI;
+- stop the connection when review is complete;
 - revoke the Runtime API Key immediately if exposure is suspected.
 
-`.gitignore` can reduce enumeration of untracked files, but it is not a complete confidentiality boundary: tracked files remain eligible, and an explicitly addressed ignored text file can still be read by `read_file`.
+`.gitignore` is not a complete confidentiality boundary for Git Projects. Folder Projects have their own bounded filesystem/path-name policy, but it also cannot detect every secret.
 
 ## P8 Advanced Features
 
-P8 Advanced Review Packs, imported responses, review history, issue state, implementation summaries, and re-review records are stored locally.
+P8 Advanced Review Packs, imported responses, review history, issue state, implementation summaries, and re-review records remain local Git-oriented workflows.
 
-The P8 Advanced Review Pack workflow has a separate SecretScanner and export-gating process. Those controls apply only to content collected and exported through that workflow. They do not automatically filter or protect MCP tool calls or local verification output.
+The P8 Advanced Review Pack flow has a separate SecretScanner and export gate. Those controls apply only to content collected/exported through that flow. They do not automatically filter MCP tool calls or Local Verification output.
 
-ReviewLume does not automatically upload P8 records. They leave the machine only when the user deliberately copies, exports, opens, or sends them through another service.
+Folder Project Support does not convert P8 review history or Git diff workflows into Folder workflows.
 
 ## Logs
 
 ReviewLume diagnostic logs are designed not to contain Runtime API keys, local MCP tokens, Authorization headers, file contents, diffs, search terms, search results, or raw verification output. Users should still review diagnostic output before sharing it publicly.
 
-Local verification stdout/stderr is stored separately as bounded, sanitized evidence. Redaction is best-effort. Users must review it before allowing ChatGPT to read it or sharing it elsewhere.
-
-Raw HTTP logging and payload capture are disabled in the controlled `tunnel-client` environment. Long-running `tunnel-client` stdout and stderr are not collected by ReviewLume.
+Raw HTTP logging and payload capture are disabled in the controlled `tunnel-client` environment. Long-running `tunnel-client` stdout/stderr is not collected by ReviewLume.
 
 ## Security Boundaries
 
 ReviewLume does not provide MCP tools for:
 
 - shell or terminal execution;
-- starting or retrying local verification processes;
-- writing or deleting project files;
+- arbitrary commands or package scripts;
+- starting or retrying Local Verification processes;
+- writing, deleting, or renaming project files;
 - applying patches;
 - Git add, commit, checkout, reset, clean, merge, rebase, fetch, or push;
-- executing instructions contained in repository files or AI responses.
+- executing instructions contained in project files or AI responses.
 
-The optional local verification assistant is a separate VS Code-controlled capability. It runs only fixed, previously approved repository-local rules and does not make the MCP connector writable or executable.
-
-ReviewLume cannot guarantee that ChatGPT's analysis is correct or that every sensitive value will be noticed by the user, the model, or output redaction.
+Local Verification is a separate VS Code-controlled Git Project capability and does not make MCP writable or executable.
 
 ## Deleting Local Data
 
 Users can:
 
 - stop the active MCP connection from the `ReviewLume MCP` status-bar menu;
-- run `ReviewLume: Clear Local Verification Approval` to remove the current repository's approval and stored result;
-- delete `.reviewlume/` exports and history through ReviewLume's Advanced commands or normal file-system controls;
-- remove stored extension state by uninstalling ReviewLume and clearing its VS Code extension storage;
-- remove the Runtime API Key through ReviewLume reconfiguration or VS Code secret-storage cleanup;
-- delete or revoke the OpenAI Tunnel and Runtime API Key in the OpenAI Platform;
-- disable or delete the ReviewLume app or connector in ChatGPT.
+- for Git Projects, clear Local Verification approval/result through the existing command;
+- delete `.reviewlume/` P8 exports/history through Advanced commands or normal file-system controls;
+- remove extension state by uninstalling ReviewLume and clearing VS Code extension storage;
+- remove the Runtime API Key through reconfiguration or VS Code secret-storage cleanup;
+- delete or revoke the OpenAI Tunnel/Runtime API Key in OpenAI Platform;
+- disable or delete the ReviewLume app/connector in ChatGPT.
 
 ## Third-Party Services
 
@@ -194,8 +232,8 @@ Use of ChatGPT, OpenAI Secure MCP Tunnel, Visual Studio Code, Git, test runners,
 
 ## Changes
 
-Material changes to this policy will be recorded in the repository history and release notes.
+Material changes to this policy will be recorded in repository history and release notes.
 
 ## Contact and Security Reports
 
-For security vulnerabilities, use the private reporting process described in [SECURITY.md](SECURITY.md). For ordinary privacy questions, use the repository's public issue or discussion channels without including secrets, credentials, private project content, Runtime API Keys, Tunnel credentials, raw diagnostic payloads, or raw verification output.
+For security vulnerabilities, use the private reporting process described in [SECURITY.md](SECURITY.md). For ordinary privacy questions, use public repository channels without including secrets, credentials, private project content, Runtime API Keys, Tunnel credentials, raw diagnostic payloads, or raw verification output.
