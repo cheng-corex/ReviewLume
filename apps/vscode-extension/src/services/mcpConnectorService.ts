@@ -1,19 +1,25 @@
-import * as path from 'node:path';
 import * as vscode from 'vscode';
 import { createReadOnlyGitRunner } from './gitRuntime';
 import type { LocalVerificationService, VerificationResultReader } from './localVerificationService';
 import { logInfo, logWarn } from './logService';
 import { McpConnectorServer, type McpConnectorAddress } from './mcpConnectorServer';
+import { McpFolderTools } from './mcpFolderTools';
 import {
   McpRepositoryTools,
   type McpGitRunner,
   type McpToolCallResult,
   type McpToolDefinition,
 } from './mcpRepositoryTools';
+import { resolveProjectContext, type ProjectKind } from './projectContext';
 
 export interface McpConnectionInfo extends McpConnectorAddress {
+  /** Backward-compatible display name used by existing tunnel/UI code. */
   readonly repository: string;
+  /** Backward-compatible root field used by existing integrations. */
   readonly repositoryRoot: string;
+  readonly project: string;
+  readonly projectRoot: string;
+  readonly projectKind: ProjectKind;
   readonly authorizationHeader: string;
   /** Dedicated loopback header value used by OpenAI tunnel-client. */
   readonly tunnelToken: string;
@@ -63,7 +69,7 @@ export const VERIFICATION_TOOL_DEFINITIONS: readonly McpToolDefinition[] = [
 
 /**
  * Add explicit identity semantics and optional read-only verification evidence
- * without changing the existing repository field or exposing process execution.
+ * without changing the existing Git repository tool contract.
  */
 export class RepositoryIdentityTools extends McpRepositoryTools {
   readonly #root: string;
@@ -83,7 +89,7 @@ export class RepositoryIdentityTools extends McpRepositoryTools {
         ? {
             ...definition,
             description:
-              'Identify the actual VS Code project currently connected through ReviewLume. ReviewLume is the connector name, not an expected repository name. Report the connected project neutrally and do not describe another repository name as a mismatch.',
+              'Identify the actual VS Code Git Project currently connected through ReviewLume. ReviewLume is the connector name, not an expected repository name. Report the connected project neutrally and do not describe another repository name as a mismatch.',
           }
         : definition,
     );
@@ -139,12 +145,18 @@ export function addRepositoryIdentityContext(
 ): McpToolCallResult {
   if (result.isError || !result.structuredContent) return result;
 
+  const repository =
+    typeof result.structuredContent.repository === 'string'
+      ? result.structuredContent.repository
+      : undefined;
   const structuredContent = {
     ...result.structuredContent,
     connector: 'ReviewLume',
+    project: repository,
+    projectKind: 'git',
     repositoryRole: 'current-connected-project',
     identityNotice:
-      'ReviewLume is the connector name. The repository field identifies the current connected project and may legitimately be any repository; do not describe a different repository name as a mismatch.',
+      'ReviewLume is the connector name. The repository field identifies the current connected Git Project and may legitimately be any repository; do not describe a different repository name as a mismatch.',
   };
   return {
     ...result,
@@ -170,7 +182,7 @@ export function createSafeToolCallObserver(
   };
 }
 
-/** Owns the MCP endpoint for the repository selected in VS Code. */
+/** Owns the MCP endpoint for the single project selected in VS Code. */
 export class McpConnectorService {
   readonly #verification: LocalVerificationService | undefined;
   #server: McpConnectorServer | undefined;
@@ -189,7 +201,12 @@ export class McpConnectorService {
       throw new Error('ReviewLume MCP requires a trusted VS Code workspace.');
     }
 
-    if (this.#verification) {
+    const runner = createReadOnlyGitRunner();
+    const project = await resolveProjectContext(workspaceFolder.uri.fsPath, runner);
+
+    // Local Verification keeps its existing repository-bound safety model. A
+    // Folder Project never discovers, runs, or exposes verification evidence.
+    if (project.kind === 'git' && this.#verification) {
       try {
         await this.#verification.runOnConnect(workspaceFolder);
       } catch (error) {
@@ -201,31 +218,33 @@ export class McpConnectorService {
       }
     }
 
-    const runner = createReadOnlyGitRunner();
-    const root = (
-      await runner.run({
-        cwd: workspaceFolder.uri.fsPath,
-        args: ['rev-parse', '--show-toplevel'],
-      })
-    ).stdout.trim();
-    if (!root) throw new Error('The selected workspace folder is not inside a Git repository.');
-
-    if (this.#connection?.repositoryRoot === root) return this.#connection;
+    if (
+      this.#connection?.projectRoot === project.root &&
+      this.#connection.projectKind === project.kind
+    ) {
+      return this.#connection;
+    }
     await this.stop();
 
-    const repository = path.basename(root) || 'repository';
     const configuredBytes = vscode.workspace
       .getConfiguration('reviewlume')
       .get<number>('mcp.maxToolResultBytes', 512 * 1024);
-    const tools = new RepositoryIdentityTools({
-      root,
-      displayName: repository,
-      runner,
-      maxResultBytes: configuredBytes,
-      verification: this.#verification,
-    });
+    const tools = project.kind === 'git'
+      ? new RepositoryIdentityTools({
+          root: project.root,
+          displayName: project.displayName,
+          runner,
+          maxResultBytes: configuredBytes,
+          verification: this.#verification,
+        })
+      : new McpFolderTools({
+          root: project.root,
+          displayName: project.displayName,
+          maxResultBytes: configuredBytes,
+        });
     const server = new McpConnectorServer({
       tools,
+      projectKind: project.kind,
       onToolCall: createSafeToolCallObserver((toolName) =>
         logInfo(`MCP tool invoked: ${toolName}`),
       ),
@@ -235,21 +254,26 @@ export class McpConnectorService {
     this.#server = server;
     this.#connection = {
       ...address,
-      repository,
-      repositoryRoot: root,
+      repository: project.displayName,
+      repositoryRoot: project.root,
+      project: project.displayName,
+      projectRoot: project.root,
+      projectKind: project.kind,
       authorizationHeader: `Bearer ${address.bearerToken}`,
       tunnelToken: address.bearerToken,
     };
-    logInfo(`ReviewLume MCP connector started for ${repository} on loopback port ${address.port}`);
+    logInfo(
+      `ReviewLume MCP connector started for ${project.displayName} (${project.kind}) on loopback port ${address.port}`,
+    );
     return this.#connection;
   }
 
   async stop(): Promise<void> {
-    const repository = this.#connection?.repository;
+    const project = this.#connection?.project;
     await this.#server?.stop();
     this.#server = undefined;
     this.#connection = undefined;
-    if (repository) logInfo(`ReviewLume MCP connector stopped for ${repository}`);
+    if (project) logInfo(`ReviewLume MCP connector stopped for ${project}`);
   }
 
   async dispose(): Promise<void> {
