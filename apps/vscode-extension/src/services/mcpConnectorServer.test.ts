@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { McpConnectorServer } from './mcpConnectorServer';
+import { McpFolderTools } from './mcpFolderTools';
 import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
 
 class FakeRunner implements McpGitRunner {
@@ -141,6 +142,48 @@ describe('McpConnectorServer', () => {
         return annotations.readOnlyHint === true && annotations.destructiveHint === false;
       }),
     ).toBe(true);
+  });
+
+  it('advertises only common tools for a Folder Project', async () => {
+    const folderRoot = await mkdtemp(path.join(os.tmpdir(), 'reviewlume-folder-server-'));
+    const folderServer = new McpConnectorServer({
+      tools: new McpFolderTools({ root: folderRoot, displayName: 'plain-folder' }),
+      projectKind: 'folder',
+    });
+
+    try {
+      const address = await folderServer.start();
+      const initialized = await postJson(address.endpointUrl, address.bearerToken, {
+        jsonrpc: '2.0',
+        id: 10,
+        method: 'initialize',
+        params: { protocolVersion: '2025-11-25' },
+      });
+      expect(initialized.body).toMatchObject({
+        result: {
+          serverInfo: {
+            name: 'reviewlume-readonly-project',
+            description: 'Read-only access to the single Folder Project bound in VS Code.',
+          },
+        },
+      });
+      expect(JSON.stringify(initialized.body)).toContain('no reliable Git history');
+
+      const listed = await postJson(address.endpointUrl, address.bearerToken, {
+        jsonrpc: '2.0',
+        id: 11,
+        method: 'tools/list',
+        params: {},
+      });
+      const names = ((listed.body.result as { readonly tools: Array<{ readonly name: string }> }).tools)
+        .map((tool) => tool.name);
+      expect(names).toEqual(['project_summary', 'list_files', 'read_file', 'search_code']);
+      expect(names).not.toContain('verification_status');
+      expect(names).not.toContain('git_status');
+    } finally {
+      await folderServer.stop();
+      await rm(folderRoot, { recursive: true, force: true });
+    }
   });
 
   it('lets the model call repository tools after connection', async () => {
