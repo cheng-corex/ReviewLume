@@ -9,11 +9,11 @@ ReviewLume is a privacy-aware VS Code extension that can expose one selected loc
 A connected project is one of two kinds:
 
 - **Git Project** — ReviewLume discovers a Git repository from the selected Trusted Workspace Folder.
-- **Folder Project** — the selected Trusted Workspace Folder is used directly when no Git repository is available.
+- **Folder Project** — the selected Trusted Workspace Folder is used directly when no Git repository is available at that root. A Folder Project may contain multiple nested Git repositories that can be inspected read-only only when one child repository is explicitly selected.
 
-One MCP connection is always bound to one canonical project root. ReviewLume does not combine multiple Workspace Folders into one review context.
+One MCP connection is always bound to one canonical project root. ReviewLume does not combine unrelated Workspace Folders into one review context and does not combine nested repositories into synthetic Git history.
 
-ReviewLume also has an optional Local Verification assistant for **Git Projects only**. It can execute fixed repository-local test and type-check rules only after user approval in a Trusted Workspace. Folder Project first-version support does not discover, run, or expose Local Verification evidence.
+ReviewLume also has an optional Local Verification assistant for **Git Projects only**. It can execute fixed repository-local test and type-check rules only after user approval in a Trusted Workspace. Folder Project support does not discover, run, or expose Local Verification evidence, including for nested Git repositories.
 
 ReviewLume is an independent open-source project. It is not affiliated with or endorsed by OpenAI, Microsoft, Anthropic, Google, or other service providers.
 
@@ -72,14 +72,24 @@ Depending on the tool call, Git Project data can include:
 
 ### Folder Project data
 
-Folder Projects expose only:
+Folder Projects can expose project-wide file data through:
 
 - `project_summary`;
 - bounded project-relative file paths from `list_files`;
 - bounded text-file excerpts from `read_file`;
 - bounded literal matches from `search_code`.
 
-Folder Project metadata explicitly states that reliable Git history and Local Verification are unavailable. ReviewLume does not infer recent changes, staged/unstaged state, commits, branches, HEAD history, or diffs from timestamps or file contents.
+A Folder Project may also expose **real nested Git repository** information through:
+
+- `list_git_repositories`;
+- `repository_summary`;
+- `git_status`;
+- `recent_commits`;
+- `get_diff`.
+
+Those Git query tools require one explicit Folder-relative repository path returned by `list_git_repositories`. They can return that child repository's branch, HEAD, status, commit metadata, remote metadata, and bounded diffs. ReviewLume does not construct aggregate Git history for the Folder root and does not merge state from separate child repositories.
+
+Folder mode never exposes Local Verification evidence and does not automatically run validation in discovered child repositories.
 
 ## Shared MCP Read Boundaries
 
@@ -88,8 +98,8 @@ All project types enforce:
 - one active connection bound to one canonical project root;
 - VS Code Workspace Trust before MCP start;
 - absolute-path and parent-traversal rejection;
-- `.git` read rejection;
-- canonical `realpath` checks that prevent reads outside the bound root;
+- direct `.git` file-read rejection;
+- canonical `realpath` checks that prevent project file reads outside the bound root;
 - rejection of external symlink targets;
 - rejection of directories, binary files, and oversized files by file-reading tools;
 - bounded result size, file count, line count, request size, concurrency, and call rate;
@@ -113,9 +123,9 @@ Credential-bearing usernames and passwords are removed from returned Git remote 
 
 ## Folder Project Privacy Boundary
 
-Folder Projects use a more conservative first-version enumeration and path-name policy because there is no Git index to define the project file set.
+Folder **file enumeration and direct file reads** use a more conservative policy because there is no Git index to define the overall Folder file set.
 
-Folder enumeration:
+Folder file enumeration:
 
 - is implemented with bounded filesystem reads and starts no process;
 - never follows symbolic-link or junction-like link entries;
@@ -124,7 +134,7 @@ Folder enumeration:
 - skips common credential-store directories such as `.ssh`, `.gnupg`, `.aws`, `.azure`, and `.kube`;
 - visits at most 20,000 entries and returns at most 5,000 candidate files.
 
-Folder Projects additionally block obvious credential-like paths such as:
+Folder file tools additionally block obvious credential-like paths such as:
 
 - `.env` and non-template `.env.*` files;
 - `credentials`, `credentials.json`, and common `secrets.*` names;
@@ -135,7 +145,15 @@ Template files such as `.env.example`, `.env.sample`, `.env.template`, and `.env
 
 **This is not content DLP or a complete SecretScanner.** Ordinary source/config files can still contain API keys, tokens, passwords, connection strings, personal data, customer data, or internal addresses. Users must sanitize projects before connecting them.
 
-The stricter Folder policy does not retroactively change the existing Git Project filename semantics.
+### Nested Git privacy boundary
+
+`list_git_repositories` performs bounded directory inspection and uses the existing allowlisted read-only Git runner only for candidate directories that contain a local `.git` marker. The Git top-level and absolute Git metadata directory must both resolve inside the authorized Folder root. Symlink/junction escapes and Git metadata outside the root are rejected.
+
+Once a nested repository is explicitly selected, `repository_summary`, `git_status`, `recent_commits`, and `get_diff` use the existing Git Project semantics for that child repository. Therefore **Folder filename blocking is not a content filter for nested Git metadata/diffs**: a tracked sensitive-looking path, commit subject, status path, or diff inside a child repository may be returned by the Git tools. Users must not rely on `.env` filename blocking to sanitize an explicitly requested nested Git diff.
+
+The nested Git feature does not allow arbitrary process execution. It reuses the existing Git read-only command allowlist, disables external diff/textconv, bounds results, and adds no mutation command.
+
+The stricter Folder file policy does not retroactively change the existing Git Project filename semantics.
 
 ## Optional Local Verification Assistant
 
@@ -158,9 +176,10 @@ For Folder Projects:
 
 - no verification discovery occurs during MCP connection;
 - no approved verification rule is run;
-- `verification_status` and `read_verification_output` are not registered.
+- `verification_status` and `read_verification_output` are not registered;
+- discovered nested Git repositories do not inherit or trigger Local Verification approvals.
 
-A future Folder Verification design would require separate review and approval.
+If a child repository needs Local Verification, it must be opened/connected directly as a Git Project under the existing repository-bound approval model.
 
 See [docs/local-verification-assistant.md](docs/local-verification-assistant.md) for the Git Project execution/evidence boundary.
 
@@ -180,11 +199,12 @@ Before connecting any project, users should:
 - avoid connecting projects that expose production databases or real customer data;
 - use a sanitized copy, test branch, dedicated review project, or isolated test environment when necessary;
 - for Git Project Local Verification, inspect the exact approved rules before running them;
+- remember that explicitly requested nested Git status/diff/history can expose data that Folder direct-file filename blocking would otherwise omit;
 - confirm that their organization permits the selected content and evidence to be processed by OpenAI;
 - stop the connection when review is complete;
 - revoke the Runtime API Key immediately if exposure is suspected.
 
-`.gitignore` is not a complete confidentiality boundary for Git Projects. Folder Projects have their own bounded filesystem/path-name policy, but it also cannot detect every secret.
+`.gitignore` is not a complete confidentiality boundary for Git Projects. Folder Projects have their own bounded filesystem/path-name policy, but it also cannot detect every secret and does not sanitize explicit nested Git diff/history output.
 
 ## P8 Advanced Features
 
