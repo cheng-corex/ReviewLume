@@ -4,7 +4,7 @@ import * as path from 'node:path';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { McpConnectorServer } from './mcpConnectorServer';
-import { McpFolderTools } from './mcpFolderTools';
+import { McpFolderProjectTools } from './mcpFolderProjectTools';
 import { McpRepositoryTools, type McpGitRunner } from './mcpRepositoryTools';
 
 class FakeRunner implements McpGitRunner {
@@ -144,10 +144,14 @@ describe('McpConnectorServer', () => {
     ).toBe(true);
   });
 
-  it('advertises only common tools for a Folder Project', async () => {
+  it('advertises Folder file tools plus explicitly scoped nested Git tools', async () => {
     const folderRoot = await mkdtemp(path.join(os.tmpdir(), 'reviewlume-folder-server-'));
     const folderServer = new McpConnectorServer({
-      tools: new McpFolderTools({ root: folderRoot, displayName: 'plain-folder' }),
+      tools: new McpFolderProjectTools({
+        root: folderRoot,
+        displayName: 'plain-folder',
+        gitRunner: new FakeRunner(),
+      }),
       projectKind: 'folder',
     });
 
@@ -167,7 +171,8 @@ describe('McpConnectorServer', () => {
           },
         },
       });
-      expect(JSON.stringify(initialized.body)).toContain('no reliable Git history');
+      expect(JSON.stringify(initialized.body)).toContain('no aggregate Git history');
+      expect(JSON.stringify(initialized.body)).toContain('list_git_repositories');
 
       const listed = await postJson(address.endpointUrl, address.bearerToken, {
         jsonrpc: '2.0',
@@ -177,9 +182,18 @@ describe('McpConnectorServer', () => {
       });
       const names = ((listed.body.result as { readonly tools: Array<{ readonly name: string }> }).tools)
         .map((tool) => tool.name);
-      expect(names).toEqual(['project_summary', 'list_files', 'read_file', 'search_code']);
+      expect(names).toEqual([
+        'project_summary',
+        'list_git_repositories',
+        'repository_summary',
+        'git_status',
+        'recent_commits',
+        'get_diff',
+        'list_files',
+        'read_file',
+        'search_code',
+      ]);
       expect(names).not.toContain('verification_status');
-      expect(names).not.toContain('git_status');
     } finally {
       await folderServer.stop();
       await rm(folderRoot, { recursive: true, force: true });
