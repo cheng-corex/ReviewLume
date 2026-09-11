@@ -25,7 +25,7 @@ describe('createSafeToolCallObserver', () => {
 });
 
 describe('addRepositoryIdentityContext', () => {
-  it('distinguishes the ReviewLume connector from the current project name', () => {
+  it('distinguishes the ReviewLume connector from the current Git Project name', () => {
     const input: McpToolCallResult = {
       content: [{ type: 'text', text: '{"repository":"NursePrep"}' }],
       structuredContent: {
@@ -39,11 +39,13 @@ describe('addRepositoryIdentityContext', () => {
 
     expect(result.structuredContent).toMatchObject({
       connector: 'ReviewLume',
+      project: 'NursePrep',
+      projectKind: 'git',
       repository: 'NursePrep',
       repositoryRole: 'current-connected-project',
     });
     expect(result.content[0].text).toContain(
-      'ReviewLume is the connector name. The repository field identifies the current connected project',
+      'ReviewLume is the connector name. The repository field identifies the current connected Git Project',
     );
     expect(result.content[0].text).not.toContain('not ReviewLume');
   });
