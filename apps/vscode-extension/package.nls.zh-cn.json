@@ -1,7 +1,7 @@
 {
   "extension.displayName": "ReviewLume – 安全项目 MCP 与本地验证",
-  "extension.description": "通过只读 MCP 工具和可选的用户授权本地验证，将 ChatGPT 连接到 VS Code 中的一个 Git 仓库",
-  "capabilities.untrustedWorkspaces": "ReviewLume 可在受限模式下显示工作区状态，但仓库检查和本地验证需要先信任工作区。",
+  "extension.description": "通过只读 MCP 工具将 ChatGPT 连接到 VS Code 中的一个受信任 Git 或普通文件夹项目；Git 项目可选用户授权本地验证",
+  "capabilities.untrustedWorkspaces": "ReviewLume 可在受限模式下显示工作区状态，但项目检查和 Git 项目本地验证需要先信任工作区。",
   "command.hello": "ReviewLume：验证扩展",
   "command.createReviewPack": "ReviewLume：创建审核包（高级）",
   "command.addRelatedFiles": "ReviewLume：添加关联文件（高级）",
@@ -30,7 +30,7 @@
   "command.stopMcpConnector": "ReviewLume：停止安全 MCP 连接",
   "config.mcp.maxToolResultBytes.description": "单次只读 MCP 工具调用允许返回的最大 UTF-8 字节数。更大的差异和搜索结果会明确标记截断。",
   "config.mcp.tunnelClientPath.description": "可选的本机 OpenAI 官方 tunnel-client 可执行文件路径。Runtime API Key 绝不会保存在设置中。",
-  "config.verification.runOnConnect.description": "打开 ChatGPT 连接前，运行当前仓库已授权的固定本地验证规则。仓库未在 VS Code 中授权前不会启动任何进程。",
+  "config.verification.runOnConnect.description": "仅 Git 项目：打开 ChatGPT 连接前运行当前仓库已授权的固定本地验证规则。Folder Project 不会运行本地验证。",
   "config.verification.maxOutputBytes.description": "每个本地验证步骤允许保存的最大脱敏 stdout/stderr 字节数。",
   "config.export.mode.automatic": "自动保存到当前仓库中。",
   "config.export.mode.askEveryTime": "每次导出时询问保存位置。",
