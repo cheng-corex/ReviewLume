@@ -98,6 +98,26 @@ describe('StableProjectTools', () => {
     expect(folderTools.definitions).toEqual(gitTools.definitions);
   });
 
+  it('reports the stable capability set from Folder project_summary', async () => {
+    const tools = new StableProjectTools({
+      root: process.cwd(),
+      displayName: 'folder',
+      runner,
+      projectKind: 'folder',
+    });
+
+    const result = await tools.call('project_summary', {});
+
+    expect(result.isError).toBe(false);
+    expect(result.structuredContent).toMatchObject({
+      project: 'folder',
+      projectKind: 'folder',
+      nestedGitRepositoriesAvailable: true,
+      localVerificationAvailable: false,
+      capabilities: tools.definitions.map((definition) => definition.name),
+    });
+  });
+
   it('keeps repository selectors optional in the stable public schema', () => {
     const tools = new StableProjectTools({
       root: process.cwd(),
