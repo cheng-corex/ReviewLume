@@ -4,16 +4,16 @@
 
 ReviewLume connects one local project open in VS Code to ChatGPT through a loopback-only, read-only MCP server and the official OpenAI Secure MCP Tunnel.
 
-A project can be either:
+A connection binds exactly one canonical Project Root:
 
-- **Git Project** — full existing Git-aware review tools and optional repository-bound Local Verification evidence.
-- **Folder Project** — a normal Trusted Workspace Folder used as the authorized root, with bounded cross-folder file inspection plus explicitly scoped read-only Git queries for real child repositories inside that root.
+- **Git Project** — Git-aware read tools plus optional user-approved Local Verification evidence.
+- **Folder Project** — bounded file inspection across one Trusted Workspace Folder plus explicitly scoped read-only Git queries for real child repositories inside that root.
 
 ReviewLume does not provide MCP shell, terminal, arbitrary command execution, file write/delete, patch application, Git mutation, or AI-command execution.
 
-## Stable project tools
+## Stable 11-tool contract
 
-Git Project and Folder Project advertise the same 11 read-only MCP tool names and public input schemas so that switching the same ReviewLume Tunnel between project kinds does not leave ChatGPT with a stale tool snapshot:
+Git Project and Folder Project advertise the same tool names and public input schemas:
 
 - `project_summary`
 - `list_git_repositories`
@@ -27,29 +27,35 @@ Git Project and Folder Project advertise the same 11 read-only MCP tool names an
 - `verification_status`
 - `read_verification_output`
 
-Project-specific capability is enforced at call time.
+Project kind changes runtime semantics, not the public tool list.
+
+### Direct Git Project
+
+Git query tools target the connected repository directly. The optional `repository` selector must be omitted, and `list_git_repositories` reports that no nested selection is required.
+
+`verification_status` and `read_verification_output` can read completed repository-bound Local Verification evidence when configured. They cannot start, retry, alter, or compose processes.
 
 ### Folder Project
 
-Folder Projects use project-wide file tools across the authorized root and can discover real child Git repositories through `list_git_repositories`.
+Folder file tools operate across the authorized root under bounded path/file/result controls. `list_git_repositories` can discover real child Git repositories inside that root.
 
-The four Git query tools require an explicit Folder-relative `repository` path returned by `list_git_repositories`. The Folder root itself has no aggregate Git history, and ReviewLume never combines separate child repositories into synthetic branch/status/history/diff state.
+`repository_summary`, `git_status`, `recent_commits`, and `get_diff` require one exact Folder-relative repository path returned by discovery. The outer Folder root has no aggregate Git branch, HEAD, status, history, or diff, and separate child repositories are never combined into synthetic Git state.
 
-`verification_status` and `read_verification_output` remain present in the stable public contract, but Folder mode returns an explicit unavailable result. Folder Projects do not discover, run, approve, or expose Local Verification evidence from child repositories, and these MCP calls never start a process.
-
-### Git Project
-
-Git query tools target the connected Git repository directly. The optional public `repository` selector must be omitted in direct Git mode, and `list_git_repositories` reports that no nested repository selection is required.
-
-`verification_status` and `read_verification_output` can read completed repository-bound Local Verification evidence when configured. Those evidence tools cannot start, retry, modify, or compose processes.
+For stable ChatGPT schemas, Folder mode still advertises `verification_status` and `read_verification_output`, but calls return unavailable. Folder mode does not discover, approve, or run Local Verification and does not expose child-repository verification evidence.
 
 ## Optional Local Verification
 
-Local Verification remains Git-repository-bound and controlled from VS Code. It is not available for Folder Projects, including nested Git repositories reached through Folder mode.
+Local Verification is direct-Git-only and controlled from VS Code.
 
-For Git Projects, users approve fixed repository-local verification rules before they can run. ReviewLume does not execute arbitrary package scripts, `npx`, downloaded runners, AI replies, repository instructions, or commands found in process output. The launcher uses executable/argv with `shell: false` and bounded environment/output controls.
+The current schema-2 approval model binds each fixed rule to the canonical repository, executable, fixed argv, repository-relative package working directory, target mode, timeout, relevant package/config files, lockfiles, and repository-local runner content.
 
-Tests are still executable untrusted repository code and may have side effects. Local Verification is not a sandbox.
+ReviewLume performs bounded discovery of nested Node package roots such as `server/`, `client/`, and `packages/*`. It can resolve supported package-local or repository-hoisted Vitest, Jest, Mocha, Node test, and TypeScript runners. Changed tests are filtered to the approved package and passed as package-relative argv; tests from other package roots are excluded.
+
+JavaScript syntax checks use fixed per-file `node --check`. Syntax-only approval text states that file contents are parsed without being executed; test/typecheck approval text warns that repository code/tooling may execute and have side effects.
+
+ReviewLume does not run arbitrary package scripts, `npx`, downloaded runners, AI replies, repository instructions, process output, or free-form command text. Local process launch uses executable/argv with `shell: false`.
+
+Tests are executable untrusted repository code and may modify files, start child processes, access networks or local services. Local Verification is not a sandbox.
 
 Detailed boundary:
 https://github.com/cheng-corex/ReviewLume/blob/main/docs/local-verification-assistant.md
@@ -59,7 +65,7 @@ https://github.com/cheng-corex/ReviewLume/blob/main/docs/local-verification-assi
 - VS Code 1.100 or later.
 - A Trusted Workspace Folder.
 - Git only when Git-specific inspection or Local Verification is needed.
-- An OpenAI account/workspace whose ChatGPT web interface provides a custom MCP app/connector entry.
+- An OpenAI account/workspace whose ChatGPT interface provides the custom MCP app/connector entry.
 - An OpenAI Secure MCP Tunnel and least-privilege Runtime API Key.
 - The official `openai/tunnel-client`, downloaded separately by the user.
 
@@ -69,16 +75,16 @@ ReviewLume cannot enable or bypass unavailable ChatGPT features or account/works
 
 1. Create a Tunnel in the OpenAI Platform.
 2. Create a least-privilege Runtime API Key for that Tunnel.
-3. Download the official `openai/tunnel-client` for your platform.
-4. Open the project folder in VS Code and trust the workspace.
+3. Download the official `openai/tunnel-client`.
+4. Open and trust the Workspace Folder in VS Code.
 5. Click **ReviewLume MCP** in the status bar.
-6. Choose **Configure Secure MCP Tunnel** and configure the official client, Tunnel ID, and Runtime API Key.
+6. Choose **Configure Secure MCP Tunnel** and configure the client, Tunnel ID, and Runtime API Key.
 7. Choose **Connect Current Project to ChatGPT**.
-8. If the workspace has multiple folders, select exactly one Workspace Folder for this connection.
-9. ReviewLume automatically detects Git Project vs Folder Project.
-10. In ChatGPT, scan/approve the ReviewLume tool contract once. Normal Git ↔ Folder switching keeps the same 11 tools; rescan only when a future ReviewLume release changes the public contract itself.
+8. If the workspace has multiple folders, select exactly one Workspace Folder.
+9. ReviewLume detects Git Project vs Folder Project.
+10. In ChatGPT, scan/approve the ReviewLume app contract. Normal Git ↔ Folder switching keeps the same 11 tools; rescan only when a future release actually changes the public contract.
 
-The connected state identifies the outer project kind, for example:
+Connected state identifies the outer project kind, for example:
 
 ```text
 my-repo · Git
@@ -90,73 +96,55 @@ or:
 fbs · Folder
 ```
 
-A Folder Project stays labeled `Folder` even when it contains child Git repositories because the outer authorization boundary is still the selected Folder root.
-
-Full setup and revocation guide:
+Full setup guide:
 https://github.com/cheng-corex/ReviewLume/blob/main/docs/chatgpt-secure-mcp-setup.md
 
 ## Folder Project security boundary
 
-Folder direct-file access is intentionally more conservative than the existing Git MCP filename policy.
+Folder direct-file access is intentionally more conservative than direct Git compatibility behavior. ReviewLume:
 
-For file listing/reading/search, ReviewLume:
-
-- canonicalizes the selected project root;
-- rejects absolute paths, Windows drive paths, UNC paths, parent traversal, NUL, and direct `.git` metadata reads;
-- never follows symlink/junction-like entries during enumeration;
+- canonicalizes the selected root;
+- rejects absolute/drive/UNC paths, parent traversal, NUL, and direct `.git` reads;
+- does not follow symlink/junction-like entries during enumeration;
 - verifies resolved paths remain inside the selected root;
 - rejects directories, binary files, and oversized reads;
-- bounds directory depth, visited entries, file counts, search results, and response bytes;
+- bounds depth, visited entries, file counts, search results, request/result sizes, concurrency, and rate;
 - skips common VCS, dependency, build, cache, and credential-store directories;
-- blocks obvious credential-like paths such as real `.env` files, common credentials/secrets files, and private-key/certificate containers;
-- allows common environment templates such as `.env.example` and `.env.sample`.
+- blocks obvious credential-like direct-file paths while allowing common templates such as `.env.example`.
 
-For nested Git discovery, ReviewLume additionally:
+Nested Git discovery additionally requires a local `.git` marker and verifies both Git top-level and absolute Git metadata remain inside the authorized root. Child Git queries reuse the existing read-only Git allowlist and disabled external diff/textconv safeguards.
 
-- scans within bounded entry/depth/repository limits;
-- does not follow directory symlinks/junction-like entries;
-- requires a local `.git` marker;
-- verifies both Git top-level and absolute Git metadata directory remain inside the authorized Folder root;
-- requires each Git query to select one discovered child repository explicitly;
-- reuses the existing read-only Git command allowlist and disabled external diff/textconv safeguards.
+This policy is not content DLP. Nested Git status/history/diff follows documented Git read semantics and may expose sensitive-looking tracked paths/content. Remove or redact real secrets before connecting a project.
 
-This path policy is **not** a content DLP system. Nested Git status/history/diff also follows the existing Git read semantics and may expose tracked sensitive-looking paths or content. Remove, rotate, or redact real credentials before connecting a project.
+## Privacy compatibility
 
-## Git Project privacy compatibility
+Git Project MCP does not automatically run the P8 SecretScanner or block a file solely because its name looks sensitive. P8 Advanced Review Pack scanning/export gates remain separate from ordinary MCP and Local Verification evidence.
 
-Git Project behavior remains compatible with ReviewLume 0.3.x: its MCP tools do not automatically run the P8 SecretScanner or block a file solely because it is named `.env`, credentials, or secrets. Tracked sensitive files can still be eligible for Git Project listing/search, and an explicitly addressed ignored regular text file can be read when the caller knows its path.
-
-This difference is intentional for compatibility and is documented in the privacy/security policies.
+Project data can leave the machine after the user connects ReviewLume, enables its ChatGPT app/connector, and a tool result is returned through the official OpenAI Secure MCP Tunnel. ReviewLume does not collect telemetry or operate a project-data relay service.
 
 ## Secure MCP Tunnel boundary
 
 - Local MCP listens only on a random `127.0.0.1` port.
-- Every run uses a fresh local token.
+- Each run uses a fresh local token.
 - Runtime API Key is stored only in VS Code SecretStorage.
-- Credentials are not intentionally written to project files, settings JSON, argv, clipboard, or diagnostics logs.
-- ReviewLume validates the official tunnel client, runs `doctor --explain`, then waits for both `/readyz` and `/api/status` health before reporting ready.
+- ReviewLume validates the official tunnel client and waits for local/control-plane health before reporting connected.
 - Stopping the connection invalidates the local endpoint/token.
-- One active connection binds one outer project root only.
-
-## Multi-root Workspace
-
-A VS Code workspace may contain several folders, but ReviewLume still requires selecting one Workspace Folder for each connection. It does not merge several unrelated roots into one MCP context and does not implement a Multi Project Registry.
-
-A single authorized Folder Project may, however, contain several child Git repositories. Those child repositories are inspected only within the same authorized root and remain separate Git identities.
+- One active connection binds one outer Project Root only.
 
 ## Advanced review features
 
-P8 Review Packs, sensitive-content scanning, imported responses, review history, issue state, implementation summaries, and re-review comparison remain available as Advanced Git-oriented workflows. Folder Project Support does not convert those workflows into non-Git review flows and does not start the optional browser bridge.
+P8 Review Packs, sensitive-content scanning, imported responses, review history, issue state, implementation summaries, and re-review comparison remain available as Advanced Git-oriented workflows. Folder Project support does not start the optional browser bridge.
 
 ## Known limitations
 
-- Folder root has no aggregate recent-change/history semantics.
-- Nested Git queries require selecting one discovered child repository at a time.
-- Folder Project has no Local Verification execution or evidence access, including for child repositories reached through Folder mode; the stable evidence tool names return unavailable.
+- Folder root has no aggregate Git recent-change/history semantics.
+- Nested Git queries inspect one discovered child repository at a time.
+- Folder mode has no Local Verification execution/evidence access; stable evidence tool names return unavailable.
 - Local Verification remains direct Git Project only and is not a sandbox.
-- ChatGPT may cache an approved tool snapshot after a ReviewLume version changes the public contract; normal project-kind switching does not change the current 11-tool contract.
+- ChatGPT may cache an approved tool snapshot after a release changes the public contract; normal Git ↔ Folder switching does not change the current 11-tool contract.
 - ReviewLume never applies fixes automatically.
 
 - Privacy policy: https://github.com/cheng-corex/ReviewLume/blob/main/PRIVACY.md
 - Security policy: https://github.com/cheng-corex/ReviewLume/blob/main/SECURITY.md
 - Folder Project design: https://github.com/cheng-corex/ReviewLume/blob/main/docs/folder-project-support.md
+- Stable tool contract: https://github.com/cheng-corex/ReviewLume/blob/main/docs/stable-mcp-tool-contract.md
