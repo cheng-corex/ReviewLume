@@ -98,7 +98,7 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid Marketplace metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.3.2');
+    expect(content.version).toBe('0.3.3');
     expect(content.publisher).toBe('ReviewLume');
     expect(content.preview).toBe(true);
     expect(content.pricing).toBe('Free');
