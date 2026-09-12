@@ -11,47 +11,37 @@ A project can be either:
 
 ReviewLume does not provide MCP shell, terminal, arbitrary command execution, file write/delete, patch application, Git mutation, or AI-command execution.
 
-## Project tools
+## Stable project tools
 
-### Folder Project
-
-Folder Projects expose project-wide file tools:
+Git Project and Folder Project advertise the same 11 read-only MCP tool names and public input schemas so that switching the same ReviewLume Tunnel between project kinds does not leave ChatGPT with a stale tool snapshot:
 
 - `project_summary`
-- `list_files`
-- `read_file`
-- `search_code`
-
-They also expose nested Git read tools:
-
 - `list_git_repositories`
 - `repository_summary`
 - `git_status`
 - `recent_commits`
 - `get_diff`
-
-The four Git query tools require an explicit Folder-relative `repository` path returned by `list_git_repositories`. The Folder root itself has no aggregate Git history, and ReviewLume never combines separate child repositories into synthetic branch/status/history/diff state.
-
-Folder Projects do **not** expose Local Verification evidence and never automatically execute verification for nested repositories.
-
-### Git Project
-
-Git Projects preserve the existing tool set:
-
-- `repository_summary`
-- `git_status`
-- `recent_commits`
-- `get_diff`
 - `list_files`
 - `read_file`
 - `search_code`
-
-When Local Verification is available, Git Projects can also expose completed evidence through:
-
 - `verification_status`
 - `read_verification_output`
 
-Those evidence tools cannot start, retry, modify, or compose processes.
+Project-specific capability is enforced at call time.
+
+### Folder Project
+
+Folder Projects use project-wide file tools across the authorized root and can discover real child Git repositories through `list_git_repositories`.
+
+The four Git query tools require an explicit Folder-relative `repository` path returned by `list_git_repositories`. The Folder root itself has no aggregate Git history, and ReviewLume never combines separate child repositories into synthetic branch/status/history/diff state.
+
+`verification_status` and `read_verification_output` remain present in the stable public contract, but Folder mode returns an explicit unavailable result. Folder Projects do not discover, run, approve, or expose Local Verification evidence from child repositories, and these MCP calls never start a process.
+
+### Git Project
+
+Git query tools target the connected Git repository directly. The optional public `repository` selector must be omitted in direct Git mode, and `list_git_repositories` reports that no nested repository selection is required.
+
+`verification_status` and `read_verification_output` can read completed repository-bound Local Verification evidence when configured. Those evidence tools cannot start, retry, modify, or compose processes.
 
 ## Optional Local Verification
 
@@ -86,7 +76,7 @@ ReviewLume cannot enable or bypass unavailable ChatGPT features or account/works
 7. Choose **Connect Current Project to ChatGPT**.
 8. If the workspace has multiple folders, select exactly one Workspace Folder for this connection.
 9. ReviewLume automatically detects Git Project vs Folder Project.
-10. In ChatGPT, refresh/scan the ReviewLume tools and confirm the capability set matches the project kind.
+10. In ChatGPT, scan/approve the ReviewLume tool contract once. Normal Git ↔ Folder switching keeps the same 11 tools; rescan only when a future ReviewLume release changes the public contract itself.
 
 The connected state identifies the outer project kind, for example:
 
@@ -134,7 +124,7 @@ This path policy is **not** a content DLP system. Nested Git status/history/diff
 
 ## Git Project privacy compatibility
 
-Git Project behavior remains compatible with ReviewLume 0.3.0: its MCP tools do not automatically run the P8 SecretScanner or block a file solely because it is named `.env`, credentials, or secrets. Tracked sensitive files can still be eligible for Git Project listing/search, and an explicitly addressed ignored regular text file can be read when the caller knows its path.
+Git Project behavior remains compatible with ReviewLume 0.3.x: its MCP tools do not automatically run the P8 SecretScanner or block a file solely because it is named `.env`, credentials, or secrets. Tracked sensitive files can still be eligible for Git Project listing/search, and an explicitly addressed ignored regular text file can be read when the caller knows its path.
 
 This difference is intentional for compatibility and is documented in the privacy/security policies.
 
@@ -156,15 +146,15 @@ A single authorized Folder Project may, however, contain several child Git repos
 
 ## Advanced review features
 
-P8 Review Packs, sensitive-content scanning, imported responses, review history, issue state, implementation summaries, and re-review comparison remain available as Advanced Git-oriented workflows. Folder Project Support does not convert those workflows into non-Git review flows.
+P8 Review Packs, sensitive-content scanning, imported responses, review history, issue state, implementation summaries, and re-review comparison remain available as Advanced Git-oriented workflows. Folder Project Support does not convert those workflows into non-Git review flows and does not start the optional browser bridge.
 
 ## Known limitations
 
 - Folder root has no aggregate recent-change/history semantics.
 - Nested Git queries require selecting one discovered child repository at a time.
-- Folder Project has no Local Verification, including for child repositories reached through Folder mode.
+- Folder Project has no Local Verification execution or evidence access, including for child repositories reached through Folder mode; the stable evidence tool names return unavailable.
 - Local Verification remains direct Git Project only and is not a sandbox.
-- ChatGPT may cache an approved tool snapshot; after changing project kind or ReviewLume tool definitions, refresh/rescan/recreate the ChatGPT app if necessary.
+- ChatGPT may cache an approved tool snapshot after a ReviewLume version changes the public contract; normal project-kind switching does not change the current 11-tool contract.
 - ReviewLume never applies fixes automatically.
 
 - Privacy policy: https://github.com/cheng-corex/ReviewLume/blob/main/PRIVACY.md
