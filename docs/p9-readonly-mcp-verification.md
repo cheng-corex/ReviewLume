@@ -1,189 +1,237 @@
-# P9 ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
+# ChatGPT 只读项目 MCP + Secure MCP Tunnel 人工验收清单
 
-> 当前公开发布候选为 ReviewLume `0.2.0` Preview。自动化测试负责协议、路径、安全边界、浏览器启动、取消异常识别、构建、打包和 VSIX 内容检查；真实 ChatGPT 工具调用仍需在用户实际 Windows 环境完成。
+> 当前主线发布基线为 ReviewLume `0.3.0` Preview。本清单覆盖现有 Git Project 和新增 Folder Project，包括授权 Folder root 内的 nested Git 只读查询。Folder Project Support 不启动浏览器桥接，也不改变一次连接一个 outer Project Root 的原则。
 
-首次申请和配置步骤见 [ChatGPT 与 OpenAI Secure MCP Tunnel 配置指南](chatgpt-secure-mcp-setup.md)。
+首次配置见 [ChatGPT 与 OpenAI Secure MCP Tunnel 配置指南](chatgpt-secure-mcp-setup.md)。自动测试矩阵见 [测试与验收](test-and-verification.md)。
 
 ## 当前验收基线
 
-- Publisher ID：`ReviewLume`。
-- Extension ID：`ReviewLume.reviewlume-vscode`。
-- VSIX：`reviewlume-vscode-0.2.0.vsix`。
-- Marketplace metadata：Preview、Free。
-- 官方客户端：`openai/tunnel-client`。
-- ChatGPT 网页端已创建并授权 ReviewLume Tunnel 应用/连接器。
-- ReviewLume 一次连接只绑定一个 Trusted Workspace 中的 Git repository。
-- 本地 MCP 只监听 `127.0.0.1` 随机端口。
-- Runtime API Key 只保存在 VS Code SecretStorage。
-- 只提供 7 个只读工具：
-  - `repository_summary`
-  - `git_status`
-  - `recent_commits`
-  - `get_diff`
-  - `list_files`
-  - `read_file`
-  - `search_code`
+- Publisher ID：`ReviewLume`
+- Extension ID：`ReviewLume.reviewlume-vscode`
+- VSIX 基线版本：`0.3.0` Preview
+- 官方客户端：`openai/tunnel-client`
+- Local MCP：仅 `127.0.0.1` 随机端口
+- Runtime API Key：仅 VS Code SecretStorage
+- 一次 connection：一个 selected outer Project Root
 
-## 1. 安装、启动激活与界面收口
+Project kind 自动检测：
 
-1. 安装最终 Windows artifact 中的 `reviewlume-vscode-0.2.0.vsix`，并完全退出 VS Code。
-2. 正常双击打开 VS Code，确认启动完成后底部直接出现 `ReviewLume MCP` 状态项。
-3. 确认左侧 Activity Bar 不再出现 ReviewLume 专用操作栏。
-4. 确认自动激活只注册状态栏、命令和必要服务；不会自动启动 Tunnel、打开 ChatGPT、读取 Git diff 或扫描 repository。
-5. 打开一个不含真实凭据的公开测试 Git repository，确认 Workspace Trust 已开启。
-6. P8 Review Pack、历史、问题状态、实施提示和二次复核继续通过命令面板或 Review Panel 使用。
-7. 打开状态栏菜单或浏览器选择框后执行 Extension Host reload，确认取消或重载不会弹出红色 `Canceled` 错误通知。
+- Git discovery 成功 → **Git Project**
+- 否则 → **Folder Project**
+
+## 1. 安装与启动
+
+1. 安装 PR final head 对应 Windows VSIX。
+2. 完全退出并重启 VS Code。
+3. 确认底部出现 `ReviewLume MCP`。
+4. 确认启动本身不会自动建立 Tunnel、打开 ChatGPT、读取项目文件或运行验证。
+5. 确认 Workspace Restricted Mode 下 MCP connection 仍被禁止。
+
+## 2. Secure MCP Tunnel 配置回归
+
+1. 使用 OpenAI Platform Tunnel。
+2. 使用最小权限 Runtime API Key，不使用 Admin Key。
+3. 选择官方 `tunnel-client.exe`。
+4. 确认 Tunnel ID 校验、doctor、proxy discovery 与 `/readyz` + `/api/status` 就绪判断保持正常。
+5. 确认 Runtime Key / local token 不出现在 repository、settings JSON、argv、clipboard、ReviewLume logs。
+6. 停止连接后确认 Tunnel 与本地 MCP 都关闭，旧 endpoint/token 失效。
+
+## 3. Git Project 人工验收
+
+打开一个 Trusted Git repository：
+
+1. 选择 **Connect Current Project to ChatGPT**。
+2. 确认 ReviewLume 自动识别为 Git Project，不要求手工选择模式。
+3. 状态栏应显示实际项目名和 `Git` 类型。
+4. ChatGPT 重新扫描工具。
+
+预期 Git 工具：
+
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+- `list_files`
+- `read_file`
+- `search_code`
+- `verification_status`（Local Verification 可用时）
+- `read_verification_output`（Local Verification 可用时）
+
+验证：
+
+- [ ] repository identity 正确；
+- [ ] Git status 正常；
+- [ ] recent commits 正常；
+- [ ] working/staged/range diff 正常；
+- [ ] list/read/search 与 0.3.0 行为兼容；
+- [ ] 已批准 Local Verification 行为不回归；
+- [ ] verification evidence 仍只读，ChatGPT 不能启动进程；
+- [ ] 没有 write/delete/shell/terminal/patch/Git mutation 工具。
+
+## 4. Folder Project 基础人工验收
+
+准备一个根目录本身不含 `.git` 的普通目录。为了覆盖真实场景，可以让其中包含多个独立 Git 子项目，例如：
+
+```text
+G:\Projects\fbs\
+├─ fbs-iot-ui\   (.git)
+├─ fbs-lowcode\  (.git)
+└─ fbs-ui\       (.git)
+```
+
+使用假 fixture 或可公开测试数据，不要使用真实凭据。
+
+1. 在 VS Code 打开 outer Folder，例如 `G:\Projects\fbs`，并设为 Trusted。
+2. 选择 **Connect Current Project to ChatGPT**。
+3. 确认不再出现 `No Git Repository` 或要求初始化 Git。
+4. 确认状态显示 outer 目录名和 `Folder` 类型。
+5. 在 ChatGPT 重新扫描工具。
+
+预期看到：
+
+- `project_summary`
+- `list_git_repositories`
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+- `list_files`
+- `read_file`
+- `search_code`
+
+必须确认：
+
+- [ ] 没有 `verification_status`；
+- [ ] 没有 `read_verification_output`；
+- [ ] 连接时没有运行 Local Verification；
+- [ ] `project_summary` 明确 outer Folder root 没有 aggregate Git history；
+- [ ] status bar 仍显示 `Folder`，不会因为 child repos 存在而伪装成一个 Git Project。
+
+Folder-wide file 验证：
+
+- [ ] `list_files` 能跨多个 child project 列出普通源码；
+- [ ] `read_file` 能读取允许文本；
+- [ ] `search_code` 能跨 child project 搜索普通源码/测试/配置；
+- [ ] 目录、二进制、超大文件不被正常读取。
+
+## 5. Folder nested Git 人工验收
+
+先发送：
+
+> 列出当前 Folder Project 内可用的 Git repositories。
+
+预期 `list_git_repositories` 返回实际 child repos，例如 `fbs-iot-ui`、`fbs-lowcode`、`fbs-ui`。
+
+然后发送：
+
+> 查看 fbs-ui 当前 branch、Git status、最近 5 次提交和 working diff。
 
 通过标准：
 
-- P9 只有底部状态栏这一处常驻主入口；
-- 启动激活不会主动建立网络连接或读取项目内容；
-- 明确的 VS Code 取消异常被视为正常取消；
-- 代理、配置、浏览器、Tunnel 和 MCP 等真实运行错误仍正常显示。
+- [ ] `repository_summary` 只针对 `fbs-ui`；
+- [ ] `git_status` 只针对 `fbs-ui`；
+- [ ] `recent_commits` 只针对 `fbs-ui`；
+- [ ] `get_diff` 只针对 `fbs-ui`；
+- [ ] 返回中能区分 outer Folder project 与 selected child repository；
+- [ ] 不读取/混合其它 child repository 的 Git 状态；
+- [ ] 不把 `fbs` 本身描述成 aggregate Git repository。
 
-## 2. OpenAI Platform 和首次配置
+再验证另一个 child repository，确认不同 repository 的 branch/status/history 不串台。
 
-1. 按 [配置指南](chatgpt-secure-mcp-setup.md) 创建或选择 OpenAI Tunnel。
-2. 创建最小权限 Runtime API Key，确认不是 Admin Key。
-3. 从 `openai/tunnel-client` 官方 Release 下载对应平台客户端。
-4. 点击状态栏 `ReviewLume MCP`，选择 `Configure Secure MCP Tunnel`。
-5. 选择官方 `tunnel-client.exe`。
-6. 粘贴 OpenAI Tunnel ID。
-7. 粘贴 Runtime API Key。
-8. 检查 VS Code settings 和 repository，确认没有 Runtime Key、Token 或新增凭据文件。
+## 6. Folder 路径、selector 与安全边界
 
-连接时按以下顺序发现 OpenAI 控制面代理：
+仅使用假 fixture 验证 direct-file boundary：
 
-1. ReviewLume 上次保存的控制面代理；
-2. `CONTROL_PLANE_HTTP_PROXY`；
-3. `HTTPS_PROXY`；
-4. `HTTP_PROXY`；
-5. VS Code `http.proxy`；
-6. Windows 当前用户系统代理注册表。
+- [ ] `../outside.txt` 拒绝；
+- [ ] `C:\outside.txt` 拒绝；
+- [ ] `\\server\share\outside.txt` 拒绝；
+- [ ] `.git/config` direct read 拒绝；
+- [ ] root 外 symlink / Windows junction 不能枚举或读取；
+- [ ] `.ssh` / `.aws` / `.kube` 等 credential-store 目录不枚举；
+- [ ] `.env` 等明显 secret path 被 Folder direct-file policy 拒绝；
+- [ ] `.env.example` 等模板文件仍可正常读取；
+- [ ] private key / certificate container fixture path 被拒绝。
 
-通过标准：
+Nested Git selector 还必须验证：
 
-- 非官方帮助文本的程序被拒绝；
-- Tunnel ID 必须是 `tunnel_` 加 32 位小写字母或数字；
-- Runtime Key 只在 SecretStorage；
-- 二进制路径和代理地址均为机器级本地状态，不进入 repository；
-- 含账号密码、路径、查询或非 HTTP(S) 协议的代理 URL 被拒绝；
-- 子进程只设置 `CONTROL_PLANE_HTTP_PROXY`，不把通用代理强加给本地 MCP、Git 或 VS Code。
+- [ ] 缺少 `repository` 参数拒绝；
+- [ ] `../repo` 拒绝；
+- [ ] absolute / Windows drive / UNC repository selector 拒绝；
+- [ ] `.` / outer Folder root 拒绝；
+- [ ] 普通非 Git 目录拒绝；
+- [ ] `.git` path component 拒绝；
+- [ ] 指向已发现 repo 的 symlink/junction alias 也不能替代 discovery 返回路径；
+- [ ] Git metadata 解析到 outer root 外的 candidate 不进入 discovery；
+- [ ] 外部 link 中的 repository 不进入 discovery。
 
-## 3. ChatGPT 应用/连接器
+注意：Folder direct-file path denylist 不是正文 DLP；nested Git status/history/diff 复用既有 Git 语义，也可能返回 tracked sensitive-looking path/content。不要用真实秘密做验收。
 
-1. 先让 ReviewLume Tunnel 保持已连接。
-2. 从状态栏选择 `Manage ChatGPT Connector (Advanced)`，或进入 ChatGPT Apps/Connectors 设置。
-3. 创建名为 ReviewLume 的自定义应用/连接器。
-4. 连接方式选择 Tunnel，并填写相同 Tunnel ID。
-5. 扫描工具。
-6. 确认只发现 7 个 read-only 工具，没有 write、delete、shell、terminal、patch 或 Git mutation。
-7. 保存应用；工作空间需要共享时，再按 OpenAI 当前管理员流程审核和发布。
-8. 工具定义发生变化后，验证 ChatGPT 需要刷新、重新扫描或重新创建应用，不会自动采用新快照。
+## 7. Multi-root Workspace
 
-如果 ChatGPT 没有创建自定义应用/连接器入口，应判定为账户、套餐、工作空间或灰度权限阻塞，不得归因于 ReviewLume 本地代码，也不得尝试绕过。
+创建至少两个 Workspace Folder：
 
-## 4. ChatGPT 浏览器选择与新对话入口
+1. 一个 Git Project；
+2. 一个普通 Folder Project。
 
-1. 点击状态栏 `ReviewLume MCP`。
-2. 首次连接时确认出现 System default browser、Microsoft Edge、Google Chrome。
-3. 选择一个浏览器并完成连接。
-4. 确认选择被保存；停止连接、完全退出 VS Code 后再次连接，不应重复询问。
-5. 需要修改时选择 `Choose ChatGPT Browser`。
-6. 选择 Edge 或 Chrome 时，确认不会改变 Windows 系统默认浏览器。
-7. 选择 System default browser 时，确认使用系统原生 URL 启动，不出现 VS Code Open/Cancel 外部网站确认。
-8. 正常连接或 `Open New Chat in ChatGPT` 应打开 ChatGPT 新聊天页面。
-9. 不得自动打开 Apps/Connectors 设置或连接器详情弹框。
+验证：
 
-## 5. 一键启动与真实就绪判断
+- [ ] Connect 时要求选择一个 Workspace Folder；
+- [ ] 本次 connection 只绑定一个解析后的 outer root；
+- [ ] 选择 Folder 时不能读取另一个 Workspace Git root；
+- [ ] 选择 Git 时不能跨到另一个 Workspace Folder root；
+- [ ] Folder 内 child Git 是 outer root 内部资源，不等同 Multi Project Registry；
+- [ ] 切换 outer project 需停止/重新连接。
 
-1. 选择 `Connect Current Repository to ChatGPT`。
-2. 多根 workspace 时只选择一个 workspace folder。
-3. 确认 ReviewLume 自动启动本地 MCP、运行 `tunnel-client doctor --explain`、启动长期 Tunnel 进程。
-4. 确认 `/readyz` 返回 200。
-5. 确认 `/api/status` 同时满足：Tunnel ID 一致、不存在 `tunnel_metadata_error`、`main` channel enabled 且 `probe_status` 为 `ok`。
-6. 只有上述检查全部通过后，状态栏才显示当前 repository 名称并打开 ChatGPT。
-7. ChatGPT 应中性表述“当前连接项目是 <项目名>”，不得把 ReviewLume 连接器名误当成 repository 名。
+## 8. ChatGPT / MCP 协议回归
 
-## 6. tunnel-client 与本地协议边界
+- [ ] unauthenticated GET `/mcp` 只返回 405；
+- [ ] unauthorized POST/DELETE 返回 401；
+- [ ] tools/list 与 ProjectKind 对应；
+- [ ] Folder initialize instructions 明确 outer root 无 aggregate Git history，并要求先 discovery 后显式 child repository；
+- [ ] Folder tools/list 没有 verification tools；
+- [ ] 连续 tools/call 不出现 HTTP 500；
+- [ ] OutputChannel / Extension Host reload 不把日志异常变成工具失败；
+- [ ] Open New Chat / browser preference 保持正常。
 
-- Diagnostics UI 只能是 loopback HTTP。
-- 长期进程参数只有 `run`，不含 Runtime Key、本地 Token 或 Authorization Header。
-- `X-ReviewLume-Token` 使用环境变量引用，不把 Token 写入 Header 配置文本。
-- ambient Tunnel profile、MCP command、Admin Key、Cloudflared、Harpoon、远程 UI、日志文件和原始 HTTP 日志覆盖项被移除。
-- 无凭据 GET `/mcp` 返回 405；无凭据 POST/DELETE 返回 401。
-- Protected Resource Metadata 只包含当前 loopback resource。
-- doctor 的 OAuth metadata 检查通过，不启动 OAuth 登录。
+## 9. P8 Advanced 与 Local Verification 边界
 
-## 7. ChatGPT 自主范围选择与 tools/call 稳定性
+Folder Project Support 不把 P8 Advanced 改造成非 Git 工作流。
 
-在新对话启用 ReviewLume，发送：
+验证：
 
-> 检查当前 VS Code 项目最近 5 个提交，自己选择合理的文件和测试范围，找出明确问题和优化建议。不要修改任何文件。
+- [ ] Git Project 下 Review Pack / history / re-review 继续按原逻辑工作；
+- [ ] Git Project Local Verification 继续使用 repository-bound approval；
+- [ ] Folder Project 不开放 Local Verification；
+- [ ] discovered child repository 不自动运行 Local Verification；
+- [ ] Folder Project 不新增 shell、terminal、run command、write、patch；
+- [ ] 没有开始浏览器桥接。
 
-通过标准：
+## 10. 最终 VSIX 内容
 
-- 只发现 7 个只读工具；
-- 调用链从 repository summary、Git status 和 recent commits 开始，再按需读取 diff、搜索和文件；
-- 用户不需要预先扫描、选择提交、导出审核包或导入回答；
-- Tunnel Diagnostics 中不出现 `tools/call` Internal Server Error；
-- Extension Host reload、OutputChannel 关闭或日志失败不能改变工具调用结果；
-- 工具参数、repository 路径、文件类型或大小被拒绝时返回 MCP `isError`，而不是 HTTP 500。
+自动 CI 的 VSIX validation 必须通过，并人工抽查：
 
-## 8. 路径、读取与隐私边界
-
-使用只含假数据的测试 fixture 验证：
-
-- endpoint 只能是 `http://127.0.0.1:<随机端口>/mcp`；
-- 停止并重启后旧端口或旧 Token 不可继续使用；
-- `../outside.txt`、绝对路径、`.git/config`、外部 symlink、目录、二进制和超大文件必须拒绝；
-- repository 内明确指定的普通文本文件可以被 `read_file` 读取；
-- `.env`、credentials 或其他敏感命名文本文件不会因文件名被 P9 自动拒绝；
-- tracked 敏感命名文件可以出现在 `list_files` 和 `search_code` 候选中；
-- ignored 文件不会被普通枚举，但若已知路径，`read_file` 仍可读取 repository 内普通文本文件；
-- diff、文件内容、搜索结果和提交标题不会自动经过 P8 SecretScanner；
-- 日志不得包含 Runtime Key、本地 Token、Authorization、查询词、文件正文、diff 或搜索结果。
-
-必须确认 Marketplace README、PRIVACY.md 和配置指南明确警告用户：连接前移除、轮换或脱敏真实秘密，不得使用含生产凭据或真实客户数据的测试 repository。
-
-## 9. 停止、异常、重启与高级功能回归
-
-1. 选择 `Stop Secure MCP Connection`。
-2. 确认 Tunnel 和本地 MCP 均停止，旧 endpoint/Token 不可用。
-3. 在连接状态关闭 Extension Host，确认没有残留进程，也不出现误导性的 `Canceled` 错误通知。
-4. 强制结束 tunnel-client，确认状态栏显示失败。
-5. 重新连接不需要再次输入 SecretStorage 中的 Runtime Key。
-6. 正常重启 VS Code 后不需要 PowerShell 启动脚本。
-7. P8 Advanced 能力继续可用。
-8. P8 Review Pack SecretScanner 仍按原规则工作，但不会被宣传为 P9 MCP 保护层。
-
-## 10. 实际 VSIX 内容门禁
-
-自动化必须直接检查生成的 VSIX ZIP：
-
-- 文件名为 `reviewlume-vscode-0.2.0.vsix`；
-- 内部 manifest 的 publisher 为 `ReviewLume`、name 为 `reviewlume-vscode`、version 为 `0.2.0`；
-- `preview: true`、`pricing: "Free"`；
-- 包含 Marketplace README、LICENSE、图标、manifest、NLS 和必要运行时；
-- 不包含 TypeScript 源码、编译后的测试、`*.tsbuildinfo`、`.env` 或 `.reviewlume/`；
-- 不包含已停用的 browser input bridge、web-bridge vendor、bridge-protocol vendor 或旧 Activity Bar 运行时代码；
+- manifest publisher/name/version 正确；
+- README/NLS 包含 Current Project / Folder Project 用户文案；
+- Folder runtime（`projectContext` / `mcpFolderTools` / `mcpFolderProjectTools`）已打入 `dist`；
+- 没有 TypeScript source、compiled tests、source maps、`.env`、真实 secret；
 - 不捆绑 `tunnel-client`；
-- 不包含 Runtime API Key、本地 MCP Token、Authorization Header、测试密钥或用户 repository 内容；
-- 记录最终 VSIX SHA-256。
+- 不新增浏览器桥接、shell、run_command 或 patch 执行入口。
 
-## 11. 发布门禁
+## 11. 合并门禁
 
-只有全部满足后才能发布 Marketplace Preview：
+本 PR 在以下条件全部满足前保持 Draft：
 
-- 最新 release head 四平台 CI 全绿；
-- 实际 VSIX 内容门禁全绿；
-- 用户完成本清单中的 Windows + ChatGPT 人工验收；
-- Marketplace Publisher ID 与 manifest 精确一致，且维护者拥有权限；
-- Marketplace README、Changelog、隐私政策、安全政策、配置指南、发布指南和实际行为一致；
-- P9 不自动秘密扫描的限制已明确公开；
-- 没有未处理的高风险问题；
-- GitHub prerelease 与 Marketplace 使用同一字节级 VSIX。
+- final head 四平台 CI 全绿；
+- lint/typecheck/test/build/VSIX validation 全绿；
+- 最终代码复核完成；
+- 无未处理高风险问题；
+- 文档与 Git/Folder/nested Git 真实工具集一致；
+- Windows Git Project + Folder Project + nested Git 实机验收完成。
+
+人工验收前不合并、不发布、不声称 Folder Project 已上线。
 
 ## 验收记录
 
-记录 Windows、VS Code、VSIX、ChatGPT 工作空间、浏览器选择、tunnel-client 版本、Tunnel ID 脱敏后缀、代理来源、测试 repository 和每项结果。不得记录 Runtime API Key、本地 MCP Token、完整 Authorization Header、真实秘密或私有源码。
+记录：Windows 版本、VS Code 版本、VSIX 文件、final head SHA、ChatGPT workspace、浏览器、tunnel-client 版本、测试用 Git Project、测试用 Folder Project、测试用 nested Git repository 和结果。
+
+不得记录 Runtime API Key、local MCP token、Authorization Header、真实秘密或私有源码。

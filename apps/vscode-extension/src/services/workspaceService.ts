@@ -8,9 +8,7 @@ export enum WorkspaceState {
   NoWorkspace = 'no-workspace',
   /** Workspace is open but not fully trusted (Restricted Mode). */
   Untrusted = 'untrusted',
-  /** Workspace is trusted, but Git detection explicitly found no repository. */
-  NoGit = 'no-git',
-  /** Workspace is open and trusted; Git may be detected in a later phase. */
+  /** Workspace is open and trusted; project kind is resolved when MCP connects. */
   Ready = 'ready',
 }
 
@@ -22,12 +20,13 @@ export type WorkspaceStateValue = `${WorkspaceState}`;
 /**
  * Pure input used to evaluate workspace state.
  *
- * `hasGitRepository` is optional because P1 does not inspect Git yet. P2 can
- * pass an explicit boolean once repository discovery is implemented.
+ * Git discovery is intentionally not part of readiness. A trusted workspace can
+ * connect as either a Git Project or a Folder Project.
  */
 export interface WorkspaceSnapshot {
   hasWorkspace: boolean;
   isTrusted: boolean;
+  /** @deprecated Git is no longer a workspace-readiness prerequisite. */
   hasGitRepository?: boolean;
 }
 
@@ -41,19 +40,10 @@ export function evaluateWorkspaceState(snapshot: WorkspaceSnapshot): WorkspaceSt
     return WorkspaceState.Untrusted;
   }
 
-  if (snapshot.hasGitRepository === false) {
-    return WorkspaceState.NoGit;
-  }
-
   return WorkspaceState.Ready;
 }
 
-/**
- * Determine the current workspace state.
- *
- * P1 intentionally checks only folder presence and Workspace Trust. Git
- * repository discovery belongs to P2, so no Git result is assumed here.
- */
+/** Determine the current workspace state without requiring Git. */
 export function getWorkspaceState(): WorkspaceState {
   const folders = vscode.workspace.workspaceFolders;
   return evaluateWorkspaceState({
@@ -69,8 +59,6 @@ export function getWorkspaceWarningForState(state: WorkspaceState): string | nul
       return 'No workspace folder is open. Open a folder or workspace to use ReviewLume features.';
     case WorkspaceState.Untrusted:
       return 'Workspace is in Restricted Mode. Trust the workspace to enable ReviewLume features.';
-    case WorkspaceState.NoGit:
-      return 'No Git repository detected in the current workspace. ReviewLume requires a Git repository.';
     case WorkspaceState.Ready:
       return null;
   }

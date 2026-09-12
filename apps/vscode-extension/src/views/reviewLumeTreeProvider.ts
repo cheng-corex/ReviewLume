@@ -150,18 +150,8 @@ export class ReviewLumeTreeProvider
           'Restricted Mode',
           vscode.TreeItemCollapsibleState.None,
           {
-            description: 'Trust the workspace to enable repository inspection',
+            description: 'Trust the workspace to enable project inspection',
             iconName: 'shield',
-          },
-        );
-      case WorkspaceState.NoGit:
-        return new ReviewLumeTreeItem(
-          'status',
-          'No Git Repository',
-          vscode.TreeItemCollapsibleState.None,
-          {
-            description: 'Open a Git repository to use ReviewLume',
-            iconName: 'git-branch',
           },
         );
       case WorkspaceState.Ready:
@@ -170,7 +160,7 @@ export class ReviewLumeTreeProvider
           'Workspace Trusted',
           vscode.TreeItemCollapsibleState.None,
           {
-            description: 'Run Create Review Pack to inspect changed files',
+            description: 'Read-only MCP can connect Git or Folder Projects',
             iconName: 'shield',
           },
         );

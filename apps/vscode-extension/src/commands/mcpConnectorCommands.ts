@@ -52,9 +52,9 @@ export function registerMcpConnectorCommands(
     const connection = connector.connection;
     const tunnelState = secureTunnel.state;
     if (tunnelState.status === 'ready' && connection) {
-      status.text = `$(radio-tower) ReviewLume: ${connection.repository}`;
+      status.text = `$(radio-tower) ReviewLume: ${connectionDisplayLabel(connection)}`;
       status.tooltip =
-        `Secure MCP Tunnel is ready for ${connection.repository}. ` +
+        `Secure MCP Tunnel is ready for ${connection.repository} (${projectKindLabel(connection)} Project). ` +
         `Tunnel ${tunnelState.tunnelId ?? 'connected'}. Click for actions.`;
       return;
     }
@@ -69,15 +69,15 @@ export function registerMcpConnectorCommands(
       return;
     }
     if (connection) {
-      status.text = `$(plug) ReviewLume: ${connection.repository}`;
+      status.text = `$(plug) ReviewLume: ${connectionDisplayLabel(connection)}`;
       status.tooltip =
-        `Local read-only MCP is bound to ${connection.repository} on loopback port ${connection.port}; ` +
+        `Local read-only MCP is bound to ${connection.repository} (${projectKindLabel(connection)} Project) on loopback port ${connection.port}; ` +
         'the Secure MCP Tunnel is not running.';
       return;
     }
     status.text = '$(debug-disconnect) ReviewLume MCP';
     status.tooltip =
-      'Connect ChatGPT to the current VS Code Git repository through ReviewLume read-only MCP.';
+      'Connect ChatGPT to the current trusted VS Code project through ReviewLume read-only MCP.';
   }
   refreshStatus();
 
@@ -207,7 +207,7 @@ export function registerMcpConnectorCommands(
     refreshStatus();
     await chatGptBrowser.openUrl(CHATGPT_NEW_CHAT_URL);
     const selection = await vscode.window.showInformationMessage(
-      `ReviewLume is connected for ${connection.repository}. ` +
+      `ReviewLume is connected for ${connectionDisplayLabel(connection)}. ` +
         `A new ChatGPT chat was opened in ${browserPreferenceLabel(browserPreference)}.`,
       'Open tunnel diagnostics',
     );
@@ -251,9 +251,9 @@ export function registerMcpConnectorCommands(
       {
         label: tunnelState.status === 'ready'
           ? '$(comment-discussion) Open New Chat in ChatGPT'
-          : '$(radio-tower) Connect Current Repository to ChatGPT',
+          : '$(radio-tower) Connect Current Project to ChatGPT',
         description: tunnelState.status === 'ready'
-          ? `${connection?.repository ?? 'Repository'} · ${browserLabel}`
+          ? `${connection ? connectionDisplayLabel(connection) : 'Project'} · ${browserLabel}`
           : 'Start local read-only MCP, the Secure MCP Tunnel, and a new ChatGPT chat',
         action: tunnelState.status === 'ready' ? 'open-chatgpt' : 'connect',
       },
@@ -294,7 +294,7 @@ export function registerMcpConnectorCommands(
       {
         label: '$(clippy) Copy Local MCP Info (Advanced)',
         description: connection
-          ? `${connection.repository} · loopback port ${connection.port}`
+          ? `${connectionDisplayLabel(connection)} · loopback port ${connection.port}`
           : 'Start local MCP and copy short-lived debugging credentials',
         action: 'copy',
       },
@@ -314,7 +314,7 @@ export function registerMcpConnectorCommands(
 
     const selected = await vscode.window.showQuickPick(actions, {
       title: connection
-        ? `ReviewLume Secure MCP · ${connection.repository}`
+        ? `ReviewLume Secure MCP · ${connectionDisplayLabel(connection)}`
         : 'ReviewLume Secure MCP',
       placeHolder: 'Choose an MCP action',
     });
@@ -418,7 +418,7 @@ async function chooseWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefin
   const folders = vscode.workspace.workspaceFolders ?? [];
   if (folders.length === 0) {
     await vscode.window.showErrorMessage(
-      'Open a folder inside a Git repository before starting ReviewLume MCP.',
+      'Open a folder or workspace before starting ReviewLume MCP.',
     );
     return undefined;
   }
@@ -436,8 +436,8 @@ async function chooseWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefin
       folder,
     })),
     {
-      title: 'Choose the repository to expose through ReviewLume MCP',
-      placeHolder: 'One MCP connection is bound to one Git repository',
+      title: 'Choose the project to expose through ReviewLume MCP',
+      placeHolder: 'One MCP connection is bound to one workspace project root',
     },
   );
   return selected?.folder;
@@ -446,10 +446,12 @@ async function chooseWorkspaceFolder(): Promise<vscode.WorkspaceFolder | undefin
 async function copyConnectionInfo(connection: McpConnectionInfo): Promise<void> {
   const value = JSON.stringify(
     {
-      name: 'ReviewLume Read-only Repository',
+      name: 'ReviewLume Read-only Project',
       transport: 'streamable-http',
       endpoint: connection.endpointUrl,
       authorization: connection.authorizationHeader,
+      project: connection.project,
+      projectKind: connection.projectKind,
       repository: connection.repository,
       access: 'read-only',
       note: 'For local debugging only. The normal ChatGPT flow uses the official OpenAI Secure MCP Tunnel.',
@@ -459,8 +461,16 @@ async function copyConnectionInfo(connection: McpConnectionInfo): Promise<void> 
   );
   await vscode.env.clipboard.writeText(value);
   logInfo(
-    `Local MCP debugging information copied for ${connection.repository}; token omitted from logs`,
+    `Local MCP debugging information copied for ${connection.project}; token omitted from logs`,
   );
+}
+
+function projectKindLabel(connection: McpConnectionInfo): 'Git' | 'Folder' {
+  return connection.projectKind === 'git' ? 'Git' : 'Folder';
+}
+
+function connectionDisplayLabel(connection: McpConnectionInfo): string {
+  return `${connection.project} · ${projectKindLabel(connection)}`;
 }
 
 async function openExternal(value: string): Promise<void> {

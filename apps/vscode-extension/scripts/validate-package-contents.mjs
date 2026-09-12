@@ -29,6 +29,7 @@ const required = [
   'extension/dist/extension.js',
   'extension/dist/commands/localVerificationCommands.js',
   'extension/dist/commands/mcpConnectorCommands.js',
+  'extension/dist/services/localVerificationApproval.js',
   'extension/dist/services/localVerificationCore.js',
   'extension/dist/services/localVerificationDiscovery.js',
   'extension/dist/services/localVerificationExecution.js',
@@ -36,7 +37,11 @@ const required = [
   'extension/dist/services/localVerificationTypes.js',
   'extension/dist/services/localVerificationWorkspace.js',
   'extension/dist/services/mcpConnectorServer.js',
+  'extension/dist/services/mcpConnectorService.js',
   'extension/dist/services/mcpRepositoryTools.js',
+  'extension/dist/services/mcpFolderProjectTools.js',
+  'extension/dist/services/mcpFolderTools.js',
+  'extension/dist/services/projectContext.js',
   'extension/dist/services/secureMcpTunnelService.js',
 ];
 

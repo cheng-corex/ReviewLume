@@ -4,120 +4,103 @@
 
 正式名称：ReviewLume
 
-Marketplace 展示名称：
+Marketplace 建议标题：
 
-> ReviewLume – Secure Read-only Repository MCP
+> ReviewLume – Secure Read-only Project MCP
 
-Marketplace 简短描述：
+ReviewLume 是独立开源项目，与 OpenAI、Microsoft、Anthropic、Google 或其他服务商没有隶属或背书关系。不得使用第三方服务商 Logo 作为插件图标，也不得使用“官方 ChatGPT 插件”“自动保护所有秘密”“绕过额度”等描述。
 
-> Connect ChatGPT to one VS Code Git repository through bounded, read-only MCP tools, with optional user-approved local verification.
+## 2. 当前发布边界
 
-Marketplace 页面必须明确：
+当前仍属于 **P8 二次复核闭环**。0.3.3 发布内容包括：
 
-> ReviewLume is an independent open-source project and is not affiliated with or endorsed by OpenAI, Microsoft, Anthropic, Google, or other service providers.
+- direct Git Project；
+- Folder Project；
+- Git / Folder 共用稳定 11-tool 只读 MCP contract；
+- direct Git Project 的用户授权 Local Verification；
+- 0.3.1 已有的 nested package runner / schema-2 approval 修复；
+- P8 Advanced Review Pack / history / response import / issue state / re-review。
 
-不得使用第三方服务商 Logo 作为插件图标，也不得使用“官方 ChatGPT 插件”“自动保护所有秘密”“绕过额度”等描述。
+**不包括**可选浏览器桥接；不得把它描述成当前发布能力。
 
-完整可复制文案见 [Marketplace Listing](marketplace-listing.md)。
-
-## 2. 当前发布形态
-
-VS Code 扩展是唯一主发布物。主连接流程为：
+主连接链路：
 
 ```text
-VS Code selected Git repository
+VS Code selected Project Root
   → ReviewLume loopback read-only MCP
   → official openai/tunnel-client
   → OpenAI Secure MCP Tunnel
   → user-enabled ChatGPT app / connector
 ```
 
-0.3.0 Preview 新增可选本地验证：
+Local Verification 仅限 direct Git Project：
 
 ```text
-Trusted VS Code workspace
-  → user-approved fixed repository-local rules
+Trusted direct Git Project
+  → user-approved fixed rule
+  → bounded package-root discovery
   → no-shell local process execution
   → bounded sanitized evidence in extension storage
-  → two read-only MCP evidence tools
+  → read-only MCP evidence tools
 ```
 
-ChatGPT 不能启动、重试、修改或拼接本地验证命令。旧浏览器输入框桥接原型不作为当前产品能力发布或宣传。
-
-P8 Review Pack、历史、导入回答和二次复核继续保留为 Advanced 本地能力。
+ChatGPT 不能启动、重试、修改或拼接 Local Verification 命令。
 
 ## 3. Marketplace 身份与版本
 
-- Publisher name：`ReviewLume`
-- Publisher ID：`ReviewLume`
+- Publisher：`ReviewLume`
 - Extension name：`reviewlume-vscode`
-- 完整扩展 ID：`ReviewLume.reviewlume-vscode`
-- 当前公开候选版本：`0.3.0`
-- Marketplace channel：Preview
+- Extension ID：`ReviewLume.reviewlume-vscode`
+- 当前发布候选版本：`0.3.3`
+- Channel：Preview
 - Pricing：Free
 
-`apps/vscode-extension/package.json` 必须与以上标识完全一致。
+`apps/vscode-extension/package.json`、VSIX 文件名、manifest 测试、release note 和最终发布记录必须全部一致为 0.3.3。
 
-## 4. package.json 发布检查
+## 4. 稳定 MCP 工具契约
 
-发布前确认：
+Git Project 与 Folder Project 必须都声明同样 11 个工具：
 
-- `name`、`displayName`、`description` 与当前产品定位一致；
-- `publisher` 精确等于 `ReviewLume`；
-- `version` 等于 `0.3.0`，并与 VSIX 文件名、Changelog 和验收文档一致；
-- `preview: true`；
-- `pricing: "Free"`；
-- `repository` 指向公开仓库；
-- `icon` 为 ReviewLume 自有资源；
-- `engines.vscode` 与实际测试版本兼容；
-- manifest 不定义 Runtime API Key、Token 或 Secret 设置；
-- manifest 不注册旧浏览器桥接命令或重复 Activity Bar；
-- `onStartupFinished` 不主动启动 tunnel、运行验证或读取 repository；
-- 本地验证命令和设置已提供中英文 NLS。
+```text
+project_summary
+list_git_repositories
+repository_summary
+git_status
+recent_commits
+get_diff
+list_files
+read_file
+search_code
+verification_status
+read_verification_output
+```
 
-## 5. Marketplace 页面必须包含
+Git mode：Git query 直接针对当前 Git root，`repository` selector 省略；verification evidence 只读已完成结果。
 
-- 一次连接只绑定一个 Git repository；
-- 7 个 repository 读取工具和 2 个已完成验证证据工具；
-- 9 个工具均为 read-only / non-destructive / idempotent / closed-world；
-- `verification_status` 与 `read_verification_output` 明确 `mcpCanStartProcesses: false`；
-- 不提供 MCP shell、process-start、写文件、删除、补丁或 Git mutation；
-- OpenAI Secure MCP Tunnel 依赖和首次配置说明；
-- ChatGPT 账户或工作空间必须实际具备自定义 MCP 应用/连接器入口；
-- Runtime API Key 只保存在 VS Code SecretStorage；
-- 无 telemetry；
-- 隐私政策、安全政策、第三方免责声明、支持平台和已知限制；
-- 至少一张不包含真实密钥、Token、私有路径、账户信息或不可公开源码的截图。
+Folder mode：`list_git_repositories` 有界发现授权 Folder root 下的真实 child repositories；四个 Git query 必须选一个 discovery 结果。verification 两个工具名仍存在，但调用返回 unavailable，不启动进程、不返回 child evidence。
 
-### MCP 隐私限制
+正常 Git ↔ Folder 切换不得改变公开工具 schema；仅当未来版本真的改变稳定 public contract 时才需要 ChatGPT Refresh / Scan Tools。
 
-Marketplace 页面必须直接说明：
+## 5. Local Verification 发布检查
 
-- MCP 不自动运行 SecretScanner；
-- `.env`、credentials、secrets、私钥文本、生产配置和 tracked 敏感文件不会因名称自动阻止；
-- `read_file` 可以读取 repository 内明确指定的普通文本文件，包括已忽略文件；
-- diff、文件摘录、提交标题、搜索结果、测试目标和验证输出可能包含敏感信息；
-- `.gitignore` 不是完整保密边界；
-- P8 SecretScanner 不自动保护 MCP 工具调用或验证输出；
-- 验证输出脱敏是 best-effort，不保证识别所有秘密或个人信息。
+0.3.3 必须包含 0.3.1 的 nested-runner 安全边界：
 
-不得声称“所有敏感文件都会自动拦截”“代码永远不会离开本机”或“SecretScanner 会过滤所有 ChatGPT 工具结果”。
-
-### 本地验证安全限制
-
-必须说明：
-
-- 仅 Trusted Workspace 可配置和运行；
-- 用户先批准固定 executable、argv、目标模式和 timeout；
-- 支持 repository-local Vitest、Jest、Mocha、Node test、TypeScript `tsc --noEmit` 和逐文件 `node --check`；
-- 不运行任意 package script、`npx`、下载的 runner、AI 回复、repository 文档或测试输出中的命令；
-- 使用 `spawn(executable, argv)` 与 `shell: false`；
-- approval 绑定 canonical repository、配置、lockfile 和 repository-local runner 内容；
-- 测试代码是可执行的不可信输入，本地验证不是 sandbox；
-- 测试可能修改文件、启动子进程、访问网络或本地服务；
-- ChatGPT 只能读取已完成证据，不能启动进程。
+- `PLAN_SCHEMA_VERSION = 2`；
+- package rule 有 repository-relative `workingDirectory`；
+- 最多 2,500 个目录、深度 5、最多 64 个 package roots；
+- 跳过 `.git`、`node_modules`、build/dist/coverage/cache/target/vendor 等目录；
+- 不遍历目录 symlink/junction-like entries；
+- 支持 package-local 或 repository-hoisted Vitest/Jest/Mocha/TypeScript runner；
+- Node test 仅在 package 配置明确引用时启用；
+- changed tests 过滤到对应 package 并以 package-relative argv 传入；
+- `spawn(executable, argv)` / `shell: false`；
+- 不运行 package script、`npx`、下载 runner、AI 回复、项目文档、测试输出或任意命令；
+- syntax-only 与 test/typecheck approval warning 准确；
+- 不出现重复显式英文 Cancel action。
 
 ## 6. 发布前自动检查
+
+最终 head 必须运行并通过：
 
 ```bash
 pnpm install --frozen-lockfile
@@ -130,89 +113,66 @@ pnpm package:vscode
 pnpm --filter reviewlume-vscode verify:package-contents
 ```
 
-GitHub Actions 必须在以下矩阵全部通过：
+GitHub Actions 矩阵必须全绿：
 
-- Windows Node 22；
-- Ubuntu Node 20；
-- Ubuntu Node 22；
-- macOS Node 22。
+- Windows / Node 22；
+- Ubuntu / Node 20；
+- Ubuntu / Node 22；
+- macOS / Node 22。
 
-每个平台必须通过依赖安装、lint、TypeScript、测试、浏览器扩展静态校验、构建、VSIX 打包、artifact 上传和 VSIX 内容校验。
+每个平台必须通过 install、lint、typecheck、tests、browser-extension validation、build、VSIX package、artifact upload、VSIX content validation。
 
-## 7. VSIX 内容检查
+## 7. VSIX 内容审计
 
-发布候选必须确认：
+最终候选必须确认：
 
-- 文件名为 `reviewlume-vscode-0.3.0.vsix`；
-- 内部 manifest 的 publisher、name、version、preview 和 pricing 正确；
-- 不包含 `.env`、测试密钥、Runtime API Key、本地 MCP Token 或 Authorization Header；
-- 不包含用户 repository 内容、测试 fixture、TypeScript 源码、测试、源映射或声明文件；
-- 包含本地验证所需的编译后 runtime 模块；
-- 不包含第三方 `tunnel-client` 可执行文件；
-- Marketplace README、PRIVACY.md、SECURITY.md 与实际边界一致；
-- SHA-256 已记录在 PR、GitHub prerelease 和最终发布记录；
-- GitHub prerelease 与 Marketplace 使用同一字节级 VSIX。
+- 文件名 `reviewlume-vscode-0.3.3.vsix`；
+- manifest 是 `ReviewLume.reviewlume-vscode` / `0.3.3` / Preview / Free；
+- 不包含 `.env`、Runtime API Key、本地 MCP token、Authorization header 或用户项目内容；
+- 不包含 TypeScript 源码、测试、source map、声明文件或旧 browser bridge runtime；
+- 包含 MCP Folder/Git runtime 和 Local Verification schema-2/nested-runner runtime；
+- Marketplace README、PRIVACY、SECURITY 与真实 runtime 一致；
+- 记录 VSIX size 和 SHA-256。
 
 ## 8. Windows 人工验收
 
-涉及 VS Code UI、真实本地代码执行和 ChatGPT 的发布候选，正常发布门禁要求在 Windows 验证：
+最终合并/正式发布门禁要求安装**最终 0.3.3 VSIX**并至少完成：
 
-1. 全新安装或覆盖安装最终 VSIX；
-2. 完全退出并正常启动 VS Code；
-3. 状态栏和菜单正常，无重复入口；
-4. Trusted Workspace 中配置固定验证规则并核对批准信息；
-5. 新增或修改匹配测试会自动纳入；
-6. 真实通过、失败、零测试、取消、timeout、stale 和清除授权行为符合文档；
-7. 修改 runner、配置或 lockfile 后旧授权失效；
-8. 测试输出限长和脱敏提示准确；
-9. ChatGPT 扫描到 9 个只读工具，且不能启动进程；
-10. 连接、浏览器启动、Tunnel 健康、连续工具调用和停止清理正常；
-11. P8 Advanced Review Pack 的 SecretScanner 仍独立工作。
+1. 覆盖安装后完全重启 VS Code；
+2. direct Git Project 连接正常；
+3. nested package runner 能被发现，cwd/argv 正确；
+4. repository-hoisted runner 场景正常；
+5. 其他 package 的 test 不会混入当前 runner；
+6. schema-1 旧 approval 会失效；
+7. syntax-only / test-typecheck warning 与 Cancel UI 正确；
+8. stable 11 tools 正常；
+9. Folder verification evidence calls 返回 unavailable 且不启动进程；
+10. 同一个 ChatGPT app 在 Folder ↔ Git 切换后仍保持同一 11-tool contract；
+11. 停止连接后 local endpoint / tunnel 不再可用。
 
-完整清单见 [Local Verification Acceptance](local-verification-acceptance.md)。未执行的人工项目必须在发布记录中如实标明，不得伪造为已验收。
+完整记录见 [Local Verification Acceptance](local-verification-acceptance.md)。未执行项目必须如实标注，不能伪造已验收。
 
-## 9. 合并与发布门禁
+## 9. 0.3.2 已发布说明
 
-标准门禁：
+0.3.2 已上传 Marketplace，但该包来自独立的 Folder Project 开发线，在发布时未包含此前 0.3.1 的 nested Local Verification runner 修复。
+
+因此：
+
+- 0.3.2 不作为后续源码基线；
+- 0.3.3 必须同时包含 0.3.1 nested-runner fixes 与 0.3.2 Folder/stable-tool 功能；
+- 0.3.3 最终包完成 CI、内容审计和 Windows smoke acceptance 后，用 0.3.3 覆盖发布。
+
+## 10. 合并与发布门禁
+
+正式收口要求：
 
 - PR 不再是 Draft；
-- 最新 head 四平台 CI 全绿；
-- 完成 MCP、凭据、路径、Git、子进程、代理、浏览器和生命周期代码复核；
-- 没有未处理高风险问题；
-- 文档、manifest、Marketplace 文案和代码一致；
-- 版本、release notes、Publisher ID 和最终 VSIX SHA-256 已确认；
-- GitHub prerelease 与 Marketplace 使用相同 VSIX；
-- Windows 人工验收结果如实记录。
+- final head 四平台 CI 全绿；
+- 完成代码复核，无未处理高风险问题；
+- VS Code UI / Local Verification 的最终 0.3.3 人工验收完成；
+- 文档、manifest、Marketplace 文案和 runtime 一致；
+- 最终 VSIX size/SHA-256 已记录；
+- 版本号高于 Marketplace 当前版本；
+- 合并 main 后从最终确认的发布 head/字节级一致 artifact 发布，不用旧 0.3.2 包重新上传。
 
-不得因为发布压力删除安全限制、隐瞒未执行的验收项目或声称未验证内容已经完成。
-
-## 10. 版本策略
-
-- `0.2.x`：初始只读 MCP 与 Secure Tunnel Preview；
-- `0.3.x`：用户授权本地验证、连接诊断和 Preview 反馈收口；
-- `1.0.0`：协议、隐私政策、安全边界、安装流程和兼容性达到稳定承诺。
-
-每次升级必须同步 package manifest、VSIX 文件名、测试、Changelog、Marketplace 文案、人工验收基线和 release artifact SHA-256。
-
-## 11. GitHub Prerelease 与 Marketplace 上传
-
-为 0.3.0 创建 `v0.3.0` GitHub prerelease，附上最终 VSIX 与 SHA-256。然后使用 ReviewLume Publisher 凭据上传完全相同的文件：
-
-```text
-ReviewLume
-  → New extension / Update
-  → Visual Studio Code
-  → Upload reviewlume-vscode-0.3.0.vsix
-```
-
-上传后核对：
-
-- Publisher：`ReviewLume`；
-- Extension ID：`ReviewLume.reviewlume-vscode`；
-- Version：`0.3.0`；
-- Preview、Free、图标、README、隐私和安全链接；
-- Supported VS Code version、repository、issues 和 license；
-- 页面明确说明 9 个只读工具和可选用户授权本地验证；
-- 不存在“ChatGPT 可运行命令”或“自动拦截所有秘密”等错误描述。
-
-Marketplace 完成扫描并公开后，再从未安装本地 VSIX 的 VS Code 环境搜索并安装商店版本，完成最终安装验证。
+不得因为发布压力删除安全限制或把未验证内容写成已验证。

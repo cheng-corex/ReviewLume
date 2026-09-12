@@ -6,7 +6,7 @@ import {
 } from '../../services/workspaceService';
 
 describe('workspaceService', () => {
-  it('returns NoWorkspace before evaluating trust or Git', () => {
+  it('returns NoWorkspace before evaluating trust or project kind', () => {
     expect(
       evaluateWorkspaceState({
         hasWorkspace: false,
@@ -26,17 +26,17 @@ describe('workspaceService', () => {
     ).toBe(WorkspaceState.Untrusted);
   });
 
-  it('returns NoGit only when repository discovery explicitly reports false', () => {
+  it('returns Ready for a trusted ordinary folder without Git', () => {
     expect(
       evaluateWorkspaceState({
         hasWorkspace: true,
         isTrusted: true,
         hasGitRepository: false,
       }),
-    ).toBe(WorkspaceState.NoGit);
+    ).toBe(WorkspaceState.Ready);
   });
 
-  it('returns Ready when the trusted P1 workspace has not evaluated Git yet', () => {
+  it('returns Ready when project kind has not been evaluated yet', () => {
     expect(
       evaluateWorkspaceState({
         hasWorkspace: true,
@@ -45,12 +45,11 @@ describe('workspaceService', () => {
     ).toBe(WorkspaceState.Ready);
   });
 
-  it('provides explicit warnings for every blocked state', () => {
+  it('provides explicit warnings only for blocked workspace states', () => {
     expect(getWorkspaceWarningForState(WorkspaceState.NoWorkspace)).toContain(
       'No workspace folder',
     );
     expect(getWorkspaceWarningForState(WorkspaceState.Untrusted)).toContain('Restricted Mode');
-    expect(getWorkspaceWarningForState(WorkspaceState.NoGit)).toContain('No Git repository');
     expect(getWorkspaceWarningForState(WorkspaceState.Ready)).toBeNull();
   });
 });

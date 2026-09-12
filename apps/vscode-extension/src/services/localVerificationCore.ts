@@ -16,6 +16,7 @@ import {
 import {
   captureWorkspaceSnapshot,
   collectChangedFiles,
+  resolveVerificationWorkingDirectory,
   selectVerificationTargets,
 } from './localVerificationWorkspace';
 import {
@@ -68,10 +69,15 @@ export async function runVerificationPlan(
 
   for (const step of options.plan.steps) {
     if (options.signal?.aborted) break;
+    const workingDirectory = await resolveVerificationWorkingDirectory(
+      root,
+      step.workingDirectory,
+    );
     const requestedTargets = await selectVerificationTargets(
       root,
       before.changedFiles,
       step.targetMode,
+      step.workingDirectory,
     );
     if (step.targetMode !== 'full-suite' && requestedTargets.length === 0) {
       results.push({
@@ -90,7 +96,7 @@ export async function runVerificationPlan(
         outputTruncated: false,
         output: '',
         counts: {},
-        evidence: ['No matching changed files were present.'],
+        evidence: ['No matching changed files were present in this package root.'],
       });
       continue;
     }
@@ -102,7 +108,7 @@ export async function runVerificationPlan(
         const processResult = await launcher.run({
           executable: step.executable,
           args,
-          cwd: root,
+          cwd: workingDirectory,
           timeoutMs: step.timeoutMs,
           maxOutputBytes: options.maxOutputBytes ?? DEFAULT_OUTPUT_BYTES,
           signal: options.signal,
@@ -127,7 +133,7 @@ export async function runVerificationPlan(
     const processResult = await launcher.run({
       executable: step.executable,
       args,
-      cwd: root,
+      cwd: workingDirectory,
       timeoutMs: step.timeoutMs,
       maxOutputBytes: options.maxOutputBytes ?? DEFAULT_OUTPUT_BYTES,
       signal: options.signal,

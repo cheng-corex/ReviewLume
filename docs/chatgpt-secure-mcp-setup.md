@@ -1,219 +1,254 @@
 # ChatGPT 与 OpenAI Secure MCP Tunnel 配置指南
 
-> 本文说明首次使用 ReviewLume 时需要在 OpenAI Platform、ChatGPT 和 VS Code 中完成的配置。OpenAI 的产品名称、套餐权限和界面会变化；若页面布局与本文不同，以 OpenAI 当前界面和官方帮助为准。
+> 本文说明首次使用 ReviewLume 时需要在 OpenAI Platform、ChatGPT 和 VS Code 中完成的配置。OpenAI 的产品名称、套餐权限和界面可能变化；若页面布局不同，以 OpenAI 当前界面和官方帮助为准。
 
 ## 1. 需要准备什么
 
-- 一个可登录 `https://platform.openai.com/` 的 OpenAI Platform 账户，并具有创建 Tunnel 和 Runtime API Key 的权限；
-- 一个可登录 `https://chatgpt.com/` 的 ChatGPT 账户，并且账户界面中可以创建或使用自定义 MCP 应用/连接器；
-- VS Code、Git 和一个已开启 Workspace Trust 的 Git repository；
+- 可创建 OpenAI Secure MCP Tunnel 和 Runtime API Key 的 OpenAI Platform 账户；
+- ChatGPT 中可创建或使用自定义 MCP 应用/连接器的账户或工作空间；
+- VS Code；
+- 一个已开启 Workspace Trust 的 Workspace Folder；
 - ReviewLume VS Code 扩展；
 - OpenAI 官方 `tunnel-client`。
 
-ReviewLume 不调用模型 API，也不需要普通模型 API Key。它使用的是为 Secure MCP Tunnel 创建的 **Runtime API Key**。不要把 OpenAI Admin Key 或普通高权限项目密钥粘贴到 ReviewLume。
+Workspace Folder 可以是 Git repository，也可以只是普通文件夹。ReviewLume 会在连接时自动检测：
 
-### ChatGPT 套餐和界面可用性
+- Git discovery 成功 → **Git Project**；
+- 根目录无 Git repository 或 discovery 不可用 → **Folder Project**。
 
-OpenAI 的官方页面目前存在两层说明：
+Folder Project 内部可以包含多个真实 Git 子仓库。它们仍然位于同一个授权 Folder root 内，并且只能按显式子仓库路径做只读 Git 查询。
 
-- **Apps in ChatGPT** 的套餐表把 Custom (MCP) 列为 Plus、Pro、Business 和 Enterprise/Edu 可用；
-- **Developer mode and MCP apps** 的详细说明把完整 MCP、工作空间发布和管理流程列为 Business、Enterprise/Edu 网页版能力，并说明 Pro 可在开发者模式中连接 read/fetch MCP。
+用户不需要提前选择模式。
 
-ReviewLume 只暴露只读工具，并且已经在具有自定义 MCP 入口的个人 ChatGPT 环境完成过真实读取联调。但 OpenAI 仍可能按账户、工作空间、地区以外的灰度状态或产品调整改变入口。最可靠的判断不是只看套餐名称，而是检查当前 ChatGPT 网页界面是否实际提供自定义应用/MCP 入口。
+ReviewLume 不调用模型 API，也不需要普通模型 API Key。它使用的是 Secure MCP Tunnel **Runtime API Key**。不要把 OpenAI Admin Key 或高权限项目密钥粘贴到 ReviewLume。
 
-判断方法：
+如果当前 ChatGPT 账户或工作空间没有自定义应用/MCP 入口，ReviewLume 无法在本地绕过或开启该权限。
 
-1. 打开 ChatGPT 网页版；
-2. 进入 **Settings → Apps**、**Settings → Connectors** 或工作空间的 **Apps** 管理页；
-3. 确认存在创建自定义应用、创建自定义连接器、Developer mode 或添加 MCP 的入口。
+## 2. 创建 Tunnel 和最小权限 Runtime API Key
 
-如果完全没有这些入口，ReviewLume 无法在本地绕过或开启该权限。
+1. 在 OpenAI Platform 创建或选择一个 Secure MCP Tunnel。
+2. 记录 Tunnel ID。
+3. 为该 Tunnel 创建最小权限 Runtime API Key。
+4. 不使用 Admin Key，不复用组织管理员密钥。
+5. 不把 Runtime Key 保存到 project、`.env`、VS Code settings JSON、聊天消息、截图或公开文档。
 
-官方说明：
-
-- [Developer mode and MCP apps in ChatGPT](https://help.openai.com/en/articles/12584461-developer-mode-apps-and-full-mcp-connectors-in-chatgpt-beta.svgz)
-- [Apps in ChatGPT](https://help.openai.com/en/articles/11487775-connectors-in)
-
-## 2. 在 OpenAI Platform 创建 Tunnel
-
-1. 打开 [OpenAI Platform Tunnel 管理页](https://platform.openai.com/settings/organization/tunnels)。
-2. 选择正确的 Organization。
-3. 点击创建 Tunnel。
-4. 名称建议使用容易识别的名称，例如 `ReviewLume Local Repository`。
-5. 创建后复制 Tunnel ID。
-
-Tunnel ID 格式应类似：
-
-```text
-tunnel_0123456789abcdefghijklmnopqrstuv
-```
-
-ReviewLume 会校验 `tunnel_` 后必须是 32 位小写字母或数字。
-
-不要公开 Tunnel ID。它不是 Runtime API Key，但仍属于连接配置标识。
-
-## 3. 创建最小权限 Runtime API Key
-
-1. 打开 [OpenAI Platform API Keys 页面](https://platform.openai.com/settings/organization/api-keys)。
-2. 选择创建新的 Runtime API Key。
-3. 如果界面允许选择 Tunnel、资源范围或权限，只授予刚创建的 Tunnel 运行所需权限。
-4. 不要选择 Admin Key，也不要复用组织管理员密钥。
-5. 创建后立即复制密钥；离开页面后通常无法再次查看完整值。
-6. 不要把密钥保存到 repository、`.env`、VS Code settings JSON、聊天消息、截图或公开文档中。
-
-ReviewLume 只把 Runtime API Key 保存到 VS Code `SecretStorage`，不会主动写入：
-
-- repository 文件；
-- VS Code settings JSON；
-- 子进程命令行参数；
-- 剪贴板；
-- ReviewLume 日志。
+ReviewLume 将 Runtime API Key 只保存在 VS Code `SecretStorage`；Tunnel ID、官方客户端路径、浏览器偏好和规范化代理可以保存在 extension `globalState`。
 
 如果怀疑密钥泄漏，应立即在 OpenAI Platform 撤销并重新创建。
 
-## 4. 下载官方 tunnel-client
+## 3. 下载官方 tunnel-client
 
-1. 打开 [openai/tunnel-client 官方 Releases](https://github.com/openai/tunnel-client/releases/latest)。
-2. 下载与操作系统和 CPU 架构匹配的压缩包。
-3. 解压到固定目录。
-4. Windows 选择 `tunnel-client.exe`；macOS/Linux 选择对应的 `tunnel-client` 可执行文件。
-5. 不要从网盘、聊天附件、第三方镜像或不明仓库下载。
+1. 从 `openai/tunnel-client` 官方 GitHub Releases 下载与操作系统/CPU 架构匹配的版本。
+2. 解压到固定目录。
+3. Windows 选择 `tunnel-client.exe`；macOS/Linux 选择对应的 `tunnel-client`。
+4. 不从网盘、聊天附件、第三方镜像或未知仓库下载。
 
-ReviewLume 不捆绑、不静默下载、也不自动更新 `tunnel-client`。首次配置时会执行 `tunnel-client --help`，确认帮助文本符合 OpenAI 官方客户端特征。
+ReviewLume 不捆绑、不静默下载、也不自动更新 `tunnel-client`。首次配置会执行受控帮助检查以确认客户端特征。
 
-## 5. 在 ReviewLume 中保存 Tunnel 配置
+## 4. 在 ReviewLume 保存 Tunnel 配置
 
-1. 在 VS Code 中打开要连接的 Git repository。
-2. 确认工作区处于 Trusted 状态。
-3. 点击底部状态栏的 **ReviewLume MCP**。
+1. 在 VS Code 中打开要连接的 Workspace Folder。
+2. 确认 Workspace 为 Trusted。
+3. 点击状态栏 **ReviewLume MCP**。
 4. 选择 **Configure Secure MCP Tunnel**。
-5. 选择刚下载的官方 `tunnel-client` 可执行文件。
+5. 选择官方 `tunnel-client`。
 6. 粘贴 Tunnel ID。
 7. 粘贴最小权限 Runtime API Key。
-8. 等待配置保存成功提示。
+8. 等待保存成功提示。
 
-本地存储位置：
+如果 Workspace 未受信任，ReviewLume 不会启动项目 MCP。
 
-- Tunnel ID：VS Code extension `globalState`；
-- tunnel-client 路径：VS Code extension `globalState`；
-- 浏览器偏好：VS Code extension `globalState`；
-- Runtime API Key：VS Code `SecretStorage`。
-
-## 6. 启动 ReviewLume Tunnel
+## 5. 连接当前项目
 
 1. 点击 **ReviewLume MCP**。
-2. 选择 **Connect Current Repository to ChatGPT**。
+2. 选择 **Connect Current Project to ChatGPT**。
 3. 首次使用时选择系统默认浏览器、Microsoft Edge 或 Google Chrome。
-4. 多根工作区时，选择本次要连接的一个 workspace folder。
-5. 等待状态栏显示当前 repository 名称并进入已连接状态。
+4. 多 Workspace Folder 时，选择本次要连接的一个 Folder。
+5. ReviewLume 自动解析 Project Context。
+6. 等待 Tunnel 健康并打开 ChatGPT 新对话。
 
-ReviewLume 会自动：
-
-1. 识别所选 workspace 对应的 Git root；
-2. 启动仅监听 `127.0.0.1` 随机端口的本地只读 MCP；
-3. 生成新的本地高熵 Token；
-4. 运行 `tunnel-client doctor --explain`；
-5. 启动官方 Secure MCP Tunnel；
-6. 校验 `/readyz` 和 `/api/status`；
-7. 健康后打开 ChatGPT 新对话。
-
-## 7. 在 ChatGPT 创建 ReviewLume 应用/连接器
-
-首次只需创建一次。先让 ReviewLume Tunnel 保持已连接，然后：
-
-1. 在 ReviewLume 状态栏菜单选择 **Manage ChatGPT Connector (Advanced)**，或手动进入 ChatGPT 的 Apps/Connectors 设置。
-2. 选择创建自定义应用或自定义 MCP 连接器。
-3. 名称填写 `ReviewLume`。
-4. 连接方式选择 **Tunnel**。
-5. 粘贴前面创建的 Tunnel ID。
-6. 执行工具扫描或 **Scan tools**。
-7. 确认发现以下 7 个只读工具：
-   - `repository_summary`
-   - `git_status`
-   - `recent_commits`
-   - `get_diff`
-   - `list_files`
-   - `read_file`
-   - `search_code`
-8. 保存或创建应用。
-
-对于 Business、Enterprise 或 Edu 工作空间：
-
-1. 管理员/Owner 先启用 Developer mode；
-2. 在工作空间 Apps 页面创建并测试应用；
-3. 需要提供给其他成员时，再由管理员审核权限并发布；
-4. Enterprise/Edu 可按当前 OpenAI 界面使用 RBAC 控制开发者和应用访问；
-5. MCP 工具定义变更后，需要在 ChatGPT 中执行刷新、重新扫描，或重新创建应用。ChatGPT 不会自动采用服务器的新工具定义。
-
-ReviewLume 没有写入、删除、Shell、终端或 Git mutation 工具。若扫描结果出现这些能力，应停止使用并检查是否选错了连接器。
-
-## 8. 每次使用的日常流程
-
-1. 在 VS Code 打开要检查的 repository。
-2. 点击 **ReviewLume MCP → Connect Current Repository to ChatGPT**。
-3. 等待 Tunnel 健康并自动打开 ChatGPT 新对话。
-4. 在当前对话中启用 ReviewLume 应用/连接器。
-5. 直接发送指令，例如：
+连接成功后状态栏会明确显示外层项目类型，例如：
 
 ```text
-检查当前项目最近 5 个提交，自己选择合理的文件和测试范围，找出明确问题和优化建议。不要修改任何文件。
+ReviewLume: ai-ui · Git
 ```
 
-一次连接只绑定一个 Git repository。切换项目时，应停止旧连接，再从目标项目的 VS Code 窗口重新连接。
+或：
 
-## 9. 重要隐私说明
+```text
+ReviewLume: fbs · Folder
+```
 
-ReviewLume P9 MCP **不会自动运行 SecretScanner，也不会默认阻止 `.env`、credentials、secrets、私钥文本或其他敏感配置文件**。
+Folder 内即使发现多个 Git 子仓库，状态栏仍显示 `Folder`，因为本次连接的授权边界仍是这个 Folder root。
 
-实际行为是：
+一次连接只绑定一个 canonical Project Root。不会跨多个 Workspace Folder 混读。
 
-- `list_files` 和 `search_code` 枚举 Git 已跟踪文件以及未忽略的未跟踪文本文件；
-- `read_file` 可以读取 repository 内被明确指定的普通文本文件，包括 ignored 文件，只要调用方知道或猜到路径；
-- `get_diff` 可以返回变更中出现的密钥、Token、连接串、个人数据或内部地址；
-- `.git`、绝对路径、父目录逃逸、repository 外部 symlink、二进制和超大文件会被拒绝；
-- 结果大小、读取行数、文件数、并发和调用频率受限；
-- ReviewLume 不记录文件正文、diff、搜索词或搜索结果。
+## 6. ReviewLume 自动执行什么
 
-因此，在连接前必须：
+连接时 ReviewLume：
 
-- 移除、轮换或脱敏真实密钥；
-- 不连接无权提供给 OpenAI 的 repository；
-- 不在测试项目中放入真实生产数据；
-- 必要时使用专门的脱敏副本或测试分支。
+1. canonicalize 所选 Workspace Folder；
+2. 使用只读 Git discovery 尝试解析根 Git top-level；
+3. 成功则创建 Git Project，否则以所选 Folder 创建 Folder Project；
+4. 只有直接 Git Project 才允许进入现有 repository-bound Local Verification `runOnConnect` 流程；
+5. Folder Project 不 discovery、不运行 Local Verification；
+6. 启动仅监听 `127.0.0.1` 随机端口的本地只读 MCP；
+7. 生成新的本地高熵 Token；
+8. 运行官方 `tunnel-client doctor --explain`；
+9. 启动 Secure MCP Tunnel；
+10. 校验 loopback health；
+11. 健康后打开 ChatGPT 新对话。
 
-P8 Advanced Review Pack 流程仍然使用 SecretScanner 和导出门禁，但那是独立的高级工作流，不会自动保护 P9 MCP 工具调用。
+如果 Git CLI 不可用，ReviewLume 会安全降级为 Folder Project；文件工具仍可工作，但 nested Git discovery/query 不能伪造 Git 结果。
 
-完整说明见 [PRIVACY.md](../PRIVACY.md) 和 [安全与合规边界](security-and-compliance.md)。
+## 7. 在 ChatGPT 创建/刷新 ReviewLume 应用
 
-## 10. 常见问题
+首次使用时，在 ReviewLume Tunnel 已连接的情况下：
+
+1. 打开 ChatGPT Apps/Connectors 管理页。
+2. 创建自定义应用/MCP 连接器。
+3. 名称使用 `ReviewLume`。
+4. 连接方式选择 Tunnel。
+5. 选择前面创建的 Tunnel。
+6. 执行工具扫描/Scan tools。
+7. 保存应用。
+
+### 稳定工具契约
+
+ReviewLume 对 Git Project 和 Folder Project 都固定暴露同一组 **11 个只读工具**：
+
+- `project_summary`
+- `list_git_repositories`
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+- `list_files`
+- `read_file`
+- `search_code`
+- `verification_status`
+- `read_verification_output`
+
+这样做是因为 ChatGPT 可能保留已批准工具名和 input schema 的快照。如果 Git/Folder 切换时 `tools/list` 发生变化，同一个 Tunnel 会出现旧快照和新运行时不一致。
+
+现在切换 Project Kind 时，工具名称和公开 schema 保持不变，运行时根据当前 `projectKind` 决定行为：
+
+- **Git Project**：`repository_summary` / `git_status` / `recent_commits` / `get_diff` 直接作用于当前 Git root，`repository` 参数必须省略；`list_git_repositories` 只说明当前 root 已经是 Git Project，无需子仓库选择。
+- **Folder Project**：先用 `list_git_repositories` 找到真实子仓库；四个 Git query 的 `repository` 参数在运行时必填，并且只能使用 discovery 返回的 Folder-relative path。
+- **Local Verification evidence**：两个工具名在两种模式下都稳定存在，但 Folder Project 调用会明确返回 unavailable，并且不会启动任何进程；直接 Git Project 才能按原有 repository-bound 规则读取 evidence。
+
+任一模式都不应出现 shell、terminal、write、delete、patch、Git mutation 或通用 process-start 工具。
+
+### 什么时候需要重新 Scan Tools
+
+正常在 Git Project 与 Folder Project 之间切换，**不再需要**因为 project kind 变化而删除/重建 ChatGPT 应用。
+
+只有 ReviewLume 未来版本真的修改了这组稳定工具名或公开 input schema 时，才需要在 Apps/Connectors 管理页 Refresh / Scan Tools；如果当前 ChatGPT 工作区无法刷新，才需要重新创建应用。
+
+如果扫描结果出现 write、delete、shell、terminal、patch、Git mutation 或 general process-start capability，应停止使用并检查是否连接了错误服务。
+
+## 8. 日常使用
+
+### Git Project
+
+```text
+检查当前项目最近 5 个提交，先看 Git 状态和提交范围，再读取必要的 diff、源码、测试和配置。不要修改任何文件。
+```
+
+### Folder Project：跨子项目读代码
+
+```text
+先看当前 Folder Project 的结构，再搜索并读取和 WebSocket 重连有关的源码、配置和测试，做一次只读代码审核。不要修改任何文件。
+```
+
+### Folder Project：查看一个下级 Git 仓库
+
+```text
+先列出当前 Folder 内可用的 Git repositories，然后查看 fbs-ui 的 branch、当前 Git status、最近 5 次提交和 working diff。只检查 fbs-ui，不要合并其它仓库状态。
+```
+
+Folder root 本身不能可靠回答一个“聚合的最近改动”。但如果问题明确指向一个 `list_git_repositories` 已发现的子仓库，ReviewLume 可以读取那个子仓库自己的 branch/HEAD/status/commits/diff。
+
+## 9. Project 文件与隐私边界
+
+所有 Project Kind：
+
+- project file 工具拒绝绝对路径、`..`、直接 `.git` 读取、root 外 realpath、目录、binary、超大文件；
+- local MCP 和返回结果有大小、数量、请求和速率预算；
+- 不提供 shell、terminal、write/delete/rename、patch 或 Git mutation；
+- 项目文件和 AI 回复都是不可信输入；
+- ReviewLume 不记录文件正文、diff、搜索词、搜索结果或 raw verification output 到诊断日志。
+
+### Git Project
+
+为保持既有 Connector 兼容，Git Project 不会仅按 `.env`、credentials、secrets、key、数据库或生产配置等文件名自动阻断。tracked 敏感文件仍可能被枚举/读取；P8 SecretScanner 不自动覆盖 MCP。
+
+### Folder Project 文件工具
+
+Folder file listing/reading/search 采用更保守的策略：
+
+- 不跟随 symlink/junction-like link；
+- 每个枚举候选 realpath 必须留在 root；
+- 跳过 VCS metadata、常见依赖/build/cache 目录和 credential-store 目录；
+- 阻止 `.env` secrets、常见 credentials/secrets 文件、private-key names 和 key/certificate container 文件；
+- `.env.example/.sample/.template/.dist` 可作为模板读取。
+
+### Folder Project nested Git
+
+Nested Git discovery 只在授权 root 内有界扫描，并要求：
+
+- candidate 是实际目录，不通过外部 symlink/junction 进入；
+- candidate 有本地 `.git` marker；
+- Git top-level 与 absolute git-dir 都 canonicalize 到授权 root 内；
+- Git query 的 `repository` 必须精确匹配 discovery 返回值。
+
+Nested Git status/history/diff 复用现有 Git Project 语义，因此**不会被 Folder direct-file 的 `.env` 等文件名 denylist 自动过滤**。显式 Git diff 仍可能包含敏感 tracked 内容。
+
+这些机制都不是内容 DLP。连接前必须移除、轮换或脱敏真实密钥，并确认有权把内容提供给 OpenAI。
+
+详细说明见 [PRIVACY.md](../PRIVACY.md)、[安全与合规边界](security-and-compliance.md) 和 [Folder Project Support](folder-project-support.md)。
+
+## 10. Local Verification
+
+Local Verification 仍然是 direct Git Project-only：
+
+- approval 绑定 canonical Git repository；
+- 固定 executable/argv/target mode/timeout；
+- `shell: false`；
+- 不执行 AI 回复或项目文档中的命令；
+- evidence tools 只能读取已完成结果。
+
+为保持 ChatGPT MCP schema 稳定，`verification_status` 和 `read_verification_output` 的工具名在 Folder Project 也会被广告，但调用会直接返回 unavailable；Folder Project 不 discovery、不运行 Local Verification，也不会自动对 nested Git repositories 执行测试或复用授权。
+
+## 11. 常见问题
+
+### 普通文件夹没有根 `.git` 能连接吗？
+
+可以。只要 Workspace Folder 已 Trusted，就会作为 Folder Project 连接并提供跨 Folder 文件读取/搜索；如果内部包含真实 Git 子仓库，还可以通过 `list_git_repositories` 和显式 repository 参数做只读 Git 查询。
+
+### Folder Project 可以看某个子项目的 Git 吗？
+
+可以。先让 ReviewLume 列出 nested Git repositories，再明确指定其中一个，例如 `fbs-ui`。它可以查看该仓库自己的 summary/status/commits/diff，但不会把多个仓库合成一个 Git 状态。
+
+### 从 Folder 切到 Git Project 要重建 ChatGPT App 吗？
+
+当前稳定工具契约下不需要。保持同一个 ReviewLume Tunnel/App，重新连接当前项目即可。只有将来 ReviewLume 版本真的改变稳定工具名或公开 schema 时才需要 Refresh / Scan Tools。
 
 ### ChatGPT 没有自定义应用/连接器入口
 
-这是 ChatGPT 账户、工作空间、套餐或灰度权限问题。ReviewLume 无法本地开启。查看 OpenAI 官方可用性说明，或使用当前界面实际提供该入口的账户/工作空间。
+这是 ChatGPT 账户、工作空间、套餐或灰度权限问题。ReviewLume 无法本地开启或绕过。
 
 ### 工具列表仍是旧版本
 
-ChatGPT 会保存已批准工具的快照。进入应用/连接器管理页执行刷新或重新扫描；仍不更新时，删除旧应用并重新创建。
+如果刚升级到引入稳定工具契约的版本，旧 App 可能仍保存此前的 7/9-tool 快照。执行一次 Refresh / Scan Tools；如果当前界面没有刷新能力，删除旧 App 后用同一 Tunnel 重新创建一次。完成这一次迁移后，日常 Git/Folder 切换不再需要重复重建。
 
 ### Tunnel 启动失败
 
-从状态栏选择 **Open Tunnel Diagnostics** 或 **Show ReviewLume Logs**，重点检查：
-
-- Tunnel ID 是否正确；
-- Runtime API Key 是否被撤销或权限不足；
-- `tunnel-client` 是否来自官方 Release；
-- 代理是否可访问 OpenAI 控制面；
-- 防火墙或安全软件是否阻止子进程联网。
-
-不要在公开 issue 中粘贴 Runtime API Key、本地 MCP Token、Authorization Header、完整诊断原文或私有源码。
-
-### ChatGPT 说当前项目不是 ReviewLume
-
-ReviewLume 是连接器名称，不是 repository 名称。正常表述应是“当前连接项目是 NursePrep/你的项目名，访问模式为只读”。
+从状态栏打开 **Tunnel Diagnostics** 或 **ReviewLume Logs**，重点检查 Tunnel ID、Runtime Key、官方客户端来源、代理和本机网络/安全软件。不要公开粘贴密钥、本地 Token、Authorization Header、完整诊断原文或私有源码。
 
 ### 如何停止和撤销
 
 - VS Code：**ReviewLume MCP → Stop Secure MCP Connection**；
-- OpenAI Platform：撤销 Runtime API Key，或删除 Tunnel；
-- ChatGPT：禁用或删除 ReviewLume 应用/连接器；
+- OpenAI Platform：撤销 Runtime API Key 或删除 Tunnel；
+- ChatGPT：禁用/删除 ReviewLume 应用；
 - 本地：卸载 ReviewLume，并按需清理 VS Code extension storage。

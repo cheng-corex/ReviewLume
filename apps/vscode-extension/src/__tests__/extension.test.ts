@@ -98,7 +98,7 @@ describe('reviewlume-vscode manifest', () => {
   it('has valid Marketplace metadata and Restricted Mode support', () => {
     const content = readPkg();
     expect(content.name).toBe('reviewlume-vscode');
-    expect(content.version).toBe('0.3.0');
+    expect(content.version).toBe('0.3.3');
     expect(content.publisher).toBe('ReviewLume');
     expect(content.preview).toBe(true);
     expect(content.pricing).toBe('Free');
@@ -139,7 +139,7 @@ describe('reviewlume-vscode manifest', () => {
       title: 'Clear Local Verification Approval',
     },
     { command: 'reviewlume.mcpConnectorMenu', title: 'Secure MCP Connector' },
-    { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Repository to ChatGPT' },
+    { command: 'reviewlume.connectSecureMcpTunnel', title: 'Connect Current Project to ChatGPT' },
     {
       command: 'reviewlume.configureSecureMcpTunnel',
       title: 'Configure OpenAI Secure MCP Tunnel',
