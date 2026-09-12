@@ -1,9 +1,9 @@
 # ReviewLume 0.3.2 Preview
 
-This release adds Folder Project support and a stable 11-tool read-only MCP contract shared by Git Project and Folder Project connections.
+0.3.2 introduced Folder Project support and the stable 11-tool read-only MCP contract shared by Git Project and Folder Project connections.
 
-Folder mode keeps the two verification evidence tool names in the public contract, but calls return unavailable and do not start Local Verification. Direct Git mode keeps the existing repository-bound verification behavior.
+It was published from the independently developed Folder Project branch before that branch had been reconciled with the already-published 0.3.1 nested Local Verification runner fixes. As a result, 0.3.2 should not be used as the source baseline for later releases.
 
-Windows manual acceptance verified Folder-to-Git switching with the same ChatGPT app without refreshing or recreating the app.
+The follow-up 0.3.3 release candidate restores the 0.3.1 schema-2/nested-package Local Verification implementation while retaining the 0.3.2 Folder Project and stable-tool behavior.
 
-The 0.3.2 version is used because 0.3.1 is already published on the VS Code Marketplace.
+Users already on 0.3.2 can continue using its read-only Folder/Git MCP features, but the corrected follow-up is 0.3.3.
