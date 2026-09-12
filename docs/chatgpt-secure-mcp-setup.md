@@ -109,56 +109,41 @@ Folder 内即使发现多个 Git 子仓库，状态栏仍显示 `Folder`，因�
 2. 创建自定义应用/MCP 连接器。
 3. 名称使用 `ReviewLume`。
 4. 连接方式选择 Tunnel。
-5. 填入前面创建的 Tunnel ID。
+5. 选择前面创建的 Tunnel。
 6. 执行工具扫描/Scan tools。
 7. 保存应用。
 
-### Git Project 应看到
+### 稳定工具契约
 
-基础 Git Project 工具：
-
-- `repository_summary`
-- `git_status`
-- `recent_commits`
-- `get_diff`
-- `list_files`
-- `read_file`
-- `search_code`
-
-当前安装版本启用 Local Verification evidence 时，还可能看到：
-
-- `verification_status`
-- `read_verification_output`
-
-### Folder Project 应看到
-
-Folder-wide 文件工具：
+ReviewLume 对 Git Project 和 Folder Project 都固定暴露同一组 **11 个只读工具**：
 
 - `project_summary`
-- `list_files`
-- `read_file`
-- `search_code`
-
-以及授权根目录内的 nested Git 只读工具：
-
 - `list_git_repositories`
 - `repository_summary`
 - `git_status`
 - `recent_commits`
 - `get_diff`
-
-后四个 Git query 都要求一个 `repository` 参数，值必须来自 `list_git_repositories` 返回的 Folder-relative path。
-
-Folder Project **不应看到**：
-
+- `list_files`
+- `read_file`
+- `search_code`
 - `verification_status`
 - `read_verification_output`
 
-它也不应出现 shell、terminal、write、patch、Git mutation 或通用 process-start 工具。
+这样做是因为 ChatGPT 可能保留已批准工具名和 input schema 的快照。如果 Git/Folder 切换时 `tools/list` 发生变化，同一个 Tunnel 会出现旧快照和新运行时不一致。
 
-### 切换 Project Kind / 更新工具后工具没更新
+现在切换 Project Kind 时，工具名称和公开 schema 保持不变，运行时根据当前 `projectKind` 决定行为：
 
-ChatGPT 可能保存已批准工具定义的快照。Git Project 与 Folder Project 的 tool schema 不同；升级 ReviewLume、切换类型或 nested Git tool 定义变化后，如果仍显示旧工具，需要在 Apps/Connectors 管理页刷新/重新扫描，必要时重新创建应用。
+- **Git Project**：`repository_summary` / `git_status` / `recent_commits` / `get_diff` 直接作用于当前 Git root，`repository` 参数必须省略；`list_git_repositories` 只说明当前 root 已经是 Git Project，无需子仓库选择。
+- **Folder Project**：先用 `list_git_repositories` 找到真实子仓库；四个 Git query 的 `repository` 参数在运行时必填，并且只能使用 discovery 返回的 Folder-relative path。
+- **Local Verification evidence**：两个工具名在两种模式下都稳定存在，但 Folder Project 调用会明确返回 unavailable，并且不会启动任何进程；直接 Git Project 才能按原有 repository-bound 规则读取 evidence。
+
+任一模式都不应出现 shell、terminal、write、delete、patch、Git mutation 或通用 process-start 工具。
+
+### 什么时候需要重新 Scan Tools
+
+正常在 Git Project 与 Folder Project 之间切换，**不再需要**因为 project kind 变化而删除/重建 ChatGPT 应用。
+
+只有 ReviewLume 未来版本真的修改了这组稳定工具名或公开 input schema 时，才需要在 Apps/Connectors 管理页 Refresh / Scan Tools；如果当前 ChatGPT 工作区无法刷新，才需要重新创建应用。
 
 如果扫描结果出现 write、delete、shell、terminal、patch、Git mutation 或 general process-start capability，应停止使用并检查是否连接了错误服务。
 
@@ -233,7 +218,7 @@ Local Verification 仍然是 direct Git Project-only：
 - 不执行 AI 回复或项目文档中的命令；
 - evidence tools 只能读取已完成结果。
 
-Folder Project 不 discovery、不运行、不暴露 Local Verification evidence；即使发现了 nested Git repositories，也不会自动运行它们的测试或复用授权。
+为保持 ChatGPT MCP schema 稳定，`verification_status` 和 `read_verification_output` 的工具名在 Folder Project 也会被广告，但调用会直接返回 unavailable；Folder Project 不 discovery、不运行 Local Verification，也不会自动对 nested Git repositories 执行测试或复用授权。
 
 ## 11. 常见问题
 
@@ -245,13 +230,17 @@ Folder Project 不 discovery、不运行、不暴露 Local Verification evidence
 
 可以。先让 ReviewLume 列出 nested Git repositories，再明确指定其中一个，例如 `fbs-ui`。它可以查看该仓库自己的 summary/status/commits/diff，但不会把多个仓库合成一个 Git 状态。
 
+### 从 Folder 切到 Git Project 要重建 ChatGPT App 吗？
+
+当前稳定工具契约下不需要。保持同一个 ReviewLume Tunnel/App，重新连接当前项目即可。只有将来 ReviewLume 版本真的改变稳定工具名或公开 schema 时才需要 Refresh / Scan Tools。
+
 ### ChatGPT 没有自定义应用/连接器入口
 
 这是 ChatGPT 账户、工作空间、套餐或灰度权限问题。ReviewLume 无法本地开启或绕过。
 
 ### 工具列表仍是旧版本
 
-刷新或重新扫描应用工具；如果 Git/Folder 类型或 ReviewLume 版本发生变化但快照仍不更新，重新创建应用。
+如果刚升级到引入稳定工具契约的版本，旧 App 可能仍保存此前的 7/9-tool 快照。执行一次 Refresh / Scan Tools；如果当前界面没有刷新能力，删除旧 App 后用同一 Tunnel 重新创建一次。完成这一次迁移后，日常 Git/Folder 切换不再需要重复重建。
 
 ### Tunnel 启动失败
 
