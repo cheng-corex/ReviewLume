@@ -1,7 +1,7 @@
 {
   "name": "reviewlume-vscode",
   "displayName": "%extension.displayName%",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "%extension.description%",
   "license": "MIT",
   "author": "ReviewLume contributors",
@@ -59,7 +59,7 @@
     "test": "vitest run",
     "verify:package-contents": "node scripts/validate-package-contents.mjs",
     "prepackage": "pnpm build",
-    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.3.0.vsix",
+    "package": "vsce package --no-dependencies -o ../../reviewlume-vscode-0.3.1.vsix",
     "pretest": "pnpm build"
   },
   "contributes": {
