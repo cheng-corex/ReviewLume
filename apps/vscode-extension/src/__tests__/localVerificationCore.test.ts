@@ -1,7 +1,8 @@
 import * as os from 'node:os';
 import * as path from 'node:path';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, realpath, rm, writeFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { buildVerificationApprovalPrompt } from '../services/localVerificationApproval';
 import {
   captureWorkspaceSnapshot,
   createVerificationPlan,
@@ -118,6 +119,71 @@ describe('local verification core', () => {
     expect(result.steps[0]?.counts).toMatchObject({ passed: 2, failed: 0, total: 2 });
   });
 
+  it('discovers a nested Mocha package and runs only its changed tests from its package root', async () => {
+    await mkdir(path.join(root, 'server', 'node_modules', 'mocha', 'bin'), { recursive: true });
+    await mkdir(path.join(root, 'server', 'test', 'runtime'), { recursive: true });
+    await writeFile(
+      path.join(root, 'server', 'package.json'),
+      JSON.stringify({ name: 'server', devDependencies: { mocha: '^11.0.0' } }),
+    );
+    await writeFile(
+      path.join(root, 'server', 'node_modules', 'mocha', 'bin', 'mocha.js'),
+      '',
+    );
+    await writeFile(
+      path.join(root, 'server', 'test', 'runtime', 'nested.test.js'),
+      'it("nested", () => {});\n',
+    );
+
+    const candidates = await discoverVerificationCandidates(root);
+    const nestedMocha = candidates.find((candidate) => candidate.id === 'mocha-changed:server');
+    expect(nestedMocha).toMatchObject({
+      workingDirectory: 'server',
+      pickedByDefault: true,
+    });
+    const launcher = new FakeLauncher();
+    launcher.result = { ...launcher.result, output: '1 passing\n' };
+
+    const result = await runVerificationPlan({
+      root,
+      repository: 'fixture',
+      plan: createVerificationPlan(root, [nestedMocha!]),
+      runner: new FakeGitRunner([
+        'server/test/runtime/nested.test.js',
+        'test/runtime/first.test.js',
+      ]),
+      launcher,
+    });
+
+    expect(result.status).toBe('passed');
+    expect(launcher.requests).toHaveLength(1);
+    expect(launcher.requests[0]?.cwd).toBe(await realpath(path.join(root, 'server')));
+    expect(launcher.requests[0]?.args).toContain('test/runtime/nested.test.js');
+    expect(launcher.requests[0]?.args).not.toContain('server/test/runtime/nested.test.js');
+    expect(launcher.requests[0]?.args).not.toContain('test/runtime/first.test.js');
+    expect(result.steps[0]?.requestedTargets).toEqual(['test/runtime/nested.test.js']);
+  });
+
+  it('allows a nested package to use a repository-local hoisted runner', async () => {
+    await mkdir(path.join(root, 'client', 'test'), { recursive: true });
+    await writeFile(
+      path.join(root, 'client', 'package.json'),
+      JSON.stringify({ name: 'client', devDependencies: { mocha: '^11.0.0' } }),
+    );
+    await writeFile(
+      path.join(root, 'client', 'test', 'client.test.js'),
+      'it("client", () => {});\n',
+    );
+
+    const candidates = await discoverVerificationCandidates(root);
+    const clientMocha = candidates.find((candidate) => candidate.id === 'mocha-changed:client');
+    expect(clientMocha).toBeDefined();
+    expect(clientMocha?.workingDirectory).toBe('client');
+    expect(clientMocha?.argsPrefix[0]).toBe(
+      await realpath(path.join(root, 'node_modules', 'mocha', 'bin', 'mocha.js')),
+    );
+  });
+
   it('checks each changed JavaScript file in a separate node process', async () => {
     const candidates = await discoverVerificationCandidates(root);
     const syntax = candidates.find((candidate) => candidate.id === 'node-check-changed');
@@ -195,6 +261,24 @@ describe('local verification core', () => {
     });
   });
 
+  it('invalidates approval when a nested package configuration changes', async () => {
+    await mkdir(path.join(root, 'server', 'test'), { recursive: true });
+    await writeFile(
+      path.join(root, 'server', 'package.json'),
+      JSON.stringify({ name: 'server', devDependencies: { mocha: '^11.0.0' } }),
+    );
+    const initial = await discoverVerificationCandidates(root);
+    const nestedMocha = initial.find((candidate) => candidate.id === 'mocha-changed:server');
+    const plan = createVerificationPlan(root, [nestedMocha!]);
+
+    await writeFile(
+      path.join(root, 'server', 'package.json'),
+      JSON.stringify({ name: 'server', devDependencies: { mocha: '^12.0.0' } }),
+    );
+    const changed = await discoverVerificationCandidates(root);
+    expect(validateVerificationPlan(plan, root, changed)).toMatchObject({ valid: false });
+  });
+
   it('invalidates approval when the repository-local runner or lockfile changes', async () => {
     const initial = await discoverVerificationCandidates(root);
     const mocha = initial.find((candidate) => candidate.id === 'mocha-changed');
@@ -237,6 +321,21 @@ describe('local verification core', () => {
     expect(result.status).toBe('inconclusive');
     expect(result.steps[0]?.status).toBe('inconclusive');
     expect(detectNoTests('No test files found')).toBe(true);
+  });
+
+  it('uses an accurate approval warning for syntax-only and code-executing rules', async () => {
+    const candidates = await discoverVerificationCandidates(root);
+    const syntax = candidates.find((candidate) => candidate.id === 'node-check-changed');
+    const mocha = candidates.find((candidate) => candidate.id === 'mocha-changed');
+
+    const syntaxPrompt = buildVerificationApprovalPrompt([syntax!], true);
+    expect(syntaxPrompt.action).toBe('Approve and run');
+    expect(syntaxPrompt.message).toContain('without executing their contents');
+    expect(syntaxPrompt.message).not.toContain('may execute repository code');
+
+    const testPrompt = buildVerificationApprovalPrompt([syntax!, mocha!], false);
+    expect(testPrompt.action).toBe('Approve');
+    expect(testPrompt.message).toContain('may execute repository code');
   });
 
   it('recognizes common test paths and redacts secrets from stored output', () => {

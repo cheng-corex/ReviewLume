@@ -2,9 +2,7 @@ import { createHash } from 'node:crypto';
 import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
-import { createReadOnlyGitRunner } from './gitRuntime';
-import { logError, logInfo, logWarn } from './logService';
-import type { McpGitRunner } from './mcpRepositoryTools';
+import { buildVerificationApprovalPrompt } from './localVerificationApproval';
 import {
   captureWorkspaceSnapshot,
   createVerificationPlan,
@@ -15,6 +13,9 @@ import {
   type VerificationPlan,
   type VerificationRunResult,
 } from './localVerificationCore';
+import { createReadOnlyGitRunner } from './gitRuntime';
+import { logError, logInfo, logWarn } from './logService';
+import type { McpGitRunner } from './mcpRepositoryTools';
 
 const PLAN_STATE_PREFIX = 'reviewlume.localVerification.plan.';
 const RESULT_DIRECTORY = 'local-verification';
@@ -85,18 +86,25 @@ export class LocalVerificationService implements VerificationResultReader {
     });
     if (!selected || selected.length === 0) return undefined;
 
-    const approval = await vscode.window.showWarningMessage(
-      'Approved tests execute repository code locally and may modify files, access the network, or use local services. ' +
-        'ChatGPT cannot change these commands or start them. Configuration changes invalidate this approval.',
-      { modal: true, detail: selected.map((item) => item.detail).join('\n\n') },
-      runAfterApproval ? 'Approve and run' : 'Approve',
-      'Cancel',
+    const prompt = buildVerificationApprovalPrompt(
+      selected.map((item) => item.candidate),
+      runAfterApproval,
     );
-    if (approval !== (runAfterApproval ? 'Approve and run' : 'Approve')) return undefined;
+    const approval = await vscode.window.showWarningMessage(
+      prompt.message,
+      { modal: true, detail: selected.map((item) => item.detail).join('\n\n') },
+      prompt.action,
+    );
+    if (approval !== prompt.action) return undefined;
 
-    const plan = createVerificationPlan(root, selected.map((item) => item.candidate));
+    const plan = createVerificationPlan(
+      root,
+      selected.map((item) => item.candidate),
+    );
     await this.#context.globalState.update(planStateKey(root), plan);
-    logInfo(`Local verification approved for ${path.basename(root)} with ${plan.steps.length} fixed rule(s)`);
+    logInfo(
+      `Local verification approved for ${path.basename(root)} with ${plan.steps.length} fixed rule(s)`,
+    );
     if (runAfterApproval) await this.runApproved(workspaceFolder);
     return plan;
   }
@@ -127,8 +135,7 @@ export class LocalVerificationService implements VerificationResultReader {
     let plan = this.#loadPlan(root);
     if (!plan) {
       const action = await vscode.window.showInformationMessage(
-        'ReviewLume can run newly added or modified tests before connecting ChatGPT. ' +
-          'This requires one repository-specific approval.',
+        'ReviewLume can run newly added or modified tests and approved checks before connecting ChatGPT. This requires one repository-specific approval.',
         'Configure local verification',
         'Connect without verification',
       );
@@ -142,8 +149,7 @@ export class LocalVerificationService implements VerificationResultReader {
     if (!validation.valid) {
       await this.#context.globalState.update(planStateKey(root), undefined);
       const action = await vscode.window.showWarningMessage(
-        `${validation.reason ?? 'The local verification approval is no longer valid'} ` +
-          'Review and approve the current rules before they run again.',
+        `${validation.reason ?? 'The local verification approval is no longer valid'} Review and approve the current rules before they run again.`,
         'Review verification rules',
         'Connect without verification',
       );
@@ -162,7 +168,10 @@ export class LocalVerificationService implements VerificationResultReader {
     const runner = createReadOnlyGitRunner();
     const root = await this.#resolveRepositoryRoot(workspaceFolder, runner);
     const plan = this.#loadPlan(root);
-    if (!plan) return this.configure(workspaceFolder, true).then(() => undefined);
+    if (!plan) {
+      await this.configure(workspaceFolder, true);
+      return undefined;
+    }
 
     const candidates = await discoverVerificationCandidates(root);
     const validation = validateVerificationPlan(plan, root, candidates);
@@ -171,7 +180,8 @@ export class LocalVerificationService implements VerificationResultReader {
       await vscode.window.showWarningMessage(
         `${validation.reason ?? 'The local verification approval changed'} Re-approve it before running.`,
       );
-      return this.configure(workspaceFolder, true).then(() => undefined);
+      await this.configure(workspaceFolder, true);
+      return undefined;
     }
     return this.#run(root, path.basename(root) || 'repository', plan, runner, false);
   }
@@ -197,7 +207,12 @@ export class LocalVerificationService implements VerificationResultReader {
         configured: Boolean(plan),
         mcpCanStartProcesses: false,
         status: 'never-run',
-        approvedRules: plan?.steps.map((step) => step.label) ?? [],
+        approvedRules:
+          plan?.steps.map((step) => ({
+            id: step.id,
+            label: step.label,
+            workingDirectory: step.workingDirectory,
+          })) ?? [],
       };
     }
 
@@ -261,7 +276,12 @@ export class LocalVerificationService implements VerificationResultReader {
     }
 
     const startLine = readInteger(args.startLine, 1, 1, 1_000_000);
-    const endLine = readInteger(args.endLine, startLine + MAX_OUTPUT_LINES - 1, startLine, 1_000_000);
+    const endLine = readInteger(
+      args.endLine,
+      startLine + MAX_OUTPUT_LINES - 1,
+      startLine,
+      1_000_000,
+    );
     const lines = step.output.split(/\r?\n/);
     const content = truncateUtf8(
       lines
@@ -295,50 +315,51 @@ export class LocalVerificationService implements VerificationResultReader {
     const existing = this.#runs.get(root);
     if (existing) return existing;
 
-    const operation = Promise.resolve(vscode.window.withProgress(
-      {
-        location: vscode.ProgressLocation.Notification,
-        title: `ReviewLume: verifying ${repository}`,
-        cancellable: true,
-      },
-      async (progress, token): Promise<VerificationRunResult | undefined> => {
-        progress.report({ message: 'Discovering changed tests and capturing workspace state…' });
-        const controller = new AbortController();
-        const cancellation = token.onCancellationRequested(() => controller.abort());
-        try {
-          const result = await runVerificationPlan({
-            root,
-            repository,
-            plan,
-            runner,
-            signal: controller.signal,
-            maxOutputBytes: vscode.workspace
-              .getConfiguration('reviewlume')
-              .get<number>('verification.maxOutputBytes', MAX_OUTPUT_BYTES),
-          });
-          await this.#writeResult(root, result);
-          logInfo(
-            `Local verification ${result.status} for ${repository}; ` +
-              `${result.steps.length} step(s), ${result.durationMs} ms`,
-          );
-          await this.#showRunResult(result, initiatedByConnect);
-          return result;
-        } catch (error) {
-          logError(
-            `Local verification failed to start for ${repository}`,
-            error instanceof Error ? error : undefined,
-          );
-          await vscode.window.showErrorMessage(
-            error instanceof Error
-              ? `ReviewLume local verification failed: ${error.message}`
-              : 'ReviewLume local verification failed.',
-          );
-          return undefined;
-        } finally {
-          cancellation.dispose();
-        }
-      },
-    ));
+    const operation = Promise.resolve(
+      vscode.window.withProgress(
+        {
+          location: vscode.ProgressLocation.Notification,
+          title: `ReviewLume: verifying ${repository}`,
+          cancellable: true,
+        },
+        async (progress, token): Promise<VerificationRunResult | undefined> => {
+          progress.report({ message: 'Discovering changed tests and capturing workspace state…' });
+          const controller = new AbortController();
+          const cancellation = token.onCancellationRequested(() => controller.abort());
+          try {
+            const result = await runVerificationPlan({
+              root,
+              repository,
+              plan,
+              runner,
+              signal: controller.signal,
+              maxOutputBytes: vscode.workspace
+                .getConfiguration('reviewlume')
+                .get<number>('verification.maxOutputBytes', MAX_OUTPUT_BYTES),
+            });
+            await this.#writeResult(root, result);
+            logInfo(
+              `Local verification ${result.status} for ${repository}; ${result.steps.length} step(s), ${result.durationMs} ms`,
+            );
+            await this.#showRunResult(result, initiatedByConnect);
+            return result;
+          } catch (error) {
+            logError(
+              `Local verification failed to start for ${repository}`,
+              error instanceof Error ? error : undefined,
+            );
+            await vscode.window.showErrorMessage(
+              error instanceof Error
+                ? `ReviewLume local verification failed: ${error.message}`
+                : 'ReviewLume local verification failed.',
+            );
+            return undefined;
+          } finally {
+            cancellation.dispose();
+          }
+        },
+      ),
+    );
 
     this.#runs.set(root, operation);
     try {
@@ -348,7 +369,10 @@ export class LocalVerificationService implements VerificationResultReader {
     }
   }
 
-  async #showRunResult(result: VerificationRunResult, initiatedByConnect: boolean): Promise<void> {
+  async #showRunResult(
+    result: VerificationRunResult,
+    initiatedByConnect: boolean,
+  ): Promise<void> {
     const executed = result.steps.filter((step) => step.status !== 'skipped').length;
     const suffix = result.workspaceChangedDuringRun
       ? ' The repository changed during the run, so the result is already stale.'
@@ -428,12 +452,18 @@ function formatCandidate(candidate: VerificationCandidate, root: string): string
     const relative = path.isAbsolute(arg) ? path.relative(root, arg) : arg;
     return quoteArgument(relative || arg);
   });
-  const target = candidate.targetMode === 'changed-tests'
-    ? '<new-or-modified-test-files>'
-    : candidate.targetMode === 'changed-javascript'
-      ? '<new-or-modified-js-files>'
-      : '';
-  return [quoteArgument(displayExecutable), ...displayArgs, target].filter(Boolean).join(' ');
+  const target =
+    candidate.targetMode === 'changed-tests'
+      ? '<new-or-modified-test-files>'
+      : candidate.targetMode === 'changed-javascript'
+        ? '<new-or-modified-js-files>'
+        : '';
+  const command = [quoteArgument(displayExecutable), ...displayArgs, target]
+    .filter(Boolean)
+    .join(' ');
+  const cwd =
+    candidate.workingDirectory === '.' ? '<repository-root>' : candidate.workingDirectory;
+  return `[cwd: ${cwd}] ${command}`;
 }
 
 function quoteArgument(value: string): string {
@@ -445,7 +475,8 @@ function planStateKey(root: string): string {
 }
 
 function repositoryKey(root: string): string {
-  const normalized = process.platform === 'win32' ? path.resolve(root).toLowerCase() : path.resolve(root);
+  const normalized =
+    process.platform === 'win32' ? path.resolve(root).toLowerCase() : path.resolve(root);
   return createHash('sha256').update(normalized).digest('hex');
 }
 
