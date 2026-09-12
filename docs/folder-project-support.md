@@ -23,24 +23,55 @@ At connection time ReviewLume:
 
 A missing `.git` directory is therefore no longer a connection failure. Git discovery failure degrades to Folder mode instead of fabricating repository metadata.
 
-## Folder Project MCP capabilities
+## Stable MCP tool contract
 
-A Folder Project exposes project-wide file tools:
+ChatGPT can retain an approved snapshot of MCP tool names and input schemas. Because one ReviewLume Tunnel can later be rebound from a Git Project to a Folder Project, changing `tools/list` by project kind would leave that snapshot stale even though the tunnel reached the current local server.
+
+ReviewLume therefore advertises one stable read-only superset for **both** project kinds:
 
 - `project_summary`
+- `list_git_repositories`
+- `repository_summary`
+- `git_status`
+- `recent_commits`
+- `get_diff`
+- `list_files`
+- `read_file`
+- `search_code`
+- `verification_status`
+- `read_verification_output`
+
+The names and public input schemas above remain identical when the user switches between Git and Folder Projects. Project-specific capability is enforced at call time instead of by changing the advertised tool list.
+
+For the four Git query tools, `repository` is an optional field in the stable public schema:
+
+- **Folder Project** — `repository` is required at runtime and must exactly match a path returned by `list_git_repositories`.
+- **Git Project** — `repository` must be omitted because the connected root is already the selected Git repository.
+
+`project_summary` is available in both modes and reports `projectKind` plus the relevant capability boundary.
+
+`list_git_repositories` behaves as follows:
+
+- **Folder Project** — discovers bounded nested Git repositories inside the authorized Folder root.
+- **Git Project** — returns that no nested selection is required; Git tools target the connected repository directly.
+
+The two Local Verification evidence tool names are also stable. In Folder mode they return an explicit unavailable result and never start a process. This preserves a stable ChatGPT schema without extending Folder execution authority.
+
+## Folder Project MCP capabilities
+
+A Folder Project supports project-wide file operations through:
+
 - `list_files`
 - `read_file`
 - `search_code`
 
-It also exposes read-only Git inspection for **real nested repositories inside the authorized Folder root**:
+It also supports read-only Git inspection for **real nested repositories inside the authorized Folder root** through:
 
 - `list_git_repositories`
 - `repository_summary`
 - `git_status`
 - `recent_commits`
 - `get_diff`
-
-The four Git query tools require an explicit `repository` argument whose value is a Folder-Project-relative path returned by `list_git_repositories`.
 
 Example:
 
@@ -53,14 +84,9 @@ Folder Project: fbs
 
 A model may first call `list_git_repositories`, then ask for `git_status` with `repository: "fbs-ui"`. It may not treat `fbs` itself as a synthetic Git repository, and it may not merge the three child repositories into one synthetic status, branch, history, or diff.
 
-`project_summary` therefore continues to report that the **Folder root has no aggregate Git history**, while advertising that explicitly selected nested Git repositories can be inspected.
+`project_summary` therefore reports that the **Folder root has no aggregate Git history**, while advertising that explicitly selected nested Git repositories can be inspected.
 
-Folder Projects do **not** expose:
-
-- `verification_status`
-- `read_verification_output`
-
-Local Verification remains Git-Project-only.
+Folder Projects do not gain Local Verification execution or evidence access. Calls to `verification_status` and `read_verification_output` return unavailable in Folder mode.
 
 ## Nested Git discovery boundary
 
@@ -89,8 +115,8 @@ For a Folder Project, MCP connection startup:
 
 - does not run verification discovery;
 - does not run an approved verification rule;
-- does not register verification evidence tools;
-- does not automatically run verification for any discovered nested repository.
+- does not automatically run verification for any discovered nested repository;
+- advertises the two evidence tool names only to keep the MCP schema stable, and rejects their calls as unavailable without starting a process.
 
 If a nested repository is opened directly as a Git Project, its existing repository-bound Local Verification behavior applies normally. Allowing Folder mode to execute verification across child repositories would require a separate design and approval.
 
@@ -152,23 +178,28 @@ Connected status shows the detected outer project kind, for example:
 
 A Folder Project remains displayed as `Folder` even when it contains nested Git repositories because the MCP connection is still authorized and bounded by the Folder root.
 
+Because the public MCP tool contract is stable, switching between Git and Folder Projects through the same ReviewLume Tunnel does not require deleting/recreating the ChatGPT app merely because the project kind changed. A rescan is still required after a future ReviewLume release if the stable contract itself changes.
+
 ## Required acceptance checks
 
 Automated and Windows acceptance should verify at least:
 
 1. a trusted ordinary folder can connect without a root `.git`;
-2. Folder `list_files`, `read_file`, and `search_code` work across multiple child projects;
-3. `list_git_repositories` finds real child repositories inside the authorized Folder root;
-4. `repository_summary`, `git_status`, `recent_commits`, and `get_diff` work only when an explicit discovered child repository is supplied;
-5. the Folder root is never presented as a synthetic Git repository;
-6. status/history/diff from separate child repositories are not combined;
-7. traversal, absolute/drive/UNC repository selectors, `.git` path components, non-repository directories, and the Folder root itself are rejected;
-8. repositories reached through external symlink/junction targets are not discovered;
-9. candidates whose Git metadata resolves outside the Folder root are rejected;
-10. Folder file reads continue to block `../`, absolute paths, `.git`, sensitive paths, and external links;
-11. Folder mode exposes no Local Verification evidence and never starts Local Verification;
-12. opening a repository directly as a Git Project preserves the existing Git and Local Verification behavior;
-13. untrusted workspaces remain blocked;
-14. the same automated tests pass on Windows, Linux, and macOS.
+2. Git and Folder connections advertise the same 11 tool names and schemas;
+3. Folder `list_files`, `read_file`, and `search_code` work across multiple child projects;
+4. `list_git_repositories` finds real child repositories inside the authorized Folder root;
+5. `repository_summary`, `git_status`, `recent_commits`, and `get_diff` work only when an explicit discovered child repository is supplied in Folder mode;
+6. direct Git mode rejects a non-empty Folder-style `repository` selector and works when it is omitted;
+7. the Folder root is never presented as a synthetic Git repository;
+8. status/history/diff from separate child repositories are not combined;
+9. traversal, absolute/drive/UNC repository selectors, `.git` path components, non-repository directories, and the Folder root itself are rejected;
+10. repositories reached through external symlink/junction targets are not discovered;
+11. candidates whose Git metadata resolves outside the Folder root are rejected;
+12. Folder file reads continue to block `../`, absolute paths, `.git`, sensitive paths, and external links;
+13. Folder mode rejects Local Verification evidence calls and never starts Local Verification;
+14. switching the same ChatGPT app from Folder to direct Git mode does not produce a stale tool/schema mismatch;
+15. opening a repository directly as a Git Project preserves the existing Git and Local Verification behavior;
+16. untrusted workspaces remain blocked;
+17. the same automated tests pass on Windows, Linux, and macOS.
 
 Repository CI remains the source of truth for lint, TypeScript type checking, unit tests, builds, VSIX packaging, and package-content validation. Windows installation/F5 acceptance remains a separate merge gate for the visible connection behavior.
