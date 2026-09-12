@@ -185,7 +185,16 @@ export class StableProjectTools extends McpRepositoryTools {
   ): Promise<McpToolCallResult> {
     if (name === 'project_summary') {
       if (this.#projectKind === 'folder') {
-        return this.#delegate.call(name, rawArguments, signal);
+        const summary = await this.#delegate.call(name, rawArguments, signal);
+        if (summary.isError || !summary.structuredContent) return summary;
+        return projectSuccess({
+          ...summary.structuredContent,
+          capabilities: this.definitions.map((definition) => definition.name),
+          nestedGitRepositoriesAvailable: true,
+          localVerificationAvailable: false,
+          historyNotice:
+            'The Folder root has no aggregate Git history. Use list_git_repositories, then pass an explicit repository path to repository_summary, git_status, recent_commits, or get_diff. Never combine child repositories into synthetic Git history.',
+        });
       }
       const summary = await this.#delegate.call('repository_summary', {}, signal);
       if (summary.isError || !summary.structuredContent) return summary;
